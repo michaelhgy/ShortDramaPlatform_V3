@@ -1,0 +1,40 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Python bytecode, test caches and local virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# V2 local runtime state: SQLite, logs, diagnostics and temporary files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.jsonl
+*.tmp
+*.bak
+local-test-output/
+runtime/
+debug/
+diagnostics/
+tools/tmp_*/
+
+# User-owned Jianying drafts and exported production media
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+JianyingDrafts/
+production-files/
+生产文件/

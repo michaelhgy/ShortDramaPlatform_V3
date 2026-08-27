@@ -1,0 +1,6 @@
+{
+  "name": "短剧推广运营系统",
+  "description": "个人短剧生产与运营桌面工作台，集账号收益分析、选剧推测决策、今日排期制作安排于一体",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
