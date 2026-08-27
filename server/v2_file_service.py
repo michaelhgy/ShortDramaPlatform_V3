@@ -27,15 +27,75 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 BGM_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
 HOST = os.environ.get("V2_FILE_SERVICE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("V2_FILE_SERVICE_PORT", "8782"))
-DEFAULT_WORKSPACE_ROOT = Path(r"D:\短剧推广运营系统")
-WORKSPACE = Path(os.environ.get("V2_WORKSPACE_ROOT", str(DEFAULT_WORKSPACE_ROOT))).expanduser()
-DATA_ROOT = Path(os.environ.get("V2_SYSTEM_DATA_ROOT", str(WORKSPACE / "系统数据"))).expanduser()
+STANDARD_SYSTEM_ROOT_NAME = "短剧推广运营系统"
+
+
+def _bootstrap_settings_path() -> Path:
+    """Local machine bootstrap only; business data is never stored here."""
+    local = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    base = Path(local).expanduser() if local else Path.home() / ".short-drama-platform-v2"
+    return base / "ShortDramaPlatformV2" / "bootstrap-settings.json"
+
+
+def normalize_data_drive(value: object) -> str:
+    """Return a Windows drive in the persisted form, e.g. ``D:``."""
+    drive = str(value or "").strip().rstrip("\\/")
+    if not re.fullmatch(r"[A-Za-z]:", drive):
+        raise ValueError("数据盘必须是当前电脑上的盘符，例如 D:")
+    return drive.upper()
+
+
+def system_root_from_drive(data_drive: object) -> Path:
+    return Path(f"{normalize_data_drive(data_drive)}\\") / STANDARD_SYSTEM_ROOT_NAME
+
+
+def _development_workspace_override() -> Path | None:
+    override = os.environ.get("V2_WORKSPACE_ROOT", "").strip()  # development/test override
+    return Path(override).expanduser() if override else None
+
+
+def _configured_data_drive() -> str | None:
+    """Read the machine bootstrap setting and migrate the short-lived root format."""
+    try:
+        bootstrap = _bootstrap_settings_path()
+        payload = json.loads(bootstrap.read_text(encoding="utf-8"))
+        value = payload.get("data_drive", "")
+        if str(value).strip():
+            return normalize_data_drive(value)
+
+        # Compatibility with the regression build: it persisted the derived
+        # root instead of the user's drive. Accept only the standard shape and
+        # immediately restore the proper persisted representation.
+        legacy_root = Path(str(payload.get("system_root_dir", "")).strip())
+        legacy_drive = legacy_root.drive
+        if legacy_drive and legacy_root == system_root_from_drive(legacy_drive):
+            data_drive = normalize_data_drive(legacy_drive)
+            bootstrap.parent.mkdir(parents=True, exist_ok=True)
+            bootstrap.write_text(json.dumps({"data_drive": data_drive}, ensure_ascii=False), encoding="utf-8")
+            return data_drive
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+    return None
+
+
+def _configured_workspace() -> Path | None:
+    override = _development_workspace_override()
+    if override is not None:
+        return override
+    data_drive = _configured_data_drive()
+    return system_root_from_drive(data_drive) if data_drive else None
+
+
+WORKSPACE = _configured_workspace()
+DATA_ROOT = WORKSPACE / "系统数据" if WORKSPACE is not None else None
 ROOT_DIRECTORIES = ("生产文件", "内容资产", "生成资源", "剧集资料", "系统数据")
 TEMPLATE_JOB_LOCK = threading.Lock()
 SCAN_LOCK = threading.Lock()
 
 
 def require_configured_paths() -> tuple[Path, Path]:
+    if WORKSPACE is None or DATA_ROOT is None:
+        raise RuntimeError("需要配置数据盘")
     return WORKSPACE.resolve(), DATA_ROOT.resolve()
 
 
@@ -552,7 +612,8 @@ def list_production_resources() -> dict[str, object]:
 
 
 DEFAULT_SETTINGS = {
-    "data_root_dir": str(DEFAULT_WORKSPACE_ROOT),
+    "data_drive": "",
+    "data_root_dir": "",
     "raw_material_retention_days": 7,
     "short_term_cleanup_hours": 24,
     "publish_presets": ["12:00", "18:30", "19:45", "21:00"],
@@ -568,35 +629,52 @@ DEFAULT_SETTINGS = {
 
 def list_windows_drives() -> list[str]:
     mask = ctypes.windll.kernel32.GetLogicalDrives() if os.name == "nt" else 0
-    return [f"{chr(65 + index)}:\\" for index in range(26) if mask & (1 << index)] or ["D:\\"]
+    return [f"{chr(65 + index)}:\\" for index in range(26) if mask & (1 << index)]
 
 
 def get_v2_settings() -> dict[str, object]:
+    configured_drive = _configured_data_drive()
+    result = dict(DEFAULT_SETTINGS)
+    result["data_drive"] = configured_drive or ""
+    result["data_root_dir"] = str(WORKSPACE) if WORKSPACE is not None else ""
+    if WORKSPACE is None:
+        return result
     conn = connection()
     try:
-        result = dict(DEFAULT_SETTINGS)
         for row in conn.execute("SELECT key, value_json FROM v2_settings").fetchall():
-            result[str(row["key"])] = json.loads(str(row["value_json"]))
+            key = str(row["key"])
+            # The system root is derived from the bootstrap data drive. Never
+            # let an older database row turn it back into a user-editable path.
+            if key not in {"data_drive", "data_root_dir"}:
+                result[key] = json.loads(str(row["value_json"]))
         return result
     finally:
         conn.close()
 
 
 def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
-    allowed = set(DEFAULT_SETTINGS)
+    global WORKSPACE, DATA_ROOT
+    # data_root_dir is a derived display value. Accept the immediately
+    # preceding API shape only when it is the standard root for its drive.
+    payload = dict(payload)
+    legacy_root = payload.pop("data_root_dir", None)
+    if legacy_root is not None and "data_drive" not in payload:
+        legacy_path = Path(str(legacy_root or "").strip())
+        if legacy_path.drive and legacy_path == system_root_from_drive(legacy_path.drive):
+            payload["data_drive"] = normalize_data_drive(legacy_path.drive)
+        else:
+            raise ValueError("系统根目录由数据盘自动生成，不能手工设置")
+    allowed = set(DEFAULT_SETTINGS) - {"data_root_dir"}
     invalid = set(payload) - allowed
     if invalid:
         raise ValueError("包含不支持的系统设置")
     values = dict(DEFAULT_SETTINGS)
     values.update(get_v2_settings())
-    if "data_root_dir" in payload:
-        drive = str(payload["data_root_dir"]).strip().rstrip("\\/")
-        if not re.fullmatch(r"[A-Za-z]:", drive):
-            raise ValueError("数据位置只能选择 Windows 盘符")
-        payload = {**payload, "data_root_dir": drive + "\\短剧推广运营系统"}
+    if "data_drive" in payload:
+        payload["data_drive"] = normalize_data_drive(payload["data_drive"])
     values.update(payload)
-    if not isinstance(values["data_root_dir"], str) or not values["data_root_dir"].strip():
-        raise ValueError("默认工作目录不能为空")
+    if WORKSPACE is None and not str(values["data_drive"] or "").strip():
+        raise ValueError("需要配置数据盘")
     if not isinstance(values["raw_material_retention_days"], int) or not 1 <= values["raw_material_retention_days"] <= 90:
         raise ValueError("原素材保留时间必须为 1-90 天")
     if not isinstance(values["short_term_cleanup_hours"], int) or not 1 <= values["short_term_cleanup_hours"] <= 168:
@@ -621,16 +699,24 @@ def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
     for key in ("final_video_manual_check", "video_export_debug"):
         if not isinstance(values[key], bool):
             raise ValueError("视频导出器开关必须是布尔值")
+    if "data_drive" in payload:
+        WORKSPACE = system_root_from_drive(payload["data_drive"])
+        DATA_ROOT = WORKSPACE / "系统数据"
+        bootstrap = _bootstrap_settings_path()
+        bootstrap.parent.mkdir(parents=True, exist_ok=True)
+        bootstrap.write_text(json.dumps({"data_drive": payload["data_drive"]}, ensure_ascii=False), encoding="utf-8")
+        ensure_v2_root_layout()
     conn = connection()
     try:
-        for key, value in payload.items():
+        # A drive change deliberately creates/uses a different system root.
+        # Copy the complete settings snapshot into that root so changing the
+        # data location never clears independent Jianying or task settings.
+        settings_to_persist = values if "data_drive" in payload else payload
+        for key, value in settings_to_persist.items():
+            if key in {"data_drive", "data_root_dir"}:
+                continue
             conn.execute("INSERT INTO v2_settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at", (key, json.dumps(value, ensure_ascii=False), now_text()))
         conn.commit()
-        global WORKSPACE, DATA_ROOT
-        if "data_root_dir" in payload:
-            WORKSPACE = Path(str(payload["data_root_dir"])).expanduser()
-            DATA_ROOT = WORKSPACE / "系统数据"
-            ensure_v2_root_layout()
         return get_v2_settings()
     finally:
         conn.close()
@@ -1049,6 +1135,54 @@ def create_task(payload: dict[str, object]) -> dict[str, object]:
         "account_name": account, "drama_name": drama, "planned_publish_at": planned_publish_at,
         "paths": {"root": str(root), "materials": str(materials), "template": str(template), "finals": str(finals)},
     }
+
+
+def create_export_job(payload: dict[str, object]) -> dict[str, object]:
+    """Create one real V2 export job without inventing a production queue."""
+    from server.v2_exporter.core import ExportRepository
+    task_id = str(payload.get("production_task_id") or "").strip()
+    subject_type = str(payload.get("subject_type") or "").strip()
+    subject_id = str(payload.get("subject_id") or "").strip()
+    draft_name = str(payload.get("draft_name") or "").strip()
+    draft_path = Path(str(payload.get("draft_path") or "")).expanduser()
+    if not draft_path.is_dir():
+        raise ValueError("真实剪映草稿目录不存在")
+    conn = connection()
+    try:
+        task = conn.execute("SELECT * FROM production_tasks WHERE id=?", (task_id,)).fetchone()
+        if not task:
+            raise ValueError("生产任务不存在")
+        if subject_type not in {"template", "final"}:
+            raise ValueError("导出对象类型只能是 template 或 final")
+        group = Path(str(task["template_path"] if subject_type == "template" else task["final_path"]))
+        suffix = "模板" if subject_type == "template" else "成片"
+        filename = f"{safe_component(str(task['created_date']), '日期')}-{safe_component(str(task['account_name']), '账号')}-{safe_component(str(task['drama_name']), '剧集')}-{suffix}.mp4"
+        job = ExportRepository(conn).create_job(
+            production_task_id=task_id, subject_type=subject_type, subject_id=subject_id or draft_name,
+            draft_name=draft_name, draft_path=str(draft_path.resolve()), target_path=str((group / filename).resolve()),
+            manual_check_required=bool(payload.get("manual_check_required", False)) and subject_type == "final",
+        )
+        return {"job": job, "target_path": job["target_path"]}
+    finally:
+        conn.close()
+
+
+def start_export_job(job_id: str) -> dict[str, object]:
+    """The testable real-entry point: queue exactly one V2 attempt and run it."""
+    from server.executor_management import ExecutorManager
+    from server.v2_exporter.core import ExportRepository
+    from server.v2_exporter.runner import start_attempt_in_background
+    conn = connection()
+    try:
+        control = ExecutorManager(conn).state("video_exporter")
+        if bool(control["is_paused"]):
+            raise ValueError("视频导出器已因连续失败暂停，请在任务中心人工重新启动")
+        settings = get_v2_settings()
+        attempt = ExportRepository(conn).queue_new_attempt(job_id, deadline_minutes=int(settings["video_export_timeout_min"]), debug_enabled=bool(settings["video_export_debug"]))
+    finally:
+        conn.close()
+    start_attempt_in_background(connection, attempt_id=str(attempt["id"]), settings=settings)
+    return {"attempt": attempt}
 
 
 def list_tasks() -> dict[str, object]:
@@ -1502,6 +1636,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/v2/production-tasks":
                 self._json(HTTPStatus.CREATED, create_task(payload))
                 return
+            if path == "/api/v2/exporter/jobs":
+                self._json(HTTPStatus.CREATED, create_export_job(payload))
+                return
+            match = re.fullmatch(r"/api/v2/exporter/jobs/([a-f0-9]+)/start", path)
+            if match:
+                self._json(HTTPStatus.ACCEPTED, start_export_job(match.group(1)))
+                return
             if path == "/api/v2/theaters":
                 self._json(HTTPStatus.CREATED, create_theater(payload))
                 return
@@ -1631,13 +1772,15 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    ensure_v2_root_layout()
+    if WORKSPACE is not None:
+        ensure_v2_root_layout()
     try:
         from server.task_center_service import start_scheduler
     except ModuleNotFoundError:
         from task_center_service import start_scheduler
     start_scheduler()
-    print(f"V2 文件服务已启动：http://{HOST}:{PORT}", flush=True)
+    state = "V2 文件服务已启动" if WORKSPACE is not None else "V2 文件服务已启动：需要配置数据盘"
+    print(f"{state}，http://{HOST}:{PORT}", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 

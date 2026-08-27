@@ -1,8 +1,10 @@
 import tempfile
 import unittest
 import base64
+import json
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from server import v2_file_service as service
 
@@ -97,6 +99,40 @@ class V2FileServiceTests(unittest.TestCase):
         })
         self.assertEqual(["08:00", "20:00"], settings["publish_presets"])
         self.assertEqual(1, settings["publish_date_offset_days"])
+
+    def test_data_drive_derives_the_standard_root_and_preserves_jianying_settings(self) -> None:
+        self.assertEqual(Path(r"E:\短剧推广运营系统"), service.system_root_from_drive("e:"))
+        bootstrap = Path(self.temp.name) / "bootstrap-settings.json"
+        executable = Path(self.temp.name) / "JianyingPro.exe"
+        executable.write_bytes(b"")
+        draft_root = Path(self.temp.name) / "drafts"
+        draft_root.mkdir()
+
+        def derived_root(drive: object) -> Path:
+            return Path(self.temp.name) / service.normalize_data_drive(drive).replace(":", "")
+
+        with patch.object(service, "_bootstrap_settings_path", return_value=bootstrap), patch.object(service, "system_root_from_drive", side_effect=derived_root):
+            service.WORKSPACE = None
+            service.DATA_ROOT = None
+            first = service.update_v2_settings({
+                "data_drive": "e:",
+                "jianying_executable": str(executable),
+                "jianying_draft_root": str(draft_root),
+            })
+            changed = service.update_v2_settings({"data_drive": "f:"})
+
+        self.assertEqual("E:", first["data_drive"])
+        self.assertEqual("F:", changed["data_drive"])
+        self.assertEqual(str(executable), changed["jianying_executable"])
+        self.assertEqual(str(draft_root), changed["jianying_draft_root"])
+        self.assertEqual({"data_drive": "F:"}, json.loads(bootstrap.read_text(encoding="utf-8")))
+
+    def test_legacy_system_root_bootstrap_migrates_to_data_drive(self) -> None:
+        bootstrap = Path(self.temp.name) / "bootstrap-settings.json"
+        bootstrap.write_text(json.dumps({"system_root_dir": r"D:\短剧推广运营系统"}, ensure_ascii=False), encoding="utf-8")
+        with patch.object(service, "_bootstrap_settings_path", return_value=bootstrap):
+            self.assertEqual("D:", service._configured_data_drive())
+        self.assertEqual({"data_drive": "D:"}, json.loads(bootstrap.read_text(encoding="utf-8")))
 
     def test_batch_theater_import_skips_existing_names_and_keeps_new_names(self) -> None:
         imported = service.create_theaters_batch({"items": [

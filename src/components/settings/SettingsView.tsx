@@ -44,9 +44,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // ==========================================
   // 1. 存储与程序 (Storage & Programs)
   // ==========================================
-  const [dataRootDir, setDataRootDir] = useState('D:\\短剧推广运营系统');
+  const [dataDrive, setDataDrive] = useState('');
+  const [availableDrives, setAvailableDrives] = useState<string[]>([]);
   const [dataRootDirStatus, setDataRootDirStatus] = useState<'normal' | 'missing' | 'inaccessible'>('normal');
-  const [availableDrives, setAvailableDrives] = useState<string[]>(['D:\\']);
   const [isChangingDataDrive, setIsChangingDataDrive] = useState(false);
   const [jianyingExePath, setJianyingExePath] = useState('');
   const [capcutDraftPath, setCapcutDraftPath] = useState('');
@@ -94,9 +94,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [selectingPath, setSelectingPath] = useState<'file' | 'directory' | null>(null);
 
   useEffect(() => {
-    Promise.all([getV2Settings(), getV2Drives()]).then(([settings, drives]) => {
-      setDataRootDir(settings.data_root_dir);
-      setAvailableDrives(drives.items);
+    getV2Settings().then((settings) => {
+      setDataDrive(settings.data_drive || '');
       setRawMaterialRetentionDays(settings.raw_material_retention_days);
       setShortTermCleanupHours(settings.short_term_cleanup_hours);
       setPublishPresets(settings.publish_presets);
@@ -107,15 +106,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setExportTimeoutMin(settings.video_export_timeout_min);
       setDefaultCheckMode(settings.final_video_manual_check);
     }).catch(() => showToast('基础设置读取失败，请稍后重试。'));
+    getV2Drives().then(({ items }) => setAvailableDrives(items.map((drive) => drive.replace(/[\\/]$/, ''))))
+      .catch(() => showToast('可用数据盘读取失败，请稍后重试。'));
   }, []);
+
+  const dataRootDir = dataDrive ? `${dataDrive}\\短剧推广运营系统` : '';
 
   // ---------------- Handlers ----------------
 
   const handleSave = () => {
-    const selectedDrive = dataRootDir.match(/^[A-Za-z]:/)?.[0] || 'D:';
-    if (isChangingDataDrive && !window.confirm(`确认将软件数据位置改为 ${selectedDrive}\\短剧推广运营系统？已有数据不会自动搬迁。`)) return;
+    if (!dataDrive) { showToast('请先选择数据盘。'); return; }
+    if (isChangingDataDrive && !window.confirm(`确认将数据盘改为 ${dataDrive}？已有数据不会自动搬迁。`)) return;
     updateV2Settings({
-      data_root_dir: selectedDrive,
+      data_drive: dataDrive,
       raw_material_retention_days: rawMaterialRetentionDays,
       short_term_cleanup_hours: shortTermCleanupHours,
       publish_presets: publishPresets,
@@ -271,16 +274,16 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
             <h3 className="font-extrabold text-base text-[#1A1D2E]">存储与程序</h3>
           </div>
           <span className="text-[11px] text-[#64748B] font-medium">
-            仅需指定根目录与执行程序，系统将自动维护标准目录树
+            选择数据盘与执行程序，系统将自动维护标准目录树
           </span>
         </div>
 
         <div className="space-y-4 text-xs">
-          {/* 1.1 系统数据根目录 */}
+          {/* 1.1 数据盘 */}
           <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-black/[0.04] space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <label className="font-extrabold text-[#1A1D2E]">系统数据根目录</label>
+                <label className="font-extrabold text-[#1A1D2E]">数据盘</label>
                 {dataRootDirStatus === 'normal' && (
                   <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-bold">
                     <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
@@ -303,17 +306,18 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
             </div>
 
             <p className="text-[11px] text-[#64748B] leading-relaxed">
-              软件在此根目录下自动创建和维护生产文件、剧集资料、爆款素材、真人视频/图片、BGM 及系统数据等标准目录，无需逐项配置。
+              选择盘符后，软件自动使用 {dataRootDir || '<盘符>\\短剧推广运营系统'}，并在其中创建和维护生产文件、剧集资料、爆款素材、真人视频/图片、BGM 及系统数据等标准目录，无需逐项配置。
             </p>
 
             <div className="flex items-center gap-2">
               <select
-                value={dataRootDir.match(/^[A-Za-z]:/)?.[0] || 'D:'}
-                onChange={(e) => setDataRootDir(`${e.target.value}\\短剧推广运营系统`)}
-                disabled={!isChangingDataDrive}
+                value={dataDrive}
+                onChange={(e) => setDataDrive(e.target.value)}
+                disabled={Boolean(dataDrive) && !isChangingDataDrive}
                 className="flex-1 px-3 py-2 bg-white border border-black/[0.08] rounded-xl text-[#1A1D2E] font-mono text-xs focus:outline-none focus:border-[#1A1D2E]"
               >
-                {availableDrives.map((drive) => <option key={drive} value={drive.replace('\\', '')}>{drive}</option>)}
+                <option value="">请选择数据盘</option>
+                {availableDrives.map((drive) => <option key={drive} value={drive}>{drive}</option>)}
               </select>
               <button
                 type="button"
@@ -322,7 +326,7 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
                 }}
                 className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#1A1D2E] font-bold cursor-pointer transition-colors shrink-0"
               >
-                {isChangingDataDrive ? '取消更换' : '更换数据盘'}
+                {isChangingDataDrive ? '取消更换' : dataDrive ? '更换数据盘' : '确认数据盘'}
               </button>
               <button
                 type="button"
@@ -838,7 +842,7 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
 
           <button
             type="button"
-            onClick={() => showToast('💾 全量 SQLite 数据库与配置快照备份成功：D:\\短剧推广运营系统\\系统数据\\DramaMaster_backup.db')}
+            onClick={() => showToast(dataRootDir ? `💾 全量 SQLite 数据库与配置快照备份成功：${dataRootDir}\\系统数据\\DramaMaster_backup.db` : '请先配置数据盘后再执行备份。')}
             className="p-3.5 rounded-2xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black text-left transition-all cursor-pointer space-y-1 shadow-xs"
           >
             <ShieldCheck className="w-4 h-4" />

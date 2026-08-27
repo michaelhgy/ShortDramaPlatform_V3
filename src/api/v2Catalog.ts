@@ -81,6 +81,7 @@ export function openV2Folder(path: string): Promise<{ opened: boolean }> { retur
 export function openV2File(path: string): Promise<{ opened: boolean }> { return v2Client.post('/api/v2/open-file', { path }); }
 export function getV2ProductionResources(): Promise<{ items: import('../assetsTypes').ProductionResourceItem[] }> { return v2Client.get('/api/v2/production-resources'); }
 export interface V2Settings {
+  data_drive: string;
   data_root_dir: string;
   raw_material_retention_days: number;
   short_term_cleanup_hours: number;
