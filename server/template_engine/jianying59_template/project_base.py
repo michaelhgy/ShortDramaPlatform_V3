@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
+from server.tool_resolver import resolve_ffprobe
+
 
 CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 2400
@@ -46,10 +48,10 @@ def build_t00_plan(seed: int) -> T00ProjectPlan:
     return T00ProjectPlan(seed=seed)
 
 
-def probe_video(path: Path, *, ffprobe_bin: str = "ffprobe") -> VideoProbe:
+def probe_video(path: Path, *, ffprobe_bin: str | None = None) -> VideoProbe:
     """Read the real media dimensions required by the T00 input contract."""
     command = [
-        ffprobe_bin,
+        ffprobe_bin or str(resolve_ffprobe()),
         "-v", "error",
         "-select_streams", "v:0",
         "-show_entries", "stream=width,height:format=duration",

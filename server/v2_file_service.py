@@ -24,6 +24,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from server.tool_resolver import ToolResolutionError, resolve_ffmpeg, resolve_ffprobe
+
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 BGM_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
@@ -667,8 +669,11 @@ def content_hash(path: Path, algorithm: str) -> str:
 def probe_material(path: Path, cache_key: str) -> tuple[float, str]:
     """Read duration once and cache a small first-frame thumbnail when FFmpeg is available."""
     duration = 0.0
-    ffprobe = shutil.which("ffprobe")
-    if ffprobe:
+    try:
+        ffprobe = resolve_ffprobe()
+    except ToolResolutionError:
+        ffprobe = None
+    if ffprobe is not None:
         try:
             result = subprocess.run(
                 [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
@@ -679,8 +684,11 @@ def probe_material(path: Path, cache_key: str) -> tuple[float, str]:
             duration = 0.0
     # Versioned cache name forces regeneration after thumbnail quality/frame rules change.
     thumbnail = DATA_ROOT / "cache" / "material-thumbnails" / f"{cache_key}-v3.jpg"
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg and not thumbnail.is_file():
+    try:
+        ffmpeg = resolve_ffmpeg()
+    except ToolResolutionError:
+        ffmpeg = None
+    if ffmpeg is not None and not thumbnail.is_file():
         try:
             thumbnail.parent.mkdir(parents=True, exist_ok=True)
             subprocess.run(
@@ -695,8 +703,11 @@ def probe_material(path: Path, cache_key: str) -> tuple[float, str]:
 def probe_resource_metadata(path: Path, cache_key: str) -> tuple[float, str, str]:
     duration, thumbnail_path = probe_material(path, cache_key)
     resolution = ""
-    ffprobe = shutil.which("ffprobe")
-    if ffprobe:
+    try:
+        ffprobe = resolve_ffprobe()
+    except ToolResolutionError:
+        ffprobe = None
+    if ffprobe is not None:
         try:
             result = subprocess.run(
                 [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", str(path)],
@@ -710,8 +721,10 @@ def probe_resource_metadata(path: Path, cache_key: str) -> tuple[float, str, str
     return duration, resolution, thumbnail_path
 
 def media_resolution(path: Path) -> str:
-    ffprobe = shutil.which("ffprobe")
-    if not ffprobe: return ""
+    try:
+        ffprobe = resolve_ffprobe()
+    except ToolResolutionError:
+        return ""
     try:
         result = subprocess.run([ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False)
         value = (result.stdout or "").strip()

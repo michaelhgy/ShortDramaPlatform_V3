@@ -17,5 +17,8 @@ excludes test-only packages such as `pytest`.
 - The V2 exporter uses the V2-owned `server/windows_automation` package for
   its Windows/Jianying 5.9 low-level runtime. No adjacent V1 repository is a
   production runtime prerequisite.
-- FFmpeg, Jianying/CapCut, Ollama, and WebView2 are external software or system
-  runtime dependencies, not Python packages and not included here.
+- FFmpeg is not a Python package. Its controlled Windows x64 bundle candidate
+  is recorded in `packaging/ffmpeg-runtime.json`; the future installer must
+  stage its executable files together with the required GPL notice files.
+  Jianying/CapCut, Ollama, and WebView2 remain external software or system
+  runtime dependencies.

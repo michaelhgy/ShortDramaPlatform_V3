@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
+
 
 CANVAS_W, CANVAS_H = 1080, 2400
 MIDROLL_SECONDS = 120.0
@@ -28,7 +30,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def probe_duration(path: Path) -> float:
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+        [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if result.returncode:
@@ -144,7 +146,7 @@ def render(args: argparse.Namespace) -> dict[str, Any]:
     if partial.exists():
         partial.unlink()
     command = [
-        "ffmpeg", "-y", "-i", str(args.clean_viral), "-stream_loop", "-1", "-i", str(args.template_video),
+        str(resolve_ffmpeg()), "-y", "-i", str(args.clean_viral), "-stream_loop", "-1", "-i", str(args.template_video),
         "-i", str(args.midroll), "-i", str(args.endroll),
     ]
     if args.bgm:

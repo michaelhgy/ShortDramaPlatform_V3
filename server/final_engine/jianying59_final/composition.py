@@ -14,6 +14,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from server.tool_resolver import resolve_ffprobe
+
 from .visual_layers import append_visual_layers, plan_global_layers, plan_visual_layers
 
 
@@ -56,7 +58,7 @@ def probe_media(path: Path, *, audio_only: bool = False) -> Media:
     selector = "a:0" if audio_only else "v:0"
     entries = "format=duration" if audio_only else "stream=width,height,duration:format=duration"
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", selector, "-show_entries", entries, "-of", "json", str(path)],
+        [str(resolve_ffprobe()), "-v", "error", "-select_streams", selector, "-show_entries", entries, "-of", "json", str(path)],
         capture_output=True,
         text=True,
         encoding="utf-8",

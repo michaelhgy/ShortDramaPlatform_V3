@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from server.tool_resolver import resolve_ffprobe
+
 
 US = 1_000_000
 CANVAS_W = 1080
@@ -71,7 +73,7 @@ TEMPLATE_COMPOSITION_MASK_EXTRA_Y_PER_EDGE_PX = 10
 def probe_video(path: Path) -> dict[str, Any]:
     result = subprocess.run(
         [
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            str(resolve_ffprobe()), "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=width,height,r_frame_rate:format=duration",
             "-of", "json", str(path),
         ], check=False, capture_output=True, text=True, encoding="utf-8", errors="replace"
@@ -90,7 +92,7 @@ def probe_video(path: Path) -> dict[str, Any]:
 def probe_audio(path: Path) -> dict[str, Any]:
     result = subprocess.run(
         [
-            "ffprobe", "-v", "error", "-select_streams", "a:0",
+            str(resolve_ffprobe()), "-v", "error", "-select_streams", "a:0",
             "-show_entries", "format=duration", "-of", "json", str(path),
         ], check=False, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )

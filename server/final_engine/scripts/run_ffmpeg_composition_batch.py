@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from server.tool_resolver import resolve_ffprobe
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_FINISHED_SECONDS = 900.0
@@ -22,7 +24,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def probe_duration(path: Path) -> float:
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+        [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if result.returncode:

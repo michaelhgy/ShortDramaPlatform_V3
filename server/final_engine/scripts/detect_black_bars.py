@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
+from server.tool_resolver import resolve_ffprobe
 
 
 SAMPLE_PERCENTS = (5, 13, 21, 29, 37, 45, 55, 63, 71, 79, 87, 95)
@@ -39,7 +40,7 @@ def probe_video(path: Path) -> tuple[float, int, int]:
     if not path.is_file():
         raise FileNotFoundError(f"Video does not exist: {path}")
     command = [
-        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        str(resolve_ffprobe()), "-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=width,height:format=duration", "-of", "json", str(path),
     ]
     data = json.loads(subprocess.check_output(command, text=True, encoding="utf-8"))

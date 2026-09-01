@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
+
 try:
     from .detect_black_bars import probe_video as probe_black_bar_video
     from .detect_black_bars import source_identity as black_bar_source_identity
@@ -29,7 +31,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def probe_duration(path: Path) -> float:
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+        [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if result.returncode:
@@ -40,7 +42,7 @@ def probe_duration(path: Path) -> float:
 def probe_geometry(path: Path) -> tuple[int, int]:
     result = subprocess.run(
         [
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            str(resolve_ffprobe()), "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path),
         ],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -192,7 +194,7 @@ def run_ffmpeg(source: Path, output: Path, start: float, end: float, regions: li
     expected = expected_geometry(source_size, crop)
     graph = filter_graph(start, end, regions, source_size, crop)
     common = [
-        "ffmpeg", "-y", "-i", str(source), "-filter_complex", graph,
+        str(resolve_ffmpeg()), "-y", "-i", str(source), "-filter_complex", graph,
         "-map", "[v]", "-map", "0:a?", "-af", f"atrim=start={start:.6f}:end={end:.6f},asetpts=PTS-STARTPTS",
         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(partial),
     ]

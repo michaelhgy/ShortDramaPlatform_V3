@@ -100,7 +100,7 @@ def run_template_job(job_id: str) -> None:
         ]
         env = dict(os.environ)
         env["PYTHONIOENCODING"] = "utf-8"
-        env["PYTHONPATH"] = os.pathsep.join((str(Path(__file__).parents[1]), env.get("PYTHONPATH", "")))
+        env["PYTHONPATH"] = os.pathsep.join((str(Path(__file__).parents[1]), str(Path(__file__).parents[2]), env.get("PYTHONPATH", "")))
         timeout = int(service.get_v2_settings().get("template_timeout_min", 15)) * 60
         process: subprocess.Popen[str] | None = None
         try:

@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from server.tool_resolver import resolve_ffprobe
+
 try:
     from .ollama_local import ensure_local_ollama
     from .detect_black_bars import probe_video as probe_black_bar_video, source_identity as black_bar_source_identity
@@ -31,7 +33,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def probe_duration(path: Path) -> float:
     result = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+        [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if result.returncode:

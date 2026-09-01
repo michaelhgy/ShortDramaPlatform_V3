@@ -10,12 +10,13 @@ from __future__ import annotations
 import enum
 import json
 import os
-import shutil
 import subprocess
 import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Callable, Protocol
+
+from server.tool_resolver import ToolResolutionError, resolve_ffprobe
 
 
 class ExportState(str, enum.Enum):
@@ -167,7 +168,11 @@ class SingleDraftExporter:
                  status_sink: StatusSink | None = None, clock: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], None] = time.sleep,
                  operation_sink: OperationSink | None = None) -> None:
-        self.desktop, self.ffprobe_path, self.status_sink = desktop, ffprobe_path or shutil.which("ffprobe"), status_sink
+        self.desktop, self.status_sink = desktop, status_sink
+        try:
+            self.ffprobe_path = ffprobe_path or str(resolve_ffprobe())
+        except ToolResolutionError:
+            self.ffprobe_path = None
         self.clock, self.sleep, self.operation_sink = clock, sleep, operation_sink
         self._events: list[StageEvent] = []
         self._stage_started_at: float | None = None

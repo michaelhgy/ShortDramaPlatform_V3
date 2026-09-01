@@ -8,6 +8,8 @@ import json
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+
+from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
 from typing import Any
 
 
@@ -21,7 +23,7 @@ def sha256_file(path: Path) -> str:
 
 def duration_seconds(path: Path) -> float:
     output = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
+        [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
         text=True,
         encoding="utf-8",
     )
@@ -54,7 +56,7 @@ def main() -> None:
     output = args.library_root.resolve() / "本地音频" / f"{args.music_id}.m4a"
     output.parent.mkdir(parents=True, exist_ok=True)
     command = [
-        "ffmpeg", "-y", "-i", str(source), "-vn",
+        str(resolve_ffmpeg()), "-y", "-i", str(source), "-vn",
         "-af", f"loudnorm=I={args.target_lufs}:TP=-2.0:LRA=7.0",
         "-c:a", "aac", "-b:a", "128k", str(output),
     ]

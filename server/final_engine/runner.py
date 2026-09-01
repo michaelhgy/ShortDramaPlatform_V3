@@ -163,6 +163,7 @@ def run_finished_video(video_id: str) -> None:
             local_vision_ai_mode=str(settings.get("local_vision_ai_mode") or "compatibility"),
         )
         env = dict(os.environ); env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONPATH"] = os.pathsep.join((str(Path(__file__).parents[2]), env.get("PYTHONPATH", "")))
         if not _run_is_current(video_id, token):
             return
         process = subprocess.Popen(command, cwd=str(work_dir.parent), stdout=subprocess.PIPE, stderr=subprocess.PIPE,

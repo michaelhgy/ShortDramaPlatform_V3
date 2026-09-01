@@ -20,6 +20,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
 
+from server.tool_resolver import ToolResolutionError, resolve_ffprobe
+
 
 class V2ExportFailure(RuntimeError):
     def __init__(self, code: str, detail: str) -> None:
@@ -530,14 +532,18 @@ def _rate(value: object) -> float:
         return 0.0
 
 
-def verify_media(path: Path, *, expected_duration: float, width: int = 1080, height: int = 2400, fps: float = 30.0, ffprobe_path: str = "ffprobe") -> MediaInfo:
+def verify_media(path: Path, *, expected_duration: float, width: int = 1080, height: int = 2400, fps: float = 30.0, ffprobe_path: str | Path | None = None) -> MediaInfo:
     """Accept an exported video by its required canvas and frame rate.
 
     ``expected_duration`` remains part of the call contract because the export
     handoff needs it, but product acceptance deliberately does not reject a
     readable video because its duration or H.264/H.265 encoding differs.
     """
-    command = [ffprobe_path, "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate", "-of", "json", str(path)]
+    try:
+        executable = Path(ffprobe_path) if ffprobe_path is not None else resolve_ffprobe()
+    except ToolResolutionError as exc:
+        raise V2ExportFailure("FFPROBE_MISSING", f"ffprobe 不可用：{exc}") from exc
+    command = [str(executable), "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate", "-of", "json", str(path)]
     try:
         completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
         payload = json.loads(completed.stdout or "{}")
