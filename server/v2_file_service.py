@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
 import os
 import re
 import sqlite3
+import sys
 import uuid
 import base64
 import ctypes
@@ -20,7 +22,7 @@ from datetime import date, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
@@ -95,6 +97,35 @@ TEMPLATE_JOB_LOCK = threading.Lock()
 RESOURCE_RESERVATION_LOCK = threading.Lock()
 SCAN_LOCK = threading.Lock()
 RESOURCE_PROBE_CACHE: dict[str, tuple[int, int, float, str, str]] = {}
+
+
+def application_resource_root() -> Path:
+    """Locate read-only application resources in source and frozen runs."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    return Path(__file__).resolve().parents[1]
+
+
+def frontend_dist_root() -> Path:
+    """Return the built React application bundled with the V2 runtime."""
+    root = application_resource_root() / "dist"
+    if not (root / "index.html").is_file():
+        raise RuntimeError(f"找不到 V2 前端构建文件：{root}；请先执行 npm run build")
+    return root
+
+
+def resolve_frontend_asset(request_path: str) -> tuple[Path, bool]:
+    """Resolve a static asset, falling back to the SPA shell for client routes."""
+    root = frontend_dist_root().resolve()
+    relative = unquote(request_path).lstrip("/") or "index.html"
+    candidate = (root / relative).resolve()
+    if not candidate.is_relative_to(root):
+        raise ValueError("前端资源路径不合法")
+    if candidate.is_file():
+        return candidate, candidate.name == "index.html"
+    if Path(relative).suffix:
+        raise FileNotFoundError(relative)
+    return root / "index.html", True
 
 
 def require_configured_paths() -> tuple[Path, Path]:
@@ -3128,6 +3159,21 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _frontend(self, request_path: str) -> None:
+        try:
+            file_path, is_html = resolve_frontend_asset(request_path)
+        except ValueError:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        except FileNotFoundError:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        except RuntimeError as exc:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc)})
+            return
+        content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        self._binary(file_path, content_type, cache_control="no-store" if is_html else "public, max-age=86400")
+
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/cleanup/preview", path)
@@ -3391,7 +3437,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"任务局部加载失败：{exc}"})
             return
-        self._json(HTTPStatus.NOT_FOUND, {"error": "V2 接口不存在"})
+        if path.startswith("/api/v2"):
+            self._json(HTTPStatus.NOT_FOUND, {"error": "V2 接口不存在"})
+            return
+        self._frontend(path)
 
     def do_POST(self) -> None:  # noqa: N802
         try:
@@ -3624,22 +3673,36 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
-def main() -> None:
+def create_v2_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer:
+    """Initialize V2 background services and return its local HTTP server."""
     if WORKSPACE is not None:
         ensure_v2_root_layout()
+    server = ThreadingHTTPServer((host, port), Handler)
     try:
         from server.task_center_service import start_scheduler
     except ModuleNotFoundError:
         from task_center_service import start_scheduler
-    start_scheduler()
     try:
         from server.revenue_auto_scheduler import start_revenue_auto_scheduler
     except ModuleNotFoundError:
         from revenue_auto_scheduler import start_revenue_auto_scheduler
-    start_revenue_auto_scheduler()
+    try:
+        start_scheduler()
+        start_revenue_auto_scheduler()
+    except Exception:
+        server.server_close()
+        raise
+    return server
+
+
+def main() -> None:
+    server = create_v2_server()
     state = "V2 文件服务已启动" if WORKSPACE is not None else "V2 文件服务已启动：需要配置数据盘"
     print(f"{state}，http://{HOST}:{PORT}", flush=True)
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":
