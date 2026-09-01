@@ -1,0 +1,32 @@
+# V2 production runtime lock. Validated with CPython 3.12.10 on Windows.
+# Direct runtime dependencies
+pywebview==6.2.1
+pyJianYingDraft==0.2.6
+pywin32==311
+uiautomation==2.0.29
+Pillow==10.4.0
+numpy==2.4.4
+opencv-python==5.0.0.93
+rapidocr-onnxruntime==1.4.4
+
+# Locked transitive dependencies of the direct runtime dependencies
+bottle==0.13.4
+proxy_tools==0.1.0
+pythonnet==3.1.0
+typing_extensions==4.15.0
+imageio==2.37.3
+pymediainfo==6.1.0
+comtypes==1.4.16
+onnxruntime==1.27.0
+pyclipper==1.4.0
+PyYAML==6.0.3
+Shapely==2.1.2
+six==1.17.0
+tqdm==4.67.3
+clr_loader==0.3.1
+cffi==2.1.1
+pycparser==3.0
+flatbuffers==25.12.19
+packaging==26.0
+protobuf==7.35.1
+colorama==0.4.6
