@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getV2Drives, getV2Settings, updateV2Settings } from '../../api/v2Catalog';
+import { downloadLocalVisionAiModel, getLocalVisionAiStatus, getV2Drives, getV2Settings, LocalVisionAiStatus, updateV2Settings } from '../../api/v2Catalog';
 import { selectV2Path } from '../../api/v2Settings';
 import { 
   Settings, 
@@ -31,7 +31,8 @@ import {
   ChevronUp,
   ChevronDown,
   Edit2,
-  Minus
+  Minus,
+  Sparkles
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -88,7 +89,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newTimeInput, setNewTimeInput] = useState('');
 
   // ==========================================
-  // 6. 系统诊断状态 (Diagnostics)
+  // 6. 本地视觉 AI (Local Vision AI)
+  // ==========================================
+  const [localVisionAiMode, setLocalVisionAiMode] = useState<'compatibility' | 'quality' | 'disabled'>('compatibility');
+  const [localVisionAiStatus, setLocalVisionAiStatus] = useState<LocalVisionAiStatus | null>(null);
+  const [checkingLocalVisionAi, setCheckingLocalVisionAi] = useState(false);
+
+  // ==========================================
+  // 7. 系统诊断状态 (Diagnostics)
   // ==========================================
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null);
   const [selectingPath, setSelectingPath] = useState<'file' | 'directory' | null>(null);
@@ -103,12 +111,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setJianyingExePath(settings.jianying_executable || '');
       setCapcutDraftPath(settings.jianying_draft_root || '');
       setTemplateTimeoutMin(settings.template_timeout_min);
+      setVideoGenTimeoutMin(settings.final_generation_timeout_min);
       setExportTimeoutMin(settings.video_export_timeout_min);
       setDefaultCheckMode(settings.final_video_manual_check);
+      setAutoSyncRevenue(settings.revenue_auto_collection_enabled);
+      setSyncTimeSlots(settings.revenue_auto_collection_times);
+      setLocalVisionAiMode(settings.local_vision_ai_mode);
     }).catch(() => showToast('基础设置读取失败，请稍后重试。'));
     getV2Drives().then(({ items }) => setAvailableDrives(items.map((drive) => drive.replace(/[\\/]$/, ''))))
       .catch(() => showToast('可用数据盘读取失败，请稍后重试。'));
+    void refreshLocalVisionAiStatus();
   }, []);
+
+  useEffect(() => {
+    if (!['queued', 'downloading'].includes(localVisionAiStatus?.download.status || '')) return;
+    const timer = window.setInterval(() => void refreshLocalVisionAiStatus(true), 1500);
+    return () => window.clearInterval(timer);
+  }, [localVisionAiStatus?.download.status]);
 
   const dataRootDir = dataDrive ? `${dataDrive}\\短剧推广运营系统` : '';
 
@@ -126,9 +145,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       jianying_executable: jianyingExePath,
       jianying_draft_root: capcutDraftPath,
       template_timeout_min: templateTimeoutMin,
+      final_generation_timeout_min: videoGenTimeoutMin,
       video_export_timeout_min: exportTimeoutMin,
       final_video_manual_check: defaultCheckMode,
+      revenue_auto_collection_enabled: autoSyncRevenue,
+      revenue_auto_collection_times: syncTimeSlots,
+      local_vision_ai_mode: localVisionAiMode,
     }).then(() => { setIsChangingDataDrive(false); showToast('系统设置已保存并生效'); }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '系统设置保存失败。'));
+  };
+
+  const refreshLocalVisionAiStatus = async (silent = false) => {
+    if (!silent) setCheckingLocalVisionAi(true);
+    try {
+      setLocalVisionAiStatus(await getLocalVisionAiStatus());
+      if (!silent) showToast('本地视觉 AI 环境检测完成');
+    } catch (error) {
+      if (!silent) showToast(error instanceof Error ? error.message : '本地视觉 AI 环境检测失败');
+    } finally {
+      if (!silent) setCheckingLocalVisionAi(false);
+    }
+  };
+
+  const handleDownloadLocalVisionModel = async (model: string) => {
+    if (!window.confirm(`将通过 Ollama 下载 ${model}。模型文件较大，请确认网络和磁盘空间充足。`)) return;
+    try {
+      setLocalVisionAiStatus(await downloadLocalVisionAiModel(model));
+      showToast(`已开始下载 ${model}，可留在本页查看进度`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '模型下载启动失败');
+    }
   };
 
   const handleSelectPath = (kind: 'file' | 'directory') => {
@@ -199,12 +244,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       showToast('该采集时间点已存在');
       return;
     }
-    setSyncTimeSlots(prev => [...prev, val]);
+    setSyncTimeSlots(prev => [...prev, val].sort());
     setNewTimeInput('');
     showToast(`已新增自动采集时间点：${val}`);
   };
 
   const handleRemoveTimeSlot = (time: string) => {
+    if (syncTimeSlots.length === 1) {
+      showToast('请至少保留一个采集时间点；不需要自动采集时可直接停用开关。');
+      return;
+    }
     setSyncTimeSlots(prev => prev.filter(t => t !== time));
     showToast(`已移除时间点：${time}`);
   };
@@ -741,7 +790,65 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
       </div>
 
       {/* =========================================================================
-          5. 收益自动采集定时任务 (Revenue Auto Sync) [保持现状]
+          5. 本地视觉 AI
+          ========================================================================= */}
+      <div className="bg-white rounded-3xl p-6 border border-black/[0.06] shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-black/[0.04]">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[#1A1D2E]" />
+            <div>
+              <h3 className="font-extrabold text-base text-[#1A1D2E]">本地视觉 AI</h3>
+              <p className="text-[11px] text-[#64748B] mt-0.5">用于成片开头封面和疑似剧名判断；关闭后保留 OCR 与固定规则。</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => void refreshLocalVisionAiStatus()} disabled={checkingLocalVisionAi}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-60 text-xs font-bold text-[#1A1D2E] cursor-pointer">
+            {checkingLocalVisionAi ? '检测中…' : '检测环境'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          {[
+            ['compatibility', '兼容模式', 'qwen2.5vl:3b · 约 3.2 GB', '推荐多数电脑使用'],
+            ['quality', '质量模式', 'qwen2.5vl:7b · 约 6.0 GB', '显卡和内存充足时使用'],
+            ['disabled', '关闭本地视觉 AI', '不需要 Ollama 或模型', '仅使用 OCR 与固定规则'],
+          ].map(([value, title, detail, note]) => (
+            <button key={value} type="button" onClick={() => setLocalVisionAiMode(value as typeof localVisionAiMode)}
+              className={`text-left p-3 rounded-2xl border transition-colors cursor-pointer ${localVisionAiMode === value ? 'border-emerald-400 bg-emerald-50/70' : 'border-black/[0.07] bg-[#F8FAFC] hover:bg-slate-100'}`}>
+              <div className="flex items-center justify-between gap-2"><strong className="text-xs text-[#1A1D2E]">{title}</strong>{localVisionAiMode === value && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}</div>
+              <p className="mt-1 text-[11px] font-mono text-[#475569]">{detail}</p>
+              <p className="mt-1 text-[10px] text-[#64748B]">{note}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="rounded-2xl border border-black/[0.06] bg-[#F8FAFC] p-3 text-xs space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold text-[#1A1D2E]">Ollama：{localVisionAiStatus?.ollamaFound ? '已检测到' : '未检测到'}</span>
+            {localVisionAiStatus?.ollamaFound && <span className="text-[10px] text-[#64748B]">已安装 {localVisionAiStatus.installedModels.length} 个模型</span>}
+          </div>
+          {!localVisionAiStatus?.ollamaFound && <p className="text-amber-800">请先安装 Ollama，并确保安装程序将 <code>ollama</code> 命令加入系统环境；完成后点击“检测环境”。</p>}
+          {localVisionAiStatus?.error && <p className="text-rose-700 break-words">检测失败：{localVisionAiStatus.error}</p>}
+          <div className="flex flex-wrap gap-2">
+            {localVisionAiStatus?.supportedModels.map((model) => (
+              <div key={model.id} className="flex items-center gap-2 bg-white rounded-xl border border-black/[0.05] px-2.5 py-2">
+                <span className="font-mono text-[11px] text-[#1A1D2E]">{model.id}</span>
+                <span className={model.installed ? 'text-emerald-700 font-bold' : 'text-slate-500'}>{model.installed ? '已就绪' : model.size}</span>
+                {!model.installed && <button type="button" disabled={!localVisionAiStatus.ollamaFound || ['queued', 'downloading'].includes(localVisionAiStatus.download.status)} onClick={() => void handleDownloadLocalVisionModel(model.id)} className="text-[11px] font-bold text-indigo-700 disabled:opacity-40 cursor-pointer">下载</button>}
+              </div>
+            ))}
+          </div>
+          {localVisionAiStatus && ['queued', 'downloading', 'completed', 'error'].includes(localVisionAiStatus.download.status) && (
+            <p className={localVisionAiStatus.download.status === 'error' ? 'text-rose-700 break-words' : 'text-[#475569]'}>
+              {localVisionAiStatus.download.status === 'error' ? `下载失败：${localVisionAiStatus.download.error}` : `下载状态：${localVisionAiStatus.download.progress}`}
+            </p>
+          )}
+          <p className="text-[10px] text-[#64748B]">模式选择会在保存设置后用于下一条成片草稿任务；不会改变正在生成的任务。</p>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          6. 收益自动采集定时任务 (Revenue Auto Sync)
           ========================================================================= */}
       <div className="bg-white rounded-3xl p-6 border border-black/[0.06] shadow-xs space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-black/[0.04]">
@@ -763,7 +870,7 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
 
         <div className="space-y-3 text-xs">
           <p className="text-[#64748B]">
-            系统将在设定的时间点自动唤醒采集通道，拉取矩阵各剧场昨日及实时收益流水。
+            系统将在设定时间自动发起现有收益采集。当天首次打开软件时，已错过的时间点会合并补采一次。
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -782,8 +889,7 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
 
             <div className="flex items-center gap-1">
               <input
-                type="text"
-                placeholder="例如 20:00"
+                type="time"
                 value={newTimeInput}
                 onChange={(e) => setNewTimeInput(e.target.value)}
                 className="w-24 px-2.5 py-1.5 bg-[#F8FAFC] border border-black/[0.08] rounded-xl text-xs font-semibold focus:outline-none focus:bg-white"

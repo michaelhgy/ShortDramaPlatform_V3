@@ -4,6 +4,8 @@ import {
   Layers, 
   Sparkles, 
   RotateCcw, 
+  Play,
+  Pause,
   Clock, 
   AlertTriangle, 
   CheckCircle2, 
@@ -17,12 +19,14 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { ExecutorInfo, TaskItem } from './taskCenterTypes';
+import { taskElapsedLabel } from '../../utils/duration';
 
 interface ExecutorsOverviewProps {
   executors: ExecutorInfo[];
   tasks: TaskItem[];
   onRetryTask: (task: TaskItem) => void;
   onViewTaskDetail: (task: TaskItem) => void;
+  onToggleExecutor: (executor: ExecutorInfo) => void;
 }
 
 export const ExecutorsOverview: React.FC<ExecutorsOverviewProps> = ({
@@ -30,7 +34,18 @@ export const ExecutorsOverview: React.FC<ExecutorsOverviewProps> = ({
   tasks,
   onRetryTask,
   onViewTaskDetail,
+  onToggleExecutor,
 }) => {
+  const executorStageStatus = (task: TaskItem, executorId: string) => {
+    if (executorId === 'video_exporter') {
+      return task.videoStage.rawStatus ? task.videoStage.status : null;
+    }
+    return task.executorId === executorId ? task.draftStage.status : null;
+  };
+
+  const isOwnedByExecutor = (task: TaskItem, executorId: string) =>
+    executorStageStatus(task, executorId) !== null;
+
   const getIconForExecutor = (id: string) => {
     switch (id) {
       case 'video_exporter':
@@ -77,12 +92,17 @@ export const ExecutorsOverview: React.FC<ExecutorsOverviewProps> = ({
       {/* 3 Executors Side-by-Side Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {executors.map((executor) => {
-          const currentTask = tasks.find(t => t.id === executor.currentTaskId);
+          const currentTask = tasks.find(
+            t => t.id === executor.currentTaskId || t.videoExportTaskId === executor.currentTaskId
+          );
           const waitingTasks = tasks.filter(
-            t => t.executorId === executor.id && t.status === 'waiting'
+            t => isOwnedByExecutor(t, executor.id) && executorStageStatus(t, executor.id) === 'waiting'
           );
           const nextTask = waitingTasks[0];
-          const hasTimeout = executor.queueStats.timeoutCount > 0 || (currentTask && currentTask.isTimeout);
+          // 队列中的历史超时只应在对应任务卡和“超时 / 失败”列表中显示。
+          // 执行器概览只反映它此刻正在执行的任务，避免旧记录把正常运行的
+          // 视频导出器错误标成“超时警示”。
+          const hasTimeout = Boolean(currentTask?.isTimeout || currentTask?.status === 'timeout');
 
           // Calculate completed percentage for this executor
           const total = executor.queueStats.total || 1;
@@ -111,13 +131,10 @@ export const ExecutorsOverview: React.FC<ExecutorsOverviewProps> = ({
                       {getIconForExecutor(executor.id)}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div>
                         <h4 className="font-extrabold text-sm text-[#1A1D2E]">
                           {executor.name}
                         </h4>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/[0.05] text-[#64748B] font-mono">
-                          串行 1/1
-                        </span>
                       </div>
                       <p className="text-[11px] text-[#64748B] line-clamp-1 mt-0.5">
                         {executor.subtitle}
@@ -126,8 +143,37 @@ export const ExecutorsOverview: React.FC<ExecutorsOverviewProps> = ({
                   </div>
 
                   {/* Status Badge */}
-                  <div>
-                    {hasTimeout ? (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onToggleExecutor(executor)}
+                      disabled={executor.status === 'pausing'}
+                      className={`p-1.5 rounded-lg border transition-colors cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
+                        executor.status === 'error_paused' ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' :
+                        executor.status === 'manual_paused' ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' :
+                        'border-black/[0.08] bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                      }`}
+                      title={executor.status === 'error_paused' ? '启动执行器并清除连续失败计数' : executor.status === 'manual_paused' ? '恢复执行器' : '暂停执行器（等待当前任务结束）'}
+                      aria-label={executor.status === 'error_paused' || executor.status === 'manual_paused' ? '启动执行器' : '暂停执行器'}
+                    >
+                      {executor.status === 'error_paused' || executor.status === 'manual_paused' ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5" />}
+                    </button>
+                    {executor.status === 'error_paused' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 font-bold border border-rose-200 animate-pulse">
+                        <AlertTriangle className="w-3 h-3 text-rose-600" />
+                        错误暂停
+                      </span>
+                    ) : executor.status === 'pausing' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 font-bold border border-amber-200">
+                        <Pause className="w-3 h-3 text-amber-600" />
+                        正在暂停
+                      </span>
+                    ) : executor.status === 'manual_paused' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                        <Pause className="w-3 h-3 text-slate-500" />
+                        人工暂停
+                      </span>
+                    ) : hasTimeout ? (
                       <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 font-bold border border-rose-200 animate-pulse">
                         <AlertTriangle className="w-3 h-3 text-rose-600" />
                         超时警示
@@ -144,11 +190,6 @@ export const ExecutorsOverview: React.FC<ExecutorsOverviewProps> = ({
                     )}
                   </div>
                 </div>
-
-                {/* Executor Pipeline Rule Tooltip / Hint */}
-                <p className="text-[11px] text-[#64748B] mt-2.5 bg-black/[0.02] p-2 rounded-xl border border-black/[0.03] leading-relaxed">
-                  {executor.description}
-                </p>
               </div>
 
               {/* Card Middle: Current Task Section */}
@@ -162,7 +203,7 @@ export const ExecutorsOverview: React.FC<ExecutorsOverviewProps> = ({
                     <span className={`text-[11px] font-mono font-semibold ${
                       currentTask.isTimeout ? 'text-rose-700 font-bold' : 'text-[#64748B]'
                     }`}>
-                      耗时: {currentTask.durationFormatted}
+                      耗时: {taskElapsedLabel(currentTask.durationSeconds, currentTask.durationFormatted)}
                     </span>
                   )}
                 </div>
@@ -205,10 +246,10 @@ export const ExecutorsOverview: React.FC<ExecutorsOverviewProps> = ({
                       <button
                         onClick={() => onRetryTask(currentTask)}
                         className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-black/[0.1] hover:bg-slate-50 hover:border-black/[0.2] text-[11px] font-extrabold text-[#1A1D2E] shadow-2xs transition-all active:scale-95 cursor-pointer"
-                        title="若当前任务卡顿或异常，可中止并重新尝试执行"
+                        title={executor.id === 'video_exporter' ? '重新排入视频导出队列' : '若当前任务卡顿或异常，可中止并重新尝试执行'}
                       >
                         <RotateCcw className="w-3 h-3 text-[#1A1D2E]" />
-                        <span>重试</span>
+                        <span>{executor.id === 'video_exporter' ? '重新导出' : '重试'}</span>
                       </button>
                     </div>
 

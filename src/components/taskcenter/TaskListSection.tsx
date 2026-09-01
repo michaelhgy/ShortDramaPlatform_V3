@@ -22,6 +22,7 @@ import {
 import { TaskItem, TaskCategory } from './taskCenterTypes';
 import { getTaskCenterActions } from './taskCenterActionPolicy';
 import { formatTaskDateTime } from './taskCenterFormat';
+import { taskElapsedLabel } from '../../utils/duration';
 
 interface TaskListSectionProps {
   tasks: TaskItem[];
@@ -29,6 +30,21 @@ interface TaskListSectionProps {
   onRegenerateDraft: (task: TaskItem) => void;
   onReExportVideo: (task: TaskItem) => void;
   onViewTaskDetail: (task: TaskItem) => void;
+}
+
+/** Keep the persisted exporter phase visible instead of reducing all active work to "正在导出". */
+function exportPhaseLabel(rawStatus?: string): string {
+  const labels: Record<string, string> = {
+    queued: '排队中',
+    preparing: '准备中',
+    submitting: '提交导出',
+    observing_output: '观察输出',
+    finalizing: '验收收口',
+    completed: '已完成',
+    failed: '导出失败',
+    timeout: '导出超时',
+  };
+  return labels[rawStatus || ''] || '';
 }
 
 export const TaskListSection: React.FC<TaskListSectionProps> = ({
@@ -69,6 +85,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
+    const statusOrder: Record<string, number> = { running: 0, timeout: 1, error: 2, waiting: 3, done: 4 };
     return tasks.filter(t => {
       // 1. Status Filter
       if (statusFilter === 'running' && t.status !== 'running') return false;
@@ -99,6 +116,15 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
       }
 
       return true;
+    }).sort((a, b) => {
+      const statusDiff = (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
+      if (statusDiff) return statusDiff;
+      const priorityDiff = (a.priorityRank > 0 ? a.priorityRank : Number.MAX_SAFE_INTEGER)
+        - (b.priorityRank > 0 ? b.priorityRank : Number.MAX_SAFE_INTEGER);
+      if (priorityDiff) return priorityDiff;
+      const sequenceDiff = (a.sequenceNo ?? Number.MAX_SAFE_INTEGER) - (b.sequenceNo ?? Number.MAX_SAFE_INTEGER);
+      if (sequenceDiff) return sequenceDiff;
+      return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
     });
   }, [tasks, statusFilter, categoryFilter, dramaFilter, accountFilter, searchQuery]);
 
@@ -136,8 +162,12 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
     // 2. Video abnormal states
     if (videoStage.status === 'timeout') {
       return {
-        label: '视频导出超时',
-        subtext: '剪映渲染响应挂起',
+        label: task.taskCategory === 'template' && task.hasCompletedFirstExport
+          ? '新版本导出超时（正式模板已保留）'
+          : '视频导出超时',
+        subtext: task.taskCategory === 'template' && task.hasCompletedFirstExport
+          ? '当前正式模板视频仍可正常使用'
+          : '剪映渲染响应挂起',
         phase: 'video' as const,
         tone: 'danger' as const,
         icon: AlertTriangle,
@@ -145,8 +175,12 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
     }
     if (videoStage.status === 'error') {
       return {
-        label: '视频导出失败',
-        subtext: '编码渲染中断',
+        label: task.taskCategory === 'template' && task.hasCompletedFirstExport
+          ? '新版本导出失败（正式模板已保留）'
+          : '视频导出失败',
+        subtext: task.taskCategory === 'template' && task.hasCompletedFirstExport
+          ? '当前正式模板视频仍可正常使用'
+          : '编码渲染中断',
         phase: 'video' as const,
         tone: 'danger' as const,
         icon: AlertCircle,
@@ -157,7 +191,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
     if (videoStage.status === 'running') {
       return {
         label: `正在导出视频 ${videoStage.progress || task.progress}%`,
-        subtext: task.durationFormatted ? `已耗时 ${task.durationFormatted}` : '剪映硬件编码中',
+        subtext: task.durationSeconds > 0 ? `已耗时 ${taskElapsedLabel(task.durationSeconds)}` : '剪映硬件编码中',
         phase: 'video' as const,
         tone: 'running' as const,
         icon: Video,
@@ -166,7 +200,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
     if (draftStage.status === 'running') {
       return {
         label: `正在组装草稿 ${draftStage.progress || task.progress}%`,
-        subtext: task.durationFormatted ? `已耗时 ${task.durationFormatted}` : '工程组装中',
+        subtext: task.durationSeconds > 0 ? `已耗时 ${taskElapsedLabel(task.durationSeconds)}` : '工程组装中',
         phase: 'draft' as const,
         tone: 'running' as const,
         icon: RefreshCw,
@@ -197,7 +231,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
     if (status === 'done' || (draftStage.status === 'done' && videoStage.status === 'done')) {
       return {
         label: '全流程已完成',
-        subtext: task.durationFormatted ? `总耗时 ${task.durationFormatted}` : '产物已就绪',
+        subtext: task.durationSeconds > 0 ? `总耗时 ${taskElapsedLabel(task.durationSeconds)}` : '产物已就绪',
         phase: 'done' as const,
         tone: 'done' as const,
         icon: CheckCircle2,
@@ -206,7 +240,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
 
     return {
       label: '等待中',
-      subtext: task.durationFormatted,
+        subtext: task.durationSeconds > 0 ? taskElapsedLabel(task.durationSeconds) : '尚未开始',
       phase: 'draft' as const,
       tone: 'neutral' as const,
       icon: Clock,
@@ -413,6 +447,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
 
             // Video Stage conditions
             const videoStatus = task.videoStage.status;
+            const videoPhaseLabel = exportPhaseLabel(task.videoStage.rawStatus);
             const isVideoIdle = videoStatus === 'idle';
             const isVideoWaiting = videoStatus === 'waiting';
             const isVideoRunning = videoStatus === 'running';
@@ -610,7 +645,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                             2. 剪映导出
                           </span>
                           <span className="font-mono text-[10px] text-slate-400 font-bold shrink-0">
-                            {isVideoAbnormal ? '异常' : isVideoRunning ? `${task.videoStage.progress}%` : isVideoDone ? '已完成' : isVideoWaiting ? '排队' : '未开始'}
+                            {videoPhaseLabel || (isVideoAbnormal ? '异常' : isVideoRunning ? `${task.videoStage.progress}%` : isVideoDone ? '已完成' : isVideoWaiting ? '排队' : '未开始')}
                           </span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -649,7 +684,9 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                               ? isTemplate
                                 ? '草稿异常，请点击右侧【重新生成】重新构建模板'
                                 : '草稿异常，请点击右侧【重试】重新调度'
-                              : '草稿已完好保留，仅需点击右侧【重新导出】即可重新渲染'}
+                              : isTemplate && task.hasCompletedFirstExport
+                                ? '之前的正式模板视频已保留并可使用；这次新版本导出未成功，可按需点击右侧【重新导出】。'
+                                : '草稿已完好保留，仅需点击右侧【重新导出】即可重新渲染'}
                           </p>
                         </div>
                       </div>
@@ -696,11 +733,11 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                       {isOverallRunning ? (
                         <div className="flex items-center gap-1.5 font-bold text-emerald-800">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                          <span>已执行: <strong className="font-mono text-[#1A1D2E]">{task.durationFormatted}</strong></span>
+                          <span>已执行: <strong className="font-mono text-[#1A1D2E]">{taskElapsedLabel(task.durationSeconds, task.durationFormatted)}</strong></span>
                         </div>
                       ) : isOverallDone ? (
                         <div className="flex items-center gap-2 text-slate-700 font-medium">
-                          <span>总耗时: <strong className="font-mono font-bold text-[#1A1D2E]">{task.durationFormatted}</strong></span>
+                          <span>总耗时: <strong className="font-mono font-bold text-[#1A1D2E]">{taskElapsedLabel(task.durationSeconds, task.durationFormatted)}</strong></span>
                           {task.fileSizeMb && (
                             <>
                               <span>·</span>
@@ -710,7 +747,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                         </div>
                       ) : !isOverallAbnormal ? (
                         <div className="flex items-center gap-1 text-slate-500 font-medium">
-                          <span>{task.durationFormatted}</span>
+                          <span>{task.durationSeconds > 0 ? taskElapsedLabel(task.durationSeconds) : '尚未开始'}</span>
                         </div>
                       ) : null}
                     </div>

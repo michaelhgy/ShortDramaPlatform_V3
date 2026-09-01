@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { AggregatedPlatformVideo, CandidateClipInfo } from '../../utils/videoEngine';
+import { AggregatedPlatformVideo } from '../../utils/videoEngine';
+import type { V2RevenueVideoCandidate } from '../../api/v2Revenue';
 import { 
   X, 
   Link2, 
@@ -16,18 +17,19 @@ interface VideoLinkModalProps {
   video: AggregatedPlatformVideo | null;
   isOpen: boolean;
   onClose: () => void;
-  onConfirmLink: (
-    videoId: string, 
-    clipName: string, 
-    materialId: string, 
-    materialName: string
-  ) => void;
+  candidates: V2RevenueVideoCandidate[];
+  isLoadingCandidates?: boolean;
+  errorMessage?: string;
+  onConfirmLink: (candidate: V2RevenueVideoCandidate, note: string) => void;
 }
 
 export const VideoLinkModal: React.FC<VideoLinkModalProps> = ({
   video,
   isOpen,
   onClose,
+  candidates,
+  isLoadingCandidates = false,
+  errorMessage = '',
   onConfirmLink,
 }) => {
   const [selectedClipId, setSelectedClipId] = useState<string>('');
@@ -35,28 +37,11 @@ export const VideoLinkModal: React.FC<VideoLinkModalProps> = ({
 
   if (!isOpen || !video) return null;
 
-  const candidates: CandidateClipInfo[] = video.candidateClips.length > 0
-    ? video.candidateClips
-    : [
-        {
-          clipId: 'clip-01',
-          clipName: `${video.dramaName}-01`,
-          sourceMaterialId: '素材-01',
-          sourceMaterialName: `${video.dramaName}-高光卡点开篇 (01)`,
-          duration: '01:05',
-          exportDate: `${video.firstObservedDate} 09:30`,
-        },
-      ];
-
-  const currentSelectedClip = candidates.find((c) => c.clipId === selectedClipId) || candidates[0];
+  const currentSelectedClip = candidates.find((c) => c.production_video_task_id === selectedClipId) || candidates[0];
 
   const handleSave = () => {
-    onConfirmLink(
-      video.id,
-      currentSelectedClip.clipName,
-      currentSelectedClip.sourceMaterialId,
-      currentSelectedClip.sourceMaterialName
-    );
+    if (!currentSelectedClip) return;
+    onConfirmLink(currentSelectedClip, customNote);
     onClose();
   };
 
@@ -141,14 +126,17 @@ export const VideoLinkModal: React.FC<VideoLinkModalProps> = ({
               </label>
               <span className="text-[10px] text-slate-400">已推荐 {candidates.length} 条候选</span>
             </div>
+            {isLoadingCandidates && <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-slate-500">正在读取该账号、剧集和日期对应的原素材…</div>}
+            {errorMessage && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-rose-700">{errorMessage}</div>}
+            {!isLoadingCandidates && !errorMessage && candidates.length === 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-amber-800">没有找到同日期、同账号、同剧集的生产任务；因此不能建立关联。</div>}
             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
               {candidates.map((cand) => {
-                const isSelected = (selectedClipId || candidates[0].clipId) === cand.clipId;
+                const isSelected = (selectedClipId || candidates[0].production_video_task_id) === cand.production_video_task_id;
                 return (
                   <div
-                    key={cand.clipId}
-                    id={`candidate-clip-${cand.clipId}`}
-                    onClick={() => setSelectedClipId(cand.clipId)}
+                    key={cand.production_video_task_id}
+                    id={`candidate-clip-${cand.production_video_task_id}`}
+                    onClick={() => setSelectedClipId(cand.production_video_task_id)}
                     className={`p-3 rounded-xl border flex items-start justify-between cursor-pointer transition-all ${
                       isSelected
                         ? 'bg-[#1A1D2E] text-white border-[#1A1D2E] shadow-xs'
@@ -156,14 +144,15 @@ export const VideoLinkModal: React.FC<VideoLinkModalProps> = ({
                     }`}
                   >
                     <div className="flex items-start gap-2.5">
+                      {cand.media_url ? <video src={cand.media_url} poster={cand.thumbnail_url || undefined} className="h-14 w-9 rounded object-cover border border-black/10 bg-black" muted preload="metadata" controls onClick={(event) => event.stopPropagation()} /> : <Film className="w-4 h-4 mt-0.5 shrink-0" />}
                       <FileVideo className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-[#DDFD00]' : 'text-slate-500'}`} />
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs">{cand.clipName}</span>
+                          <span className="font-bold text-xs">{cand.file_name || cand.original_name}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
                             isSelected ? 'bg-white/10 text-slate-200' : 'bg-slate-200/70 text-slate-600'
                           }`}>
-                            {cand.duration}
+                            {Math.round(cand.duration_seconds || 0)} 秒
                           </span>
                         </div>
                         <div className={`text-[11px] flex items-center gap-1.5 ${
@@ -171,11 +160,11 @@ export const VideoLinkModal: React.FC<VideoLinkModalProps> = ({
                         }`}>
                           <span>源素材:</span>
                           <strong className={isSelected ? 'text-[#DDFD00]' : 'text-[#1A1D2E]'}>
-                            {cand.sourceMaterialId} · {cand.sourceMaterialName}
+                            原素材：{cand.original_name || cand.file_name}
                           </strong>
                         </div>
                         <div className={`text-[10px] ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
-                          成片导出时间: {cand.exportDate}
+                          计划发布时间: {cand.planned_publish_at || '未填写'}
                         </div>
                       </div>
                     </div>
@@ -221,6 +210,7 @@ export const VideoLinkModal: React.FC<VideoLinkModalProps> = ({
             <button
               id="confirm-link-btn"
               onClick={handleSave}
+              disabled={!currentSelectedClip || isLoadingCandidates}
               className="px-4 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] text-xs font-bold hover:bg-black/90 active:scale-[0.98] transition-all shadow-xs"
             >
               确认建立关联

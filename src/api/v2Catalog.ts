@@ -34,7 +34,10 @@ export interface V2SubTheaterRecord {
   status: '启用' | '停用';
   bound_accounts_count: number;
 }
-export interface V2DramaRecord { id: string; current_name: string; history_names: string[]; theater_id: string; theater_name: string; created_at: string; }
+export interface V2DramaRecord {
+  id: string; current_name: string; history_names: string[]; theater_id: string; theater_name: string; created_at: string;
+  production_count: number; last_scheduled_at: string; active_production_count: number;
+}
 
 export interface CreateV2TheaterPayload {
   name: string;
@@ -61,11 +64,13 @@ export function getV2Theaters(): Promise<{ items: V2TheaterRecord[] }> {
 export function getV2Accounts(): Promise<{ items: V2AccountRecord[] }> {
   return v2Client.get('/api/v2/accounts');
 }
+export function getV2Account(id: string): Promise<V2AccountRecord> { return v2Client.get(`/api/v2/accounts/${id}`); }
 
 export function getV2SubTheaters(): Promise<{ items: V2SubTheaterRecord[] }> {
   return v2Client.get('/api/v2/sub-theaters');
 }
 export function getV2Dramas(): Promise<{ items: V2DramaRecord[] }> { return v2Client.get('/api/v2/dramas'); }
+export function getV2Drama(id: string): Promise<V2DramaRecord> { return v2Client.get(`/api/v2/dramas/${id}`); }
 export function createV2Drama(payload: { current_name: string; history_names: string[]; theater_id: string }): Promise<V2DramaRecord> { return v2Client.post('/api/v2/dramas', payload); }
 export function createV2DramasBatch(payload: { current_name: string; history_names: string[]; theater_id: string }[]): Promise<{ items: V2DramaRecord[]; created_count: number; skipped_names: string[] }> { return v2Client.post('/api/v2/dramas/batch', { items: payload }); }
 export function updateV2Drama(id: string, payload: { current_name: string; history_names: string[] }): Promise<V2DramaRecord> { return v2Client.patch(`/api/v2/dramas/${id}`, payload); }
@@ -90,12 +95,26 @@ export interface V2Settings {
   jianying_executable: string;
   jianying_draft_root: string;
   template_timeout_min: number;
+  final_generation_timeout_min: number;
   video_export_timeout_min: number;
   final_video_manual_check: boolean;
   video_export_debug: boolean;
+  revenue_auto_collection_enabled: boolean;
+  revenue_auto_collection_times: string[];
+  local_vision_ai_mode: 'compatibility' | 'quality' | 'disabled';
 }
 export function getV2Settings(): Promise<V2Settings> { return v2Client.get('/api/v2/settings'); }
 export function updateV2Settings(payload: Partial<V2Settings>): Promise<V2Settings> { return v2Client.post('/api/v2/settings', payload); }
+export interface LocalVisionAiStatus {
+  ollamaFound: boolean;
+  ollamaExecutable: string;
+  installedModels: string[];
+  supportedModels: Array<{ id: string; label: string; size: string; installed: boolean }>;
+  download: { model: string; status: 'idle' | 'queued' | 'downloading' | 'completed' | 'error'; progress: string; error: string };
+  error: string;
+}
+export function getLocalVisionAiStatus(): Promise<LocalVisionAiStatus> { return v2Client.get('/api/v2/local-vision-ai/status'); }
+export function downloadLocalVisionAiModel(model: string): Promise<LocalVisionAiStatus> { return v2Client.post('/api/v2/local-vision-ai/download', { model }); }
 export function getV2Drives(): Promise<{ items: string[] }> { return v2Client.get('/api/v2/drives'); }
 
 export function createV2Theater(payload: CreateV2TheaterPayload): Promise<V2TheaterRecord> {

@@ -21,6 +21,7 @@ import {
   Info,
 } from 'lucide-react';
 import { ResourcePreviewModal, PreviewResourceData } from './modals/ResourcePreviewModal';
+import { formatElapsedSeconds } from '../../utils/duration';
 
 interface ProductionResourcesTabProps {
   resources: ProductionResourceItem[];
@@ -30,7 +31,11 @@ interface ProductionResourcesTabProps {
   onShowToast: (msg: string) => void;
 }
 
-type ResourceCategoryFilter = 'ALL' | 'real_video' | 'real_image' | 'bgm';
+type ResourceCategoryFilter = 'ALL' | 'real_video' | 'real_image' | 'bgm' | 'lead_video';
+
+function formatDuration(seconds?: number): string {
+  return formatElapsedSeconds(seconds, '—');
+}
 
 export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
   resources,
@@ -65,10 +70,17 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
     });
   }, [resources, selectedCategory, searchTerm, selectedTag]);
 
-  const handleOpenCategoryFolder = (cat: 'video' | 'image' | 'bgm') => {
-    if (cat === 'video') onOpenFolder('D:\\短剧推广运营系统\\生成资源\\真人视频');
-    else if (cat === 'image') onOpenFolder('D:\\短剧推广运营系统\\生成资源\\真人图片');
-    else onOpenFolder('D:\\短剧推广运营系统\\生成资源\\BGM');
+  const handleOpenCategoryFolder = (cat: 'video' | 'image' | 'bgm' | 'lead_video') => {
+    const category = cat === 'video' ? 'real_video' : cat === 'image' ? 'real_image' : cat;
+    const resource = resources.find((item) => item.category === category);
+    if (!resource) { onShowToast('该资源目录暂无文件，请先放入资源后重试。'); return; }
+    const separator = resource.filePath.includes('\\') ? '\\' : '/';
+    onOpenFolder(resource.filePath.slice(0, resource.filePath.lastIndexOf(separator)));
+  };
+
+  const handleOpenResourceFolder = (filePath: string) => {
+    const separator = filePath.includes('\\') ? '\\' : '/';
+    onOpenFolder(filePath.slice(0, filePath.lastIndexOf(separator)));
   };
 
   return (
@@ -208,6 +220,13 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
             全部资源 ({resources.length})
           </button>
           <button
+            onClick={() => setSelectedCategory('lead_video')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedCategory === 'lead_video' ? 'bg-white text-[#1A1D2E] shadow-sm' : 'text-[#64748B] hover:text-[#1A1D2E]'}`}
+          >
+            <Video className="w-3.5 h-3.5 text-rose-600" />
+            <span>引流视频 ({resources.filter((item) => item.category === 'lead_video').length})</span>
+          </button>
+          <button
             onClick={() => setSelectedCategory('real_video')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               selectedCategory === 'real_video'
@@ -244,6 +263,13 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
 
         {/* Windows Folder Quick Open Actions */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleOpenCategoryFolder('lead_video')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-black/[0.08] hover:bg-slate-50 text-[#1A1D2E] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-rose-600" />
+            <span>打开引流目录</span>
+          </button>
           <button
             onClick={() => handleOpenCategoryFolder('video')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-black/[0.08] hover:bg-slate-50 text-[#1A1D2E] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
@@ -311,7 +337,7 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
       </div>
 
       {/* 4. RESOURCE GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
         {filteredResources.map(res => {
           const isBgm = res.category === 'bgm';
           const isPlayingThis = playingBgmId === res.id;
@@ -319,35 +345,54 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
           return (
             <div
               key={res.id}
-              className="bg-white rounded-2xl border border-black/[0.06] shadow-xs p-3.5 hover:shadow-md transition-all flex flex-col justify-between group"
+              className="bg-white rounded-xl border border-black/[0.06] shadow-xs p-2.5 hover:shadow-md transition-all flex flex-col justify-between group min-w-0"
             >
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {/* Visual Thumbnail or Audio Card Header */}
-                {res.category === 'real_video' ? (
-                  <div className="relative rounded-xl overflow-hidden bg-slate-900 h-32 flex items-center justify-center border border-black/[0.06]">
+                {res.category === 'real_video' || res.category === 'lead_video' ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewResource({
+                      title: res.name, categoryName: res.categoryName, type: 'video', filePath: res.filePath,
+                      fileSizeMb: res.fileSizeMb, resolution: res.resolution, durationText: formatDuration(res.durationSeconds),
+                      tags: res.tags, thumbnailUrl: res.thumbnailUrl, mediaUrl: res.mediaUrl,
+                    })}
+                    className="relative rounded-lg overflow-hidden bg-slate-900 w-[108px] max-w-full aspect-[9/16] mx-auto flex items-center justify-center border border-black/[0.06] cursor-pointer"
+                    title="预览详情"
+                  >
+                    {res.thumbnailUrl && <img src={res.thumbnailUrl} alt={res.name} className="absolute inset-0 w-full h-full object-cover opacity-80" />}
                     <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center text-white group-hover:scale-110 transition-transform">
                       <Play className="w-4 h-4 ml-0.5" />
                     </div>
                     <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/60 text-white font-mono text-[10px] backdrop-blur-xs">
-                      {res.durationSeconds ? `00:0${res.durationSeconds}` : '00:06'}
+                      {formatDuration(res.durationSeconds)}
                     </span>
                     <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-indigo-600/90 text-white font-bold text-[10px]">
-                      真人视频
+                      {res.categoryName}
                     </span>
-                  </div>
+                  </button>
                 ) : res.category === 'real_image' ? (
-                  <div className="relative rounded-xl overflow-hidden bg-slate-950 h-32 flex items-center justify-center border border-black/[0.06]">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewResource({
+                      title: res.name, categoryName: res.categoryName, type: 'image', filePath: res.filePath,
+                      fileSizeMb: res.fileSizeMb, resolution: res.resolution, durationText: formatDuration(res.durationSeconds),
+                      tags: res.tags, thumbnailUrl: res.thumbnailUrl, mediaUrl: res.mediaUrl,
+                    })}
+                    className="relative rounded-lg overflow-hidden bg-slate-950 w-[108px] max-w-full aspect-[9/16] mx-auto flex items-center justify-center border border-black/[0.06] cursor-pointer"
+                    title="预览详情"
+                  >
                     <img
-                      src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"
+                      src={res.thumbnailUrl || res.mediaUrl}
                       alt={res.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-emerald-600/90 text-white font-bold text-[10px]">
                       真人图片
                     </span>
-                  </div>
+                  </button>
                 ) : (
-                  <div className="relative rounded-xl overflow-hidden bg-purple-950 p-4 h-32 flex flex-col justify-between text-white">
+                  <div className="relative rounded-lg overflow-hidden bg-purple-950 p-3 w-[108px] max-w-full aspect-[9/16] mx-auto flex flex-col justify-between text-white">
                     <div className="flex items-center justify-between">
                       <span className="px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-200 font-bold text-[10px]">
                         BGM 音频
@@ -362,7 +407,7 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
                         {isPlayingThis ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
                       </button>
                       <span className="font-mono text-[11px] text-purple-200">
-                        {res.durationSeconds ? `01:${res.durationSeconds % 60}` : '01:30'}
+                        {formatDuration(res.durationSeconds)}
                       </span>
                     </div>
                   </div>
@@ -370,7 +415,7 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
 
                 {/* Title and Specs */}
                 <div>
-                  <h4 className="font-bold text-xs text-[#1A1D2E] truncate group-hover:text-indigo-600 transition-colors" title={res.name}>
+                  <h4 className="font-bold text-xs text-[#1A1D2E] line-clamp-2 min-h-8 group-hover:text-indigo-600 transition-colors" title={res.name}>
                     {res.name}
                   </h4>
                   <p className="text-[11px] text-slate-500 font-mono mt-0.5">
@@ -381,7 +426,7 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
                 {/* Tags */}
                 {res.tags && res.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {res.tags.slice(0, 3).map(t => (
+                    {res.tags.slice(0, 2).map(t => (
                       <span key={t} className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">
                         #{t}
                       </span>
@@ -390,35 +435,6 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
                 )}
               </div>
 
-              {/* Bottom Actions */}
-              <div className="pt-3 mt-3 border-t border-black/[0.04] flex items-center justify-between">
-                <button
-                  onClick={() => onOpenFolder(res.filePath)}
-                  className="text-slate-400 hover:text-slate-700 p-1 rounded-md transition-colors cursor-pointer"
-                  title="打开文件所在 Windows 目录"
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  onClick={() => {
-                    setPreviewResource({
-                      title: res.name,
-                      categoryName: res.categoryName,
-                      type: res.category === 'real_video' ? 'video' : res.category === 'real_image' ? 'image' : 'audio',
-                      filePath: res.filePath,
-                      fileSizeMb: res.fileSizeMb,
-                      resolution: res.resolution,
-                      durationText: res.durationSeconds ? `00:${res.durationSeconds}` : undefined,
-                      tags: res.tags,
-                    });
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-[#1A1D2E] hover:text-[#DDFD00] text-slate-700 text-[11px] font-bold transition-all cursor-pointer"
-                >
-                  <Play className="w-3 h-3" />
-                  <span>预览详情</span>
-                </button>
-              </div>
             </div>
           );
         })}

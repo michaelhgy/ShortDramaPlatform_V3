@@ -33,6 +33,7 @@ interface AccountModuleProps {
   initialAccountId?: string;
   onNavigateToTab?: (tab: AnalyticsTopTab, entityId?: string) => void;
   onScheduleToday?: (dramaId?: string, accountId?: string) => void;
+  accounts?: CalculatedAccountItem[];
 }
 
 export const AccountModule: React.FC<AccountModuleProps> = ({
@@ -43,11 +44,13 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
   initialAccountId,
   onNavigateToTab,
   onScheduleToday,
+  accounts: realAccounts,
 }) => {
   // 1. Dynamic calculation based on global filters (timeRange & selectedTheater)
   const { accounts: calculatedAccounts, theaterFilterName } = useMemo(() => {
+    if (realAccounts) return { accounts: realAccounts, theaterFilterName: selectedTheater === 'all' ? '全部剧场' : '青柠剧场' };
     return calculateAccountsAnalytics(timeRange, selectedTheater, customStartDate, customEndDate);
-  }, [timeRange, selectedTheater, customStartDate, customEndDate]);
+  }, [timeRange, selectedTheater, customStartDate, customEndDate, realAccounts]);
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
     initialAccountId || calculatedAccounts[0]?.id || 'acc-1'
@@ -102,6 +105,7 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
     switch (timeRange) {
       case 'yesterday': return '昨日收益';
       case '7days': return '近7日收益';
+      case '14days': return '近14日收益';
       case '30days': return '近30日收益';
       case 'this_month': return '本月收益';
       case 'custom': return '周期收益';
@@ -113,6 +117,7 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
     switch (timeRange) {
       case 'yesterday': return '昨日收益降序';
       case '7days': return '7日收益降序';
+      case '14days': return '14日收益降序';
       case '30days': return '30日收益降序';
       case 'this_month': return '本月收益降序';
       case 'custom': return '周期收益降序';
@@ -124,6 +129,7 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
     switch (timeRange) {
       case 'yesterday': return '昨日结算收益';
       case '7days': return '近7日累计收益';
+      case '14days': return '近14日累计收益';
       case '30days': return '近30日累计收益';
       case 'this_month': return '本月累计收益';
       case 'custom': return '周期累计收益';
@@ -139,6 +145,7 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
     switch (timeRange) {
       case 'yesterday': return '昨日视频播放量';
       case '7days': return '近7日视频播放量';
+      case '14days': return '近14日视频播放量';
       case '30days': return '近30日视频播放量';
       case 'this_month': return '本月视频播放量';
       case 'custom': return '周期视频播放量';
@@ -150,6 +157,7 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
     switch (timeRange) {
       case 'yesterday': return '昨日剧集表现';
       case '7days': return '近7日剧集表现';
+      case '14days': return '近14日剧集表现';
       case '30days': return '近30日剧集表现';
       case 'this_month': return '本月剧集表现';
       case 'custom': return '周期内剧集表现';
@@ -182,7 +190,7 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="搜索账号 / 主推剧 / 虚拟定位..."
+              placeholder="搜索账号 / 主推剧 / 发布地址..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-black/[0.06] rounded-xl text-xs placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:border-[#1A1D2E] transition-all"
@@ -262,7 +270,7 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
                     </div>
                   ) : (
                     <div className="text-[10px] shrink-0 opacity-60">
-                      {acc.locationPerformances.length} 个定位
+                      {acc.locationPerformances.length} 个地址
                     </div>
                   )}
                 </div>
@@ -310,7 +318,7 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
                 <div className="flex flex-wrap items-center gap-2 text-xs text-[#64748B] mt-2">
                   <div className="flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                    <span className="font-semibold text-[#1A1D2E]">当前默认虚拟定位:</span>
+                    <span className="font-semibold text-[#1A1D2E]">当前默认发布地址:</span>
                     <span className="text-[#1A1D2E]">{selectedAccount.defaultLocation.fullAddress}</span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -488,20 +496,20 @@ export const AccountModule: React.FC<AccountModuleProps> = ({
             </div>
           </div>
 
-          {/* 4. 虚拟定位历史表现 (Virtual Location Historical Performance - HISTORICAL CUMULATIVE EXCEPTION) */}
+          {/* 4. 发布地址历史表现（历史累计） */}
           <div className="bg-white rounded-2xl p-5 border border-black/[0.06] shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold text-[#1A1D2E] flex items-center gap-2">
-                  <span>虚拟定位历史表现</span>
+                  <span>发布地址历史表现</span>
                   <StatusBadge 
                     variant="historical" 
                     text="历史累计" 
-                    tooltip="按该账号发布登记时实际记录的虚拟地址快照聚合，展示全历史真实数据（不随顶部周期变动）" 
+                    tooltip="按该账号发布登记时实际记录的发布地址快照聚合，展示全历史真实数据（不随顶部周期变动）"
                   />
                 </h3>
                 <p className="text-[11px] text-[#64748B] mt-0.5">
-                  按该账号发布登记时实际记录的虚拟地址快照聚合，展示全历史真实数据（不随顶部周期变动）
+                  仅统计已人工核对关联的平台视频，按该账号发布登记时实际记录的地址聚合。
                 </p>
               </div>
             </div>

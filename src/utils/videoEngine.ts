@@ -65,6 +65,10 @@ export interface AggregatedPlatformVideo {
   
   // Quadrant classification based on current sample P75
   quadrant: 'breakout' | 'hook' | 'high_ticket' | 'long_tail';
+  /** Available only after a human confirms the production-material link. */
+  linkedTaskId?: string;
+  linkedReleaseAddress?: string;
+  linkedActualReleaseTime?: string;
 }
 
 export interface VideoAnalysisResult {

@@ -19,3 +19,9 @@ export function formatRelativeDateTime(value?: string): string {
   const dateLabel = labels[dayOffset] || `${parsed.getMonth() + 1}月${parsed.getDate()}日`;
   return `${dateLabel} ${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
 }
+
+export function formatDisplayDateTime(value?: string): string {
+  if (!value) return '';
+  const normalized = value.replace('T', ' ').replace(/\.\d+$/, '');
+  return normalized;
+}

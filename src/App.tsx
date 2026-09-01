@@ -5,7 +5,6 @@ import {
   AccountItem, 
   DramaPrediction,
   DramaItem, 
-  ProductionSummary 
 } from './types';
 import { 
   INITIAL_ACCOUNTS, 
@@ -29,7 +28,32 @@ import { EditTimePopover } from './components/EditTimePopover';
 import { CheckCircle2 } from 'lucide-react';
 import { createV2ProductionTask } from './api/v2Production';
 import { createBusinessDrama, loadAssetsCenterSeed } from './services/assetsCenterService';
-import { getV2Settings } from './api/v2Catalog';
+import { getV2Accounts, getV2Settings, type V2AccountRecord } from './api/v2Catalog';
+import { loadV2DailyAccountRevenueSummary, type V2DailyAccountRevenueSummary } from './api/v2Revenue';
+import { startV2DataChangeFeed } from './services/dataChangeFeed';
+import { eventDetail } from './services/dataChangeEvents';
+
+function yesterdayDateValue(): string {
+  const value = new Date();
+  value.setDate(value.getDate() - 1);
+  const offset = value.getTimezoneOffset() * 60_000;
+  return new Date(value.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function toScheduleAccount(account: V2AccountRecord, daily?: V2DailyAccountRevenueSummary['items'][number]): AccountItem {
+  return {
+    id: account.id,
+    name: account.nickname,
+    avatarSeed: account.nickname,
+    yesterdayRevenue: Number(daily?.amount || 0),
+    yesterdayRevenueState: daily?.collection_status || 'uncollected',
+    monthRevenue: 0,
+    manualStatus: '正常',
+    platform: '微信视频号',
+    theaterId: account.theater_id,
+    theaterName: account.theater_name,
+  };
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('workbench');
@@ -43,6 +67,14 @@ export default function App() {
   const [publishDateOffsetDays, setPublishDateOffsetDays] = useState(0);
   const [scheduleTheaters, setScheduleTheaters] = useState<{ id: string; name: string }[]>([]);
 
+  const refreshScheduleAccounts = async (): Promise<void> => {
+    const [response, revenue] = await Promise.all([getV2Accounts(), loadV2DailyAccountRevenueSummary(yesterdayDateValue())]);
+    const byAccountId = new Map(revenue.items.map((item) => [item.account_id, item]));
+    setAccounts(response.items.filter((account) => account.status === '正常').map((account) => toScheduleAccount(account, byAccountId.get(account.id))));
+  };
+
+  useEffect(() => startV2DataChangeFeed(), []);
+
   // Modal / Interaction states
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isTaskCenterModalOpen, setIsTaskCenterModalOpen] = useState(false);
@@ -52,29 +84,32 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    void refreshScheduleAccounts().catch(() => showToast('安排今日的昨日收益读取失败。'));
     loadAssetsCenterSeed().then((seed) => {
-      setAccounts(seed.accounts.filter((account) => account.status === '正常').map((account) => ({
-        id: account.id,
-        name: account.nickname,
-        avatarSeed: account.nickname,
-        yesterdayRevenue: 0,
-        monthRevenue: 0,
-        manualStatus: account.status === '正常' || account.status === '观察' || account.status === '实名'
-          ? account.status
-          : account.status === '停用' ? '暂停' : account.status === '封禁' ? '封号' : '其他',
-        platform: '微信视频号',
-        theaterId: account.theaterId,
-        theaterName: account.theaterName,
-      })));
       setDramas(seed.dramas.map((drama) => ({
         id: drama.id,
         name: drama.currentName,
         theaterId: drama.theaterId,
         theaterName: drama.theaterName,
         coverUrl: seed.profiles.find((profile) => profile.dramaId === drama.id)?.cover.mainCoverUrl,
+        productionCount: drama.productionCount || 0,
+        lastScheduledAt: drama.lastScheduledAt || '',
+        activeProductionCount: drama.activeProductionCount || 0,
       })));
       setScheduleTheaters(seed.theaters.filter((theater) => theater.status === '启用').map((theater) => ({ id: theater.id, name: theater.name })));
     }).catch(() => showToast('安排今日的真实账号和剧集加载失败。'));
+  }, []);
+
+  // “安排今日”只需要当前可安排的正常账号。账号状态变化时更新这份
+  // 小型名单和昨日收益，不重读资料中心的其余数据。
+  useEffect(() => {
+    const onDataChanged = (event: Event) => {
+      const detail = eventDetail(event);
+      if (detail.changeType !== 'account_changed' || !detail.accountId) return;
+      void refreshScheduleAccounts().catch(() => undefined);
+    };
+    window.addEventListener('v2-data-changed', onDataChanged);
+    return () => window.removeEventListener('v2-data-changed', onDataChanged);
   }, []);
 
   useEffect(() => {
@@ -92,28 +127,17 @@ export default function App() {
   };
 
   const openSchedule = () => {
-    getV2Settings()
-      .then((settings) => {
+    Promise.all([getV2Settings().catch(() => null), refreshScheduleAccounts().catch(() => undefined)])
+      .then(([settings]) => {
+        if (!settings) return;
         setPublishTimePresets(settings.publish_presets);
         setPublishDateOffsetDays(settings.publish_date_offset_days);
       })
-      .catch(() => undefined)
       .finally(() => setIsScheduleModalOpen(true));
   };
 
   // Derived state
   const arrangedAccountIds = Array.from(new Set(tasks.map(t => t.accountId)));
-  const unassignedAccounts = accounts.filter(
-    a => !arrangedAccountIds.includes(a.id) && a.manualStatus !== '暂停' && a.manualStatus !== '封号'
-  );
-
-  const productionSummary: ProductionSummary = {
-    totalToday: tasks.length,
-    inProgress: tasks.filter(t => t.status === '制作中').length,
-    completed: tasks.filter(t => t.status === '已完成').length,
-    exceptions: tasks.filter(t => t.status === '异常').length,
-  };
-
   // Actions
   const handleOpenGlobalSchedule = () => {
     setModalAccountId(undefined);
@@ -201,9 +225,6 @@ export default function App() {
         taskQueue={taskQueue}
         onOpenSettings={() => setActiveTab('settings')}
         onQuickSchedule={handleOpenGlobalSchedule}
-        productionSummary={productionSummary}
-        unassignedCount={unassignedAccounts.length}
-        onOpenUnassigned={handleOpenGlobalSchedule}
         workbenchMode={workbenchMode}
         onWorkbenchModeChange={setWorkbenchMode}
         onOpenTaskCenterModal={() => setIsTaskCenterModalOpen(true)}

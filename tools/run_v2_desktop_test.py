@@ -102,6 +102,7 @@ def main() -> None:
         v2_url,
         width=args.width,
         height=args.height,
+        maximized=True,
         min_size=(MIN_WIDTH, MIN_HEIGHT),
     )
     print(f"V2 桌面测试窗口已打开：{v2_url}", flush=True)

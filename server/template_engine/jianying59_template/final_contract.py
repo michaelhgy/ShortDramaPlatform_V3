@@ -92,6 +92,9 @@ def validate_final_template_draft(*, content_path: Path, duration_seconds: int, 
         raise ValueError("final native template contract requires exactly 180 seconds")
     document: dict[str, Any] = json.loads(content_path.read_text(encoding="utf-8"))
     tracks = list(document.get("tracks") or [])
+    forbidden = [str(track.get("name") or "") for track in tracks if any(str(track.get("name") or "").startswith(prefix) for prefix in ("T06", "T07", "T08"))]
+    if forbidden:
+        raise RuntimeError("模板阶段禁止使用 T06/T07/T08 轨道")
     named = {str(track.get("name")): track for track in tracks if track.get("name")}
     for name, expected_type in CORE_TRACK_TYPES.items():
         track = named.get(name)

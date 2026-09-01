@@ -1,11 +1,11 @@
 import type { RevenueQualityTier } from '../analyticsTypes';
 
 export interface V1DailyRevenue {
-  id: number;
+  id: string | number;
   revenue_date: string;
-  account_id: number;
+  account_id: string | number;
   account_nickname: string;
-  theater_id: number;
+  theater_id: string | number;
   theater_name: string;
   amount: string;
   quality: RevenueQualityTier;
@@ -18,8 +18,8 @@ export interface V1DailyRevenueResponse {
   items: V1DailyRevenue[];
 }
 
-export interface V1CatalogAccount { id: number; nickname: string; status: string; theater_id: number | null; }
-export interface V1CatalogTheater { id: number; name: string; status?: string; }
+export interface V1CatalogAccount { id: string | number; nickname: string; status: string; theater_id: string | number | null; }
+export interface V1CatalogTheater { id: string | number; name: string; status?: string; }
 
 export interface V1RevenueAttempt {
   date: string;

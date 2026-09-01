@@ -5,9 +5,16 @@ import {
   ScannedMaterialClip,
   CleanupPreviewData
 } from '../../productionTypes';
-import { listV2ProductionTasks, queueV2Template, scanV2ProductionTask } from '../../api/v2Production';
-import { openV2File, openV2Folder } from '../../api/v2Catalog';
+import { listV2ProductionTasks, listV2ProductionTaskSummaries, getV2ProductionTaskDetails, openV2FinishedVideoDraft, openV2TemplateDraft, queueV2Template, scanV2ProductionTask, submitV2FinishedVideos, registerV2Release, revokeV2Release, listV2ReleaseAddresses, previewV2Cleanup, executeV2Cleanup, updateV2TaskManualCheck, type V2ReleaseAddress } from '../../api/v2Production';
+import { getV2ProductionResources, openV2File, openV2Folder } from '../../api/v2Catalog';
+import { loadV2TaskCenter, reExportV2Task } from '../../api/v2TaskCenter';
+import type { ExecutorInfo } from '../taskcenter/taskCenterTypes';
 import { toProductionUnit } from '../../adapters/production';
+import { formatElapsedSeconds } from '../../utils/duration';
+import { areaList } from '@vant/area-data';
+import { calculateResourceMetrics } from '../../utils/resourceMetrics';
+import { getCachedProductionSummary, loadProductionSummary } from '../../services/productionService';
+import { changeAffects, eventDetail } from '../../services/dataChangeEvents';
 import { 
   Layers, 
   Scan, 
@@ -37,6 +44,38 @@ import {
   ,VolumeX
 } from 'lucide-react';
 
+const CHINA_REGIONS: Record<string, Record<string, string[]>> = Object.entries(areaList.province_list).reduce((provinces, [provinceCode, provinceName]) => {
+  const cities = Object.entries(areaList.city_list).filter(([cityCode]) => cityCode.startsWith(provinceCode.slice(0, 2)));
+  provinces[provinceName] = Object.fromEntries(cities.map(([cityCode, cityName]) => [cityName, Object.entries(areaList.county_list).filter(([countyCode]) => countyCode.startsWith(cityCode.slice(0, 4))).map(([, countyName]) => countyName)]));
+  return provinces;
+}, {} as Record<string, Record<string, string[]>>);
+const CHINA_PROVINCES = Object.keys(CHINA_REGIONS);
+let cachedProductionUnits: ProductionUnit[] | null = null;
+// 页面切换会销毁组件，但已读取的剧集详情仍可复用，避免返回生产中心时重新读取全部明细。
+let cachedProductionDetails: Record<string, ProductionUnit> = {};
+let cachedSelectedProductionTaskId = '';
+const PRODUCTION_SUMMARY_CACHE_KEY = 'v2-production-task-summaries-v1';
+
+function readCachedProductionUnits(): ProductionUnit[] | null {
+  try {
+    const raw = localStorage.getItem(PRODUCTION_SUMMARY_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed as ProductionUnit[] : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedProductionUnits(units: ProductionUnit[]): void {
+  try {
+    localStorage.setItem(PRODUCTION_SUMMARY_CACHE_KEY, JSON.stringify(units));
+    localStorage.setItem(`${PRODUCTION_SUMMARY_CACHE_KEY}:updated-at`, new Date().toISOString());
+  } catch {
+    // 缓存只用于加速，空间不足时不影响正常业务。
+  }
+}
+
 interface ProductionCenterProps {
   onBackToWorkbench?: () => void;
   showToast: (msg: string) => void;
@@ -60,30 +99,50 @@ function getAccountColor(name: string) {
 }
 
 function getTaskCardStatus(unit: ProductionUnit): { label: string; className: string } {
-  const videos = unit.videos ?? [];
-  const exportedCount = videos.filter((video) => video.status === 'exported').length;
-  const hasException = unit.templateStatus === 'error' || videos.some((video) => video.status === 'error');
-  const isVideoRunning = videos.some((video) => video.status === 'draft_generating' || video.status === 'exporting');
+  const canonical: Record<string, { label: string; className: string }> = {
+    released: { label: '已登记发布', className: 'bg-emerald-100 text-emerald-800' },
+    action_required: { label: '待处理异常', className: 'bg-rose-100 text-rose-800' },
+    final_processing: { label: '成片处理中', className: 'bg-blue-100 text-blue-800' },
+    awaiting_release: { label: '待登记发布', className: 'bg-orange-50 text-orange-700' },
+    awaiting_final_generation: { label: '待生成成片', className: 'bg-amber-100 text-amber-800' },
+    template_processing: { label: '模板处理中', className: 'bg-indigo-100 text-indigo-800' },
+    template_error: { label: '模板异常', className: 'bg-rose-100 text-rose-800' },
+    awaiting_template: { label: '待制作模板', className: 'bg-purple-100 text-purple-800' },
+    awaiting_scan: { label: '待扫描素材', className: 'bg-sky-100 text-sky-800' },
+    awaiting_material: { label: '待导入素材', className: 'bg-slate-200 text-slate-700' },
+  };
+  if (unit.taskDisplayStatus && canonical[unit.taskDisplayStatus]) return canonical[unit.taskDisplayStatus];
+  return { label: '状态同步中', className: 'bg-slate-200 text-slate-700' };
+}
 
-  if (unit.releaseStatus === 'registered') return { label: '发布已登记', className: 'bg-emerald-100 text-emerald-800' };
-  if (hasException) return { label: '异常', className: 'bg-rose-100 text-rose-800' };
-  if (videos.length > 0 && exportedCount === videos.length) return { label: '待登记发布', className: 'bg-orange-50 text-orange-700' };
-  if (isVideoRunning) return { label: '成片生成中', className: 'bg-blue-100 text-blue-800' };
-  if (unit.templateStatus === 'generated') return { label: '待生成成片', className: 'bg-amber-100 text-amber-800' };
-  if (unit.templateStatus === 'draft_ready' || unit.templateStatus === 'exporting') return { label: '模板制作中', className: 'bg-indigo-100 text-indigo-800' };
-  if (unit.scannedMaterials.length === 0) {
-    return (unit.pendingMaterialCount ?? 0) > 0
-      ? { label: '待扫描素材', className: 'bg-sky-100 text-sky-800' }
-      : { label: '待导入素材', className: 'bg-slate-200 text-slate-700' };
-  }
-  return { label: '待制作模板', className: 'bg-purple-100 text-purple-800' };
+function templateStatusPresentation(status: ProductionUnit['templateStatus']): { label: string; className: string } {
+  const states: Record<ProductionUnit['templateStatus'], { label: string; className: string }> = {
+    not_generated: { label: '草稿·待生成', className: 'bg-slate-200 text-slate-700 border-slate-300' },
+    draft_queued: { label: '草稿·排队中', className: 'bg-sky-100 text-sky-800 border-sky-200' },
+    draft_generating: { label: '草稿·生成中', className: 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse' },
+    draft_retrying: { label: '草稿·重试中', className: 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse' },
+    draft_ready: { label: '草稿·已生成', className: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
+    video_queued: { label: '视频·排队中', className: 'bg-sky-100 text-sky-800 border-sky-200' },
+    video_exporting: { label: '视频·导出中', className: 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse' },
+    video_ready: { label: '视频·已就绪', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+    generated: { label: '视频·已就绪', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+    draft_error: { label: '草稿·异常', className: 'bg-rose-100 text-rose-800 border-rose-200' },
+    video_error: { label: '视频·异常', className: 'bg-rose-100 text-rose-800 border-rose-200' },
+  };
+  return states[status];
 }
 
 export const ProductionCenter: React.FC<ProductionCenterProps> = ({
   showToast,
 }) => {
-  const [units, setUnits] = useState<ProductionUnit[]>([]);
-  const [selectedUnitId, setSelectedUnitId] = useState<string>('');
+  const [units, setUnits] = useState<ProductionUnit[]>(() => cachedProductionUnits || getCachedProductionSummary() || readCachedProductionUnits() || []);
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(() => {
+    try { const value = localStorage.getItem('v2-production-task-summaries-v1:updated-at'); return value ? new Date(value) : null; } catch { return null; }
+  });
+  const [detailUnits, setDetailUnits] = useState<Record<string, ProductionUnit>>(cachedProductionDetails);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const detailRequests = useRef<Record<string, Promise<void>>>({});
+  const [selectedUnitId, setSelectedUnitId] = useState<string>(cachedSelectedProductionTaskId);
   const [stageFilter, setStageFilter] = useState<'all' | 'in_progress' | 'overdue' | 'completed'>('all');
   
   // Dynamic Account & Drama Filter State
@@ -98,7 +157,11 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
   const materialTrackRef = useRef<HTMLDivElement>(null);
 
   // Modals & Drawers
-  const [previewVideo, setPreviewVideo] = useState<ProductionVideoItem | null>(null);
+  const [isFinalVideoPreviewOpen, setIsFinalVideoPreviewOpen] = useState(false);
+  const [isTemplateVideoPreviewOpen, setIsTemplateVideoPreviewOpen] = useState(false);
+  const [videoExporter, setVideoExporter] = useState<ExecutorInfo | null>(null);
+  const [supportableDramas, setSupportableDramas] = useState<number | null>(null);
+  const [openingDraftVideoId, setOpeningDraftVideoId] = useState<string | null>(null);
   const [previewMaterialClip, setPreviewMaterialClip] = useState<ScannedMaterialClip | null>(null);
   const [isMaterialPreviewMuted, setIsMaterialPreviewMuted] = useState(() => localStorage.getItem('v2-material-preview-muted') !== 'false');
   const [selectedMaterialClipId, setSelectedMaterialClipId] = useState<string | null>(null);
@@ -107,20 +170,182 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
   // Danger Actions Modal State (Situation A: Registered Release Cleanup vs Situation B: Delete Drama Task)
   const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
   const [cleanupActionState, setCleanupActionState] = useState<'idle' | 'executing' | 'done'>('idle');
+  const [cleanupPreview, setCleanupPreview] = useState<CleanupPreviewData | null>(null);
+  const [isCleanupListExpanded, setIsCleanupListExpanded] = useState(false);
 
   // Release Registration Dialog State
   const [isReleaseDialogOpen, setIsReleaseDialogOpen] = useState(false);
   const [actualReleaseTimeInput, setActualReleaseTimeInput] = useState('');
+  const [releaseDate, setReleaseDate] = useState('');
+  const [releaseTime, setReleaseTime] = useState('');
+  const [releaseProvince, setReleaseProvince] = useState('');
+  const [releaseCity, setReleaseCity] = useState('');
+  const [releaseDistrict, setReleaseDistrict] = useState('');
+  const [releaseDetailAddress, setReleaseDetailAddress] = useState('');
+  const [releaseAddresses, setReleaseAddresses] = useState<{ account: V2ReleaseAddress[]; public: V2ReleaseAddress[] }>({ account: [], public: [] });
+  const [showReleaseAddressHistory, setShowReleaseAddressHistory] = useState(false);
+
+  const applyFullTaskList = (items: Awaited<ReturnType<typeof listV2ProductionTasks>>['items']) => {
+    const nextUnits = items.map(toProductionUnit);
+    const nextDetails = { ...cachedProductionDetails };
+    nextUnits.forEach((unit) => { nextDetails[unit.id] = unit; });
+    cachedProductionDetails = nextDetails;
+    saveCachedProductionUnits(nextUnits);
+    setDetailUnits(nextDetails);
+    setUnits(nextUnits);
+  };
 
   useEffect(() => {
-    listV2ProductionTasks()
-      .then((response) => {
-        const realUnits = response.items.map(toProductionUnit);
+    let active = true;
+    if (cachedProductionUnits) setUnits(cachedProductionUnits);
+    else {
+      const persistedUnits = readCachedProductionUnits();
+      if (persistedUnits) {
+        cachedProductionUnits = persistedUnits;
+        setUnits(persistedUnits);
+      }
+    }
+    let refreshing = false;
+    const refresh = () => {
+      if (refreshing) return;
+      refreshing = true;
+      void loadProductionSummary(true).then((summaryUnits) => {
+        if (!active) return;
+        const realUnits = summaryUnits;
+        // 摘要接口只包含统计与模板/导出状态，素材和成片明细有意留空。
+        // 已打开任务若继续直接优先使用旧详情缓存，就会永远看不到导出完成。
+        // 因此把摘要的新状态合并进去；若本轮退回到完整接口，则以完整详情整体替换。
+        const isSummaryResponse = true;
+        cachedProductionUnits = realUnits;
+        saveCachedProductionUnits(realUnits);
+        setLastRefreshAt(new Date());
         setUnits(realUnits);
-        setSelectedUnitId((current) => current && realUnits.some((unit) => unit.id === current) ? current : realUnits[0]?.id || '');
-      })
-      .catch((error: unknown) => showToast(error instanceof Error ? error.message : '生产任务读取失败，请稍后重试。'));
-  }, []);
+        setDetailUnits((previous) => {
+          const next: Record<string, ProductionUnit> = {};
+          realUnits.forEach((unit) => {
+            const previousDetail = previous[unit.id];
+            if (previousDetail && isSummaryResponse) {
+              // 摘要接口故意不做文件探测，因此没有正式模板视频名、大小、
+              // 时长和阶段耗时。不能用这些空字段覆盖已加载详情，否则页面会
+              // 在“草稿名/无耗时”和“正式视频/真实耗时”之间来回跳。
+              const sameTemplateVersion = previousDetail.templateDraftName === unit.templateDraftName;
+              next[unit.id] = {
+                ...unit,
+                scannedMaterials: previousDetail.scannedMaterials,
+                videos: previousDetail.videos,
+                ...(sameTemplateVersion ? {
+                  templateVideoUrl: unit.templateVideoUrl || previousDetail.templateVideoUrl,
+                  templateVideoName: unit.templateVideoName || previousDetail.templateVideoName,
+                  templateDurationSec: unit.templateDurationSec ?? previousDetail.templateDurationSec,
+                  templateDurationText: unit.templateDurationText || previousDetail.templateDurationText,
+                  templateFileSizeText: unit.templateFileSizeText || previousDetail.templateFileSizeText,
+                  templateDraftDuration: unit.templateDraftDuration || previousDetail.templateDraftDuration,
+                  templateDraftDurationSeconds: unit.templateDraftDurationSeconds ?? previousDetail.templateDraftDurationSeconds,
+                  templateExportDuration: unit.templateExportDuration || previousDetail.templateExportDuration,
+                  templateExportDurationSeconds: unit.templateExportDurationSeconds ?? previousDetail.templateExportDurationSeconds,
+                  templateTotalDuration: unit.templateTotalDuration || previousDetail.templateTotalDuration,
+                } : {}),
+              };
+            } else if (!isSummaryResponse) {
+              next[unit.id] = unit;
+            }
+          });
+          cachedProductionDetails = next;
+          return next;
+        });
+        setSelectedUnitId((current) => {
+          const next = current && realUnits.some((unit) => unit.id === current) ? current : realUnits[0]?.id || '';
+          cachedSelectedProductionTaskId = next;
+          return next;
+        });
+      }).catch(() => undefined).finally(() => { refreshing = false; });
+      // 任务中心只负责顶部执行器状态，不能阻塞生产任务卡首屏显示。
+      void loadV2TaskCenter().then((center) => {
+        if (active) setVideoExporter(center.executors.find((executor) => executor.id === 'video_exporter') || null);
+      }).catch(() => undefined);
+    };
+    refresh();
+    const refreshOne = (taskId: string) => {
+      if (!taskId || detailRequests.current[taskId]) return;
+      const request = getV2ProductionTaskDetails(taskId).then((task) => {
+        if (!active) return;
+        const updated = toProductionUnit(task);
+        setUnits((previous) => {
+          const next = previous.map((unit) => unit.id === taskId ? { ...unit, ...updated } : unit);
+          cachedProductionUnits = next; saveCachedProductionUnits(next); return next;
+        });
+        setDetailUnits((previous) => {
+          const next = { ...previous, [taskId]: updated }; cachedProductionDetails = next; return next;
+        });
+        setLastRefreshAt(new Date());
+      }).catch(() => undefined).finally(() => { delete detailRequests.current[taskId]; });
+      detailRequests.current[taskId] = request;
+    };
+    const onDataChanged = (event: Event) => {
+      const detail = eventDetail(event);
+      if (!changeAffects(detail, 'production')) return;
+      if (detail.productionTaskId) refreshOne(detail.productionTaskId);
+      else refresh();
+    };
+    window.addEventListener('v2-data-changed', onDataChanged);
+    void getV2ProductionResources().then((resources) => { if (active) setSupportableDramas(calculateResourceMetrics(resources.items).supportableDramas); }).catch(() => undefined);
+    let timer: number | undefined;
+    // The change feed handles normal live updates. This is deliberately a
+    // slow recovery check for missed notifications or a restarted service.
+    const schedule = () => { if (timer) window.clearInterval(timer); timer = window.setInterval(refresh, document.hidden ? 60000 : (videoExporter?.currentTaskId ? 30000 : 60000)); };
+    schedule(); document.addEventListener('visibilitychange', schedule);
+    return () => { active = false; if (timer) window.clearInterval(timer); document.removeEventListener('visibilitychange', schedule); window.removeEventListener('v2-data-changed', onDataChanged); };
+  }, [videoExporter?.currentTaskId]);
+
+  const loadProductionDetails = (taskId: string, force = false) => {
+    if (!taskId || (!force && cachedProductionDetails[taskId]) || detailRequests.current[taskId]) return;
+    const request = getV2ProductionTaskDetails(taskId).then((task) => {
+      setDetailUnits((previous) => {
+        const next = { ...previous, [taskId]: toProductionUnit(task) };
+        cachedProductionDetails = next;
+        return next;
+      });
+    }).catch(() => undefined).finally(() => { delete detailRequests.current[taskId]; });
+    detailRequests.current[taskId] = request;
+  };
+
+  useEffect(() => {
+    if (!selectedUnitId || detailUnits[selectedUnitId]) return;
+    let active = true;
+    setDetailsLoading(true);
+    loadProductionDetails(selectedUnitId);
+    const timer = window.setInterval(() => {
+      if (cachedProductionDetails[selectedUnitId]) {
+        window.clearInterval(timer);
+        if (active) setDetailsLoading(false);
+      }
+    }, 50);
+    const timeout = window.setTimeout(() => { window.clearInterval(timer); if (active) setDetailsLoading(false); }, 12000);
+    return () => { active = false; window.clearInterval(timer); window.clearTimeout(timeout); };
+  }, [selectedUnitId, detailUnits]);
+
+  // 已打开的详情先用缓存秒开，再只静默校验当前剧集，避免详情长期停留在旧状态。
+  useEffect(() => {
+    if (!selectedUnitId) return;
+    let active = true;
+    const refreshCurrentDetail = () => {
+      if (!active || document.hidden) return;
+      loadProductionDetails(selectedUnitId, true);
+    };
+    refreshCurrentDetail();
+    const timer = window.setInterval(refreshCurrentDetail, 5000);
+    const onVisibilityChange = () => { if (!document.hidden) refreshCurrentDetail(); };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [selectedUnitId]);
+
+  useEffect(() => {
+    cachedSelectedProductionTaskId = selectedUnitId;
+  }, [selectedUnitId]);
 
   // Extract unique accounts & dramas from current units
   const availableAccounts = useMemo(() => {
@@ -211,16 +436,36 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
   }, [sortedUnits, stageFilter, selectedAccount, selectedDrama]);
 
   const selectedUnit = useMemo(() => {
-    return units.find(u => u.id === selectedUnitId) || filteredUnits[0] || units[0];
-  }, [units, selectedUnitId, filteredUnits]);
+    const summary = units.find(u => u.id === selectedUnitId) || filteredUnits[0] || units[0];
+    return summary ? (detailUnits[summary.id] || summary) : undefined;
+  }, [units, selectedUnitId, filteredUnits, detailUnits]);
+
+  const cleanupItems = cleanupPreview?.itemsToDelete ?? [];
+  const visibleCleanupItems = isCleanupListExpanded ? cleanupItems : cleanupItems.slice(0, 10);
+  const hiddenCleanupItemCount = Math.max(0, cleanupItems.length - visibleCleanupItems.length);
+
+  const productionDurations = useMemo(() => {
+    if (!selectedUnit) return { draft: '—', export: '—', total: '—' };
+    const draftSeconds = (selectedUnit.templateDraftDurationSeconds ?? 0)
+      + (selectedUnit.videos ?? []).reduce((sum, video) => sum + (video.draftDurationSeconds ?? 0), 0);
+    const exportSeconds = (selectedUnit.templateExportDurationSeconds ?? 0)
+      + (selectedUnit.videos ?? []).reduce((sum, video) => sum + (video.exportDurationSeconds ?? 0), 0);
+    const hasDraft = selectedUnit.templateDraftDurationSeconds != null || (selectedUnit.videos ?? []).some((video) => video.draftDurationSeconds != null);
+    const hasExport = selectedUnit.templateExportDurationSeconds != null || (selectedUnit.videos ?? []).some((video) => video.exportDurationSeconds != null);
+    return {
+      draft: hasDraft ? formatElapsedSeconds(draftSeconds, '—') : '—',
+      export: hasExport ? formatElapsedSeconds(exportSeconds, '—') : '—',
+      total: hasDraft || hasExport ? formatElapsedSeconds(draftSeconds + exportSeconds, '—') : '—',
+    };
+  }, [selectedUnit]);
 
   // Dynamic statistics & 3-stage progress rail calculation for Final Videos area
   const videoStats = useMemo(() => {
     if (!selectedUnit) return { materials: 0, drafts: 0, exported: 0, errors: 0, exportedPercent: 0, draftRemainingPercent: 0 };
     const materials = selectedUnit.scannedMaterials?.length || selectedUnit.materialsCount || 0;
-    const drafts = (selectedUnit.videos || []).filter(v => v.status === 'draft_ready' || v.status === 'pending_export' || v.status === 'exporting' || v.status === 'exported').length;
+    const drafts = (selectedUnit.videos || []).filter(v => ['draft_ready', 'pending_export', 'exporting', 'exported', 'video_error'].includes(v.status)).length;
     const exported = (selectedUnit.videos || []).filter(v => v.status === 'exported').length;
-    const errors = (selectedUnit.videos || []).filter(v => v.status === 'error').length;
+    const errors = (selectedUnit.videos || []).filter(v => ['draft_error', 'video_error'].includes(v.status)).length;
     
     const exportedPercent = materials > 0 ? (exported / materials) * 100 : 0;
     const draftRemainingCount = Math.max(0, drafts - exported);
@@ -240,11 +485,17 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
     setIsScanning(true);
     try {
       const result = await scanV2ProductionTask(selectedUnit.id);
-      const tasks = await listV2ProductionTasks();
-      const refreshedUnit = tasks.items.map(toProductionUnit).find((unit) => unit.id === selectedUnit.id);
-      if (refreshedUnit) {
-        setUnits((previous) => previous.map((unit) => unit.id === refreshedUnit.id ? refreshedUnit : unit));
-      }
+      // 列表摘要只含数量；右侧会优先使用已加载的详情缓存。扫描完成后必须
+      // 更新同一份详情，否则摘要已变而素材缩略图区仍显示扫描前的旧数据。
+      const refreshedUnit = toProductionUnit(await getV2ProductionTaskDetails(selectedUnit.id));
+      cachedProductionDetails = { ...cachedProductionDetails, [refreshedUnit.id]: refreshedUnit };
+      setDetailUnits(cachedProductionDetails);
+      setUnits((previous) => {
+        const next = previous.map((unit) => unit.id === refreshedUnit.id ? refreshedUnit : unit);
+        cachedProductionUnits = next;
+        saveCachedProductionUnits(next);
+        return next;
+      });
       showToast(`素材扫描完成：发现 ${result.discovered} 条有效素材。`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '素材扫描失败，请稍后重试。');
@@ -271,48 +522,212 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
     try {
       const result = await queueV2Template(selectedUnit.id);
       const tasks = await listV2ProductionTasks();
-      setUnits(tasks.items.map(toProductionUnit));
+      applyFullTaskList(tasks.items);
       showToast(`模板任务已进入队列：${result.draft_name}`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '模板任务创建失败，请稍后重试。');
     }
   };
-  const handleExportTemplateFromDraft = showUnavailable;
-  const handlePlayTemplateVideo = showUnavailable;
-  const handleOpenTemplateDraft = showUnavailable;
-  const handleReExportTemplate = showUnavailable;
+  const canGenerateTemplate = Boolean(selectedUnit?.scannedMaterials.length) && supportableDramas !== null && supportableDramas >= 1;
+  const generateTemplateDisabledReason = !selectedUnit?.scannedMaterials.length
+    ? '当前没有已扫描素材'
+    : supportableDramas === null
+      ? '正在读取生产资源容量'
+      : supportableDramas < 1
+        ? '生产资源支持剧集数不足 1 部'
+        : '自动生成专属模板';
+  const handlePlayTemplateVideo = () => {
+    if (!selectedUnit?.templateVideoUrl) { showToast('当前模板视频文件不存在。'); return; }
+    setIsTemplateVideoPreviewOpen(true);
+  };
+  const handleOpenTemplateDraft = async () => {
+    if (!selectedUnit) return;
+    if (!canOpenFinalDraft) { showToast(openFinalDraftHint); return; }
+    try {
+      await openV2TemplateDraft(selectedUnit.id);
+      showToast('正在剪映中打开模板草稿，请稍候。');
+    } catch (error) { showToast(error instanceof Error ? error.message : '打开模板草稿失败，请稍后重试。'); }
+  };
+  const handleReExportTemplate = async () => {
+    if (!selectedUnit?.templateExportTaskId) { showToast('当前模板没有可重新导出的任务记录。'); return; }
+    try {
+      await reExportV2Task(selectedUnit.templateExportTaskId);
+      showToast('模板视频已重新排入导出队列。');
+      const tasks = await listV2ProductionTasks();
+      applyFullTaskList(tasks.items);
+    } catch (error) { showToast(error instanceof Error ? error.message : '重新导出失败，请稍后重试。'); }
+  };
   const handleRegenerateTemplate = async () => {
     setActiveTemplateMenuOpen(false);
     if (!selectedUnit) return;
     try {
       const result = await queueV2Template(selectedUnit.id, true);
       const tasks = await listV2ProductionTasks();
-      setUnits(tasks.items.map(toProductionUnit));
+      applyFullTaskList(tasks.items);
       showToast(`模板已重新排入队列：${result.draft_name}`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '模板重新生成失败，请稍后重试。');
     }
   };
-  const handleBatchGenerateVideos = showUnavailable;
-
-  // Single Final Video Actions
-  const handlePlayVideo = (video: ProductionVideoItem) => {
-    setPreviewVideo(video);
+  const handleBatchGenerateVideos = async () => {
+    if (!selectedUnit) return;
+    if (selectedUnit.templateStatus !== 'video_ready') {
+      showToast('模板视频尚未完成，暂不能提交成片任务。');
+      return;
+    }
+    const submittedIds = new Set(selectedUnit.videos.filter((video) => !video.id.startsWith('pending-')).map((video) => video.sequenceNumber));
+    const sourceMaterialIds = selectedUnit.scannedMaterials
+      .filter((material) => !submittedIds.has(material.sequenceNumber))
+      .map((material) => material.id);
+    if (!sourceMaterialIds.length) {
+      showToast('当前没有新增的待生成素材。');
+      return;
+    }
+    setIsGeneratingVideos(true);
+    try {
+      const result = await submitV2FinishedVideos(selectedUnit.id, sourceMaterialIds);
+      const tasks = await listV2ProductionTasks();
+      applyFullTaskList(tasks.items);
+      showToast(`已提交 ${result.created_count} 条成片任务，等待任务中心调度。`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '成片任务提交失败，请稍后重试。');
+    } finally {
+      setIsGeneratingVideos(false);
+    }
   };
 
-  const handleOpenVideoDraft = (_video: ProductionVideoItem) => showUnavailable();
-  const handleReExportVideo = (_video: ProductionVideoItem) => showUnavailable();
-  const handleToggleExportInspection = showUnavailable;
-  const handleOpenReleaseDialog = showUnavailable;
-  const handleConfirmRegisterRelease = showUnavailable;
-  const handleRevokeRelease = showUnavailable;
+  const completedFinalVideos = useMemo(
+    () => (selectedUnit?.videos || []).filter((video) => video.status === 'exported' && Boolean(video.videoUrl)),
+    [selectedUnit],
+  );
+  const canOpenFinalDraft = videoExporter?.controlState === 'manual_paused' && !videoExporter.currentTaskId;
+  const openFinalDraftHint = !videoExporter
+    ? '正在读取视频导出器状态'
+    : videoExporter.currentTaskId
+      ? '视频导出器仍有进行中的任务'
+      : videoExporter.controlState !== 'manual_paused'
+        ? '请先在任务中心将视频导出器切换为人工暂停'
+        : '在剪映中打开草稿';
+
+  // Single Final Video Actions
+  const handlePlayVideo = (_video: ProductionVideoItem) => setIsFinalVideoPreviewOpen(true);
+
+  const handleOpenVideoDraft = async (video: ProductionVideoItem) => {
+    if (!canOpenFinalDraft) {
+      showToast(openFinalDraftHint);
+      return;
+    }
+    setOpeningDraftVideoId(video.id);
+    try {
+      await openV2FinishedVideoDraft(video.id);
+      showToast('正在剪映中打开草稿，请稍候。');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '打开草稿失败，请稍后重试。');
+    } finally {
+      setOpeningDraftVideoId(null);
+    }
+  };
+  const handleReExportVideo = async (video: ProductionVideoItem) => {
+    if (!video.exportAttemptId) {
+      showToast('当前成片没有可重新导出的任务记录。');
+      return;
+    }
+    try {
+      await reExportV2Task(video.exportAttemptId);
+      showToast('已重新排入视频导出队列。');
+      const tasks = await listV2ProductionTasks();
+      applyFullTaskList(tasks.items);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '重新导出失败，请稍后重试。');
+    }
+  };
+  const handleToggleExportInspection = async () => {
+    if (!selectedUnit) return;
+    const enabled = !selectedUnit.exportInspectionMode;
+    try {
+      const updated = await updateV2TaskManualCheck(selectedUnit.id, enabled);
+      const next = toProductionUnit(updated);
+      setDetailUnits((previous) => ({ ...previous, [next.id]: next }));
+      setUnits((previous) => previous.map((unit) => unit.id === next.id ? next : unit));
+      showToast(enabled ? '本剧集已开启成片人工检查，后续任务生效。' : '本剧集已关闭成片人工检查，后续任务生效。');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '成片人工检查设置保存失败，请稍后重试。');
+    }
+  };
+  const handleOpenReleaseDialog = () => {
+    if (!selectedUnit) return;
+    if (!selectedUnit.videos.length || selectedUnit.videos.some((video) => video.status !== 'exported')) {
+      showToast('所有成片导出完成后才能登记发布。');
+      return;
+    }
+    const plannedDate = selectedUnit.scheduledDate || new Date().toISOString().slice(0, 10);
+    const plannedTime = (selectedUnit.scheduledTime.match(/\d{1,2}:\d{2}/) || ['00:00'])[0];
+    setReleaseDate(selectedUnit.actualReleaseTime?.slice(0, 10) || plannedDate);
+    setReleaseTime(selectedUnit.actualReleaseTime?.slice(11, 16) || plannedTime.padStart(5, '0'));
+    setActualReleaseTimeInput('');
+    const hasSavedAddress = Boolean(selectedUnit.releaseProvince || selectedUnit.releaseCity || selectedUnit.releaseDistrict || selectedUnit.releaseDetailAddress);
+    setReleaseProvince(selectedUnit.releaseProvince || '');
+    setReleaseCity(selectedUnit.releaseCity || '');
+    setReleaseDistrict(selectedUnit.releaseDistrict || '');
+    setReleaseDetailAddress(selectedUnit.releaseDetailAddress || '');
+    setShowReleaseAddressHistory(false);
+    void listV2ReleaseAddresses(selectedUnit.accountName).then((addresses) => {
+      setReleaseAddresses(addresses);
+      // Existing task values win; otherwise default to the account's most
+      // recently used address (the API already sorts by use count then time).
+      if (!hasSavedAddress && addresses.account.length) {
+        // 地址历史列表按使用次数展示；登记窗口默认取最近一次实际使用的地址。
+        const address = addresses.account.reduce((latest, current) =>
+          current.last_used_at > latest.last_used_at ? current : latest,
+        );
+        setReleaseProvince(address.province); setReleaseCity(address.city); setReleaseDistrict(address.district); setReleaseDetailAddress(address.detail_address);
+      }
+    }).catch(() => setReleaseAddresses({ account: [], public: [] }));
+    setIsReleaseDialogOpen(true);
+  };
+  const handleConfirmRegisterRelease = async () => {
+    if (!selectedUnit) return;
+    try {
+      await registerV2Release(selectedUnit.id, { actual_release_time: `${releaseDate} ${releaseTime}`, province: releaseProvince, city: releaseCity, district: releaseDistrict, detail_address: releaseDetailAddress });
+      const tasks = await listV2ProductionTasks();
+      applyFullTaskList(tasks.items);
+      setIsReleaseDialogOpen(false);
+      showToast('发布登记已保存。');
+    } catch (error) { showToast(error instanceof Error ? error.message : '发布登记失败，请稍后重试。'); }
+  };
+  const handleRevokeRelease = async () => {
+    if (!selectedUnit) return;
+    try {
+      await revokeV2Release(selectedUnit.id);
+      const tasks = await listV2ProductionTasks();
+      applyFullTaskList(tasks.items);
+      showToast('已撤销发布登记。');
+    } catch (error) { showToast(error instanceof Error ? error.message : '撤销发布登记失败，请稍后重试。'); }
+  };
 
   // Danger Actions:
   // If registered release -> "立即清理" (Cleanup Lifecycle)
   // If unregistered release -> "删除剧集" (Delete Drama Task)
-  const handleOpenDangerModal = showUnavailable;
-  const handleExecuteRegisteredCleanup = showUnavailable;
-  const handleExecuteDeleteDramaTask = showUnavailable;
+  const handleOpenDangerModal = async () => {
+    if (!selectedUnit) return;
+    try {
+      setCleanupPreview(await previewV2Cleanup(selectedUnit.id));
+      setIsCleanupListExpanded(false);
+      setCleanupActionState('idle');
+      setIsCleanupModalOpen(true);
+    }
+    catch (error) { showToast(error instanceof Error ? error.message : '无法读取清理预览。'); }
+  };
+  const handleExecuteCleanup = async () => {
+    if (!selectedUnit) return;
+    setCleanupActionState('executing');
+    try {
+      const result = await executeV2Cleanup(selectedUnit.id);
+      if (result.errors.length) { showToast(`清理部分完成：${result.errors.join('；')}`); setCleanupActionState('idle'); return; }
+      const tasks = await listV2ProductionTasks(); applyFullTaskList(tasks.items);
+      setCleanupActionState('done'); setIsCleanupModalOpen(false); showToast(selectedUnit.releaseStatus === 'registered' ? '立即清理已完成。' : '剧集已删除。');
+    } catch (error) { setCleanupActionState('idle'); showToast(error instanceof Error ? error.message : '清理失败，请稍后重试。'); }
+  };
 
   return (
     <div 
@@ -329,7 +744,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-[#1A1D2E] tracking-tight">生产中心 (Production Center)</h2>
+              <div className="flex items-center gap-2"><h2 className="text-lg font-black text-[#1A1D2E] tracking-tight">生产中心 (Production Center)</h2>{lastRefreshAt && <span className="text-[10px] font-normal text-slate-400">更新于 {lastRefreshAt.toLocaleTimeString('zh-CN')}</span>}</div>
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-[#DDFD00] text-[#1A1D2E]">
                 独立制作单元：账号 × 剧集
               </span>
@@ -532,17 +947,23 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
               </div>
             ) : (
               filteredUnits.map((unit) => {
+                const displayUnit = detailUnits[unit.id] || unit;
                 const isSelected = unit.id === selectedUnit?.id;
-                const exportedCount = unit.videos.filter(v => v.status === 'exported').length;
-                const totalVideos = unit.videos.length;
-                const taskCardStatus = getTaskCardStatus(unit);
+                const exportedCount = unit.exportedCount ?? (displayUnit.videos.length ? displayUnit.videos.filter(v => v.status === 'exported').length : 0);
+                const draftCount = unit.draftCount ?? (displayUnit.videos.length ? displayUnit.videos.filter(v => ['draft_ready', 'pending_export', 'exporting', 'exported', 'video_error'].includes(v.status)).length : 0);
+                const materialCount = displayUnit.materialsCount || displayUnit.scannedMaterials?.length || 0;
+                const errorCount = unit.errorCount ?? (displayUnit.videos.length ? displayUnit.videos.filter(v => ['draft_error', 'video_error'].includes(v.status)).length : 0);
+                const exportedPercent = materialCount ? Math.min(100, (exportedCount / materialCount) * 100) : 0;
+                const draftRemainingPercent = materialCount ? Math.min(100 - exportedPercent, Math.max(0, ((draftCount - exportedCount) / materialCount) * 100)) : 0;
+                const taskCardStatus = getTaskCardStatus(displayUnit);
                 const avatarColor = getAccountColor(unit.accountName);
                 const avatarChar = unit.accountName.charAt(0) || '账';
 
                 return (
                   <div
                     key={unit.id}
-                    onClick={() => setSelectedUnitId(unit.id)}
+                    onMouseEnter={() => loadProductionDetails(unit.id)}
+                    onClick={() => { setSelectedUnitId(unit.id); loadProductionDetails(unit.id); }}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer select-none relative ${
                       unit.isCompleted
                         ? isSelected
@@ -601,17 +1022,19 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                       </div>
                     </div>
 
-                    {/* Layer 3: Quantities (素材数量 · 成片/导出概况) */}
-                    <div className="mt-2.5 pt-2 border-t border-black/[0.04] flex items-center justify-between text-[11px] text-[#64748B]">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <span>素材:</span>
-                        <strong className="text-[#1A1D2E] font-extrabold">{unit.scannedMaterials?.length || 0} 条</strong>
+                    {/* Layer 3: Reuse the same staged progress rail as the detail panel. */}
+                    <div className="mt-2.5 pt-2 border-t border-black/[0.04]">
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <div className="flex items-center gap-3">
+                          <span className="inline-flex items-center gap-1 font-bold text-[#64748B]"><span className="w-2 h-2 rounded-full bg-emerald-500" />视频 <strong className="font-mono text-emerald-800">{exportedCount}</strong></span>
+                          <span className="inline-flex items-center gap-1 font-bold text-[#64748B]"><span className="w-2 h-2 rounded-full bg-indigo-500" />草稿 <strong className="font-mono text-indigo-800">{draftCount}</strong></span>
+                          <span className="inline-flex items-center gap-1 font-bold text-[#64748B]"><span className="w-2 h-2 rounded-full bg-slate-500" />素材 <strong className="font-mono text-[#1A1D2E]">{materialCount}</strong></span>
+                        </div>
+                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 font-bold text-[#64748B] shrink-0"><span className={`w-1.5 h-1.5 rounded-full ${errorCount ? 'bg-rose-500' : 'bg-slate-400'}`} />异常 <strong className="font-mono">{errorCount}</strong></span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span>成片 / 导出:</span>
-                        <strong className={exportedCount === totalVideos && totalVideos > 0 ? 'text-emerald-700 font-extrabold' : 'text-[#1A1D2E] font-extrabold'}>
-                          {exportedCount} / {totalVideos} 条
-                        </strong>
+                      <div className="mt-2 h-2.5 w-full rounded-full overflow-hidden flex bg-slate-200/70 border border-black/[0.03]" title={`视频: ${exportedCount} | 草稿: ${draftCount} | 素材: ${materialCount}`}>
+                        {exportedPercent > 0 && <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${exportedPercent}%` }} />}
+                        {draftRemainingPercent > 0 && <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${draftRemainingPercent}%` }} />}
                       </div>
                     </div>
                   </div>
@@ -627,8 +1050,8 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
             
             {/* Header Area (Fixed at top) */}
             <div className="pb-3.5 border-b border-black/[0.06] shrink-0 space-y-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+              <div className="flex flex-nowrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-lg bg-[#1A1D2E] text-[#DDFD00] font-black text-xs">
                       制作任务
@@ -638,29 +1061,10 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                     </h3>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-[#64748B] mt-1.5">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" /> 计划发布时间：
-                      <strong className={`text-[#1A1D2E] ${selectedUnit.isOverdue && !selectedUnit.isCompleted ? 'text-rose-700 font-black' : ''}`}>
-                        {selectedUnit.scheduledTime}
-                      </strong>
-                      {selectedUnit.isOverdue && !selectedUnit.isCompleted && (
-                        <span className="text-[10px] px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded font-bold ml-1">
-                          逾期未完成
-                        </span>
-                      )}
-                    </span>
-                    <span className="flex items-center gap-1" title={selectedUnit.outputFolder}>
-                      <FolderOpen className="w-3.5 h-3.5" /> 输出目录：
-                      <code className="text-[11px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 truncate max-w-[220px]">
-                        {selectedUnit.outputFolder}
-                      </code>
-                    </span>
-                  </div>
                 </div>
 
                 {/* Right Top Operations: 成片导出检查 & Danger Button (删除剧集 / 立即清理 depending on releaseStatus) */}
-                <div className="flex items-center gap-2.5">
+                <div className="flex shrink-0 items-center gap-2.5">
                   <button
                     onClick={handleToggleExportInspection}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
@@ -684,6 +1088,8 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                       <Brush className="w-3.5 h-3.5 text-slate-600" />
                       <span>立即清理</span>
                     </button>
+                  ) : ['draft_queued', 'draft_generating', 'draft_retrying', 'video_queued', 'video_exporting'].includes(selectedUnit.templateStatus) ? (
+                    <span className="text-xs font-semibold text-slate-500">模板任务正在自动处理</span>
                   ) : (
                     <button
                       onClick={handleOpenDangerModal}
@@ -695,6 +1101,27 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                     </button>
                   )}
                 </div>
+              </div>
+
+              <div className="flex flex-nowrap items-center gap-4 text-xs text-[#64748B] mt-1.5 whitespace-nowrap">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" /> 计划发布时间：
+                  <strong className={`text-[#1A1D2E] ${selectedUnit.isOverdue && !selectedUnit.isCompleted ? 'text-rose-700 font-black' : ''}`}>
+                    {selectedUnit.scheduledTime}
+                  </strong>
+                  {selectedUnit.isOverdue && !selectedUnit.isCompleted && (
+                    <span className="text-[10px] px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded font-bold ml-1">
+                      逾期未完成
+                    </span>
+                  )}
+                </span>
+                <span className="flex items-center gap-3 ml-auto">
+                  <span>草稿耗时：<strong className="text-[#1A1D2E]">{productionDurations.draft}</strong></span>
+                  <span className="text-slate-300">-</span>
+                  <span>导出耗时：<strong className="text-[#1A1D2E]">{productionDurations.export}</strong></span>
+                  <span className="text-slate-300">-</span>
+                  <span>总耗时：<strong className="text-[#1A1D2E]">{productionDurations.total}</strong></span>
+                </span>
               </div>
 
               {/* Silent Export Listening Banner (Manual Interruption / Waiting) */}
@@ -832,26 +1259,12 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                     2
                   </span>
                   <span className="font-black text-sm text-[#1A1D2E]">专属模板制作 (Master Draft)</span>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-lg font-bold border ${
-                    selectedUnit.templateStatus === 'generated'
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                      : selectedUnit.templateStatus === 'draft_ready'
-                      ? 'bg-amber-100 text-amber-900 border-amber-300'
-                      : selectedUnit.templateStatus === 'generating' || selectedUnit.templateStatus === 'exporting'
-                      ? 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse'
-                      : selectedUnit.templateStatus === 'error'
-                      ? 'bg-rose-100 text-rose-800 border-rose-200'
-                      : 'bg-slate-200 text-slate-700 border-slate-300'
-                  }`}>
-                    {selectedUnit.templateStatus === 'generated' ? '专属模板已就绪' :
-                     selectedUnit.templateStatus === 'draft_ready' ? '草稿已生成 · 待导出' :
-                     selectedUnit.templateStatus === 'exporting' ? '模板视频导出中...' :
-                     selectedUnit.templateStatus === 'generating' ? '模板生成中...' :
-                     selectedUnit.templateStatus === 'error' ? '模板异常' : '未生成'}
+                  <span className={`text-[11px] px-2 py-0.5 rounded-lg font-bold border ${templateStatusPresentation(selectedUnit.templateStatus).className}`}>
+                    {templateStatusPresentation(selectedUnit.templateStatus).label}
                   </span>
                 </div>
 
-                {selectedUnit.templateStatus === 'error' && selectedUnit.templateErrorMessage && (
+                {['draft_error', 'video_error'].includes(selectedUnit.templateStatus) && selectedUnit.templateErrorMessage && (
                   <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800">
                     <span className="font-bold">生成失败：</span>{selectedUnit.templateErrorMessage}
                   </div>
@@ -862,7 +1275,9 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                   {selectedUnit.templateStatus === 'not_generated' ? (
                     <button
                       onClick={handleGenerateTemplate}
-                      className="flex items-center gap-1.5 px-3 py-1.2 rounded-xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black text-xs font-extrabold transition-all shadow-xs cursor-pointer"
+                      disabled={!canGenerateTemplate}
+                      title={generateTemplateDisabledReason}
+                      className="flex items-center gap-1.5 px-3 py-1.2 rounded-xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black text-xs font-extrabold transition-all shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#1A1D2E]"
                     >
                       <Sparkles className="w-3.5 h-3.5 fill-[#DDFD00]" />
                       <span>自动生成专属模板</span>
@@ -889,15 +1304,9 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                         <span>打开草稿</span>
                       </button>
 
-                      {/* 3. 开始导出: 主动作按钮，可用 */}
-                      <button
-                        onClick={handleExportTemplateFromDraft}
-                        className="flex items-center gap-1.5 px-3.5 py-1.2 rounded-xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black text-xs font-black transition-all shadow-xs cursor-pointer"
-                        title="草稿已生成，开始导出成片视频"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 fill-[#DDFD00]" />
-                        <span>开始导出</span>
-                      </button>
+                      <span className="text-xs font-semibold text-slate-500" title="模板草稿写出后会自动进入视频导出队列">
+                        正在等待自动导出
+                      </span>
 
                       {/* More Menu */}
                       <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -982,15 +1391,15 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                 <div className="px-3 py-2 bg-white rounded-xl border border-black/[0.04] flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2">
                     <Film className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="font-bold text-[#1A1D2E]">{selectedUnit.templateDraftName}</span>
+                    <span className="font-bold text-[#1A1D2E]">{selectedUnit.templateVideoName || selectedUnit.templateDraftName}</span>
                     <span className="text-[11px] text-[#64748B]">
                       ({selectedUnit.templateDurationText || '—'} · {selectedUnit.templateFileSizeText || '—'})
                     </span>
                   </div>
-                  <div className="flex items-center gap-4 text-[#64748B]">
-                    <span>草稿耗时: <strong className="text-[#1A1D2E]">{selectedUnit.templateDraftDuration || '—'}</strong></span>
-                    <span>导出耗时: <strong className="text-[#1A1D2E]">{selectedUnit.templateExportDuration || '—'}</strong></span>
-                    <span>更新于: {selectedUnit.templateUpdatedAt || '—'}</span>
+                  <div className="flex items-center gap-4 text-[11px] text-[#64748B]">
+                    <span>草稿耗时: <strong className="text-slate-800">{selectedUnit.templateDraftDuration || '—'}</strong></span>
+                    <span>导出耗时: <strong className="text-slate-800">{selectedUnit.templateExportDuration || '—'}</strong></span>
+                    <span>总耗时: <strong className="text-slate-800">{selectedUnit.templateTotalDuration || '—'}</strong></span>
                   </div>
                 </div>
               )}
@@ -1011,9 +1420,18 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                 {/* Main Action: 成片生成 */}
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={() => setIsFinalVideoPreviewOpen(true)}
+                    disabled={completedFinalVideos.length === 0}
+                    title={completedFinalVideos.length ? '预览已导出的成片' : '当前没有已导出的成片'}
+                    className="p-2 rounded-xl border border-black/[0.06] bg-white hover:bg-slate-50 text-slate-600 hover:text-[#1A1D2E] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Film className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={handleBatchGenerateVideos}
-                    disabled={isGeneratingVideos}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black text-xs font-black transition-all shadow-xs cursor-pointer"
+                    disabled={isGeneratingVideos || !selectedUnit || selectedUnit.templateStatus !== 'video_ready'}
+                    title={!selectedUnit || selectedUnit.templateStatus !== 'video_ready' ? '模板视频尚未完成并验证' : '提交新增素材的成片任务'}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black text-xs font-black transition-all shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Sparkles className={`w-3.5 h-3.5 fill-[#DDFD00] ${isGeneratingVideos ? 'animate-spin' : ''}`} />
                     <span>{isGeneratingVideos ? '成片生成中...' : '成片生成'}</span>
@@ -1094,13 +1512,13 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                               <span>{vid.dramaPrefix}</span>
                               <span>-{vid.sequenceNumber}</span>
                             </div>
-                            <span className="text-[11px] text-[#64748B]">
-                              时长：{vid.durationSec} 秒 · 大小: {vid.fileSizeText}
-                            </span>
                           </div>
-                          <div className="flex items-center gap-3 text-[11px] text-[#64748B]">
-                            <span>草稿耗时: <strong className="text-slate-800">{vid.draftDuration}</strong></span>
-                            <span>导出耗时: <strong className="text-slate-800">{vid.exportDuration}</strong></span>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#64748B]">
+                            <span>时长：{formatElapsedSeconds(vid.durationSec, '—')}</span>
+                            <span>· 大小：{vid.fileSizeText}</span>
+                            <span>· 总耗时：<strong className="text-slate-800">{vid.totalDuration || '—'}</strong></span>
+                            <span>· 草稿耗时：<strong className="text-slate-800">{vid.draftDuration}</strong></span>
+                            <span>· 导出耗时：<strong className="text-slate-800">{vid.exportDuration}</strong></span>
                           </div>
                         </div>
                       </div>
@@ -1114,18 +1532,24 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                             ? 'bg-amber-100 text-amber-800 animate-pulse'
                             : vid.status === 'draft_ready'
                             ? 'bg-indigo-100 text-indigo-800'
+                            : vid.status === 'draft_queued'
+                            ? 'bg-sky-100 text-sky-800'
+                            : vid.status === 'pending_export'
+                            ? 'bg-sky-100 text-sky-800'
                             : vid.status === 'draft_generating'
                             ? 'bg-amber-100 text-amber-800'
-                            : vid.status === 'error'
+                            : vid.status === 'draft_error' || vid.status === 'video_error'
                             ? 'bg-rose-100 text-rose-800'
                             : 'bg-slate-100 text-slate-600'
                         }`}>
-                          {vid.status === 'exported' ? '已导出' :
-                           vid.status === 'exporting' ? `导出中 (${vid.exportProgress || 0}%)` :
-                           vid.status === 'draft_ready' ? '草稿已生成' :
-                           vid.status === 'draft_generating' ? '草稿生成中' :
-                           vid.status === 'pending_export' ? '待导出' :
-                           vid.status === 'error' ? '异常' : '待生成'}
+                          {vid.status === 'exported' ? '视频·已导出' :
+                           vid.status === 'exporting' ? `视频·导出中 (${vid.exportProgress || 0}%)` :
+                           vid.status === 'draft_ready' ? '草稿·已生成' :
+                           vid.status === 'draft_queued' ? '草稿·排队中' :
+                           vid.status === 'draft_generating' ? '草稿·生成中' :
+                           vid.status === 'pending_export' ? '视频·排队中' :
+                           vid.status === 'draft_error' ? '草稿·异常' :
+                           vid.status === 'video_error' ? '视频·异常' : '草稿·待生成'}
                         </span>
 
                         {/* 3 Fixed Small Icon Operations */}
@@ -1142,8 +1566,9 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                           {/* 2. 打开草稿 */}
                           <button
                             onClick={() => handleOpenVideoDraft(vid)}
-                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-[#1A1D2E] transition-colors cursor-pointer"
-                            title="在剪映中打开该集成片草稿"
+                            disabled={vid.status !== 'exported' || !canOpenFinalDraft || openingDraftVideoId === vid.id}
+                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-[#1A1D2E] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={vid.status !== 'exported' ? '仅已导出的成片可以打开草稿' : openFinalDraftHint}
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
@@ -1151,7 +1576,8 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                           {/* 3. 重新导出 */}
                           <button
                             onClick={() => handleReExportVideo(vid)}
-                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-[#1A1D2E] transition-colors cursor-pointer"
+                            disabled={vid.status !== 'exported' || !vid.exportAttemptId}
+                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-[#1A1D2E] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             title="重新导出（保留草稿）"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
@@ -1165,8 +1591,8 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
             </div>
 
             {/* SECTION 4: 发布登记 (Release Registration) */}
-            <div className="p-3.5 rounded-2xl bg-[#F8FAFC] border border-black/[0.06] shrink-0 flex flex-wrap items-center justify-between gap-3">
-              <div>
+            <div className="p-3.5 rounded-2xl bg-[#F8FAFC] border border-black/[0.06] shrink-0 flex flex-nowrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-[#1A1D2E] text-[#DDFD00] flex items-center justify-center text-[11px] font-black">
                     4
@@ -1182,12 +1608,12 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                 </div>
                 <p className="text-xs text-[#64748B] mt-0.5">
                   {selectedUnit.releaseStatus === 'registered'
-                    ? `已于 ${selectedUnit.actualReleaseTime || selectedUnit.scheduledTime} 登记发布`
+                    ? <span className="block max-w-none truncate" title={selectedUnit.releaseAddress || '未填写发布地址'}>已于 {selectedUnit.actualReleaseTime || selectedUnit.scheduledTime} 登记发布 · 地址：{selectedUnit.releaseAddress || '未填写'}</span>
                     : '成片导出完成后，登记发布时间以驱动后续安全清理与归档'}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {selectedUnit.releaseStatus === 'registered' ? (
                   <button
                     onClick={handleRevokeRelease}
@@ -1249,17 +1675,22 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                 <label className="font-bold text-[#1A1D2E] block">
                   实际发布时间:
                 </label>
-                <input 
-                  type="text"
-                  value={actualReleaseTimeInput}
-                  onChange={(e) => setActualReleaseTimeInput(e.target.value)}
-                  placeholder="例如：今天 18:30 或 今天 19:10"
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-black/[0.08] focus:border-[#1A1D2E] focus:bg-white outline-hidden text-xs font-bold text-[#1A1D2E]"
-                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="date" value={releaseDate} onChange={(e) => setReleaseDate(e.target.value)} className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-black/[0.08] focus:border-[#1A1D2E] focus:bg-white outline-hidden text-xs font-bold text-[#1A1D2E]" />
+                  <input type="time" value={releaseTime} onChange={(e) => setReleaseTime(e.target.value)} className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-black/[0.08] focus:border-[#1A1D2E] focus:bg-white outline-hidden text-xs font-bold text-[#1A1D2E]" />
+                </div>
                 <span className="text-[11px] text-[#64748B]">
                   默认已引用计划发布时间，可根据实际发布时刻直接修改。
                 </span>
               </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[['省', releaseProvince, setReleaseProvince, CHINA_PROVINCES], ['市', releaseCity, setReleaseCity, Object.keys(CHINA_REGIONS[releaseProvince] || {})], ['区/县', releaseDistrict, setReleaseDistrict, (CHINA_REGIONS[releaseProvince] || {})[releaseCity] || []]].map(([label, value, setter, options]) => (
+                  <select key={String(label)} value={String(value)} onChange={(e) => { (setter as React.Dispatch<React.SetStateAction<string>>)(e.target.value); if (label === '省') { setReleaseCity(''); setReleaseDistrict(''); } else if (label === '市') setReleaseDistrict(''); }} className="px-3 py-2 rounded-xl bg-slate-50 border border-black/[0.08] outline-hidden text-xs font-bold text-[#1A1D2E]"><option value="">请选择{String(label)}</option>{(options as string[]).map((option) => <option key={option} value={option}>{option}</option>)}</select>
+                ))}
+              </div>
+              <input value={releaseDetailAddress} onChange={(e) => setReleaseDetailAddress(e.target.value)} placeholder="详细地址" className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-black/[0.08] outline-hidden text-xs font-bold text-[#1A1D2E]" />
+              <button type="button" onClick={() => setShowReleaseAddressHistory((value) => !value)} className="text-xs font-bold text-[#64748B] hover:text-[#1A1D2E] cursor-pointer">{showReleaseAddressHistory ? '收起地址历史库' : '从地址历史库选择'}</button>
+              {showReleaseAddressHistory && <div className="max-h-32 overflow-y-auto space-y-1 rounded-xl border border-black/[0.06] p-2 bg-slate-50">{[['账号地址', releaseAddresses.account], ['公共地址', releaseAddresses.public]].map(([title, addresses]) => <div key={String(title)}><div className="text-[11px] font-bold text-[#64748B] mb-1">{title}</div>{(addresses as V2ReleaseAddress[]).length ? (addresses as V2ReleaseAddress[]).map((address) => <button type="button" key={`${title}-${address.province}-${address.city}-${address.district}-${address.detail_address}`} onClick={() => { setReleaseProvince(address.province); setReleaseCity(address.city); setReleaseDistrict(address.district); setReleaseDetailAddress(address.detail_address); setShowReleaseAddressHistory(false); }} className="block w-full text-left px-2 py-1 rounded-lg hover:bg-white text-[11px] text-[#1A1D2E] cursor-pointer">{address.province}{address.city}{address.district}{address.detail_address}（{address.use_count}次）</button>) : <div className="text-[11px] text-slate-400">暂无历史地址</div>}</div>)}</div>}
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-black/[0.06]">
@@ -1283,7 +1714,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
       {/* ================= DIALOG 2: 危险操作统一 Preview 弹窗 (Situation A: 立即清理 vs Situation B: 删除剧集) ================= */}
       {isCleanupModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-black/[0.08] space-y-5 animate-in fade-in zoom-in-95">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[calc(100vh-2rem)] overflow-y-auto p-6 shadow-2xl border border-black/[0.08] space-y-5 animate-in fade-in zoom-in-95">
             
             {/* Header */}
             <div className="flex items-start justify-between border-b border-black/[0.06] pb-3.5">
@@ -1334,44 +1765,24 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
               </h4>
 
               <div className="bg-slate-50 rounded-2xl border border-black/[0.04] p-3 space-y-2 text-xs">
-                {selectedUnit.releaseStatus === 'registered' ? (
-                  <>
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span>剪映本地专属模板草稿缓存</span>
-                      <strong className="font-mono text-slate-900">1.1 GB</strong>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span>成片分集工程草稿与临时分镜</span>
-                      <strong className="font-mono text-slate-900">2.3 GB</strong>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span>渲染中间缓存与临时技术文件</span>
-                      <strong className="font-mono text-slate-900">0.4 GB</strong>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span>当前剧制作任务及生产排期关系</span>
-                      <strong className="font-mono text-slate-900">0.2 GB</strong>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span>素材扫描关系及解析缓存</span>
-                      <strong className="font-mono text-slate-900">0.7 GB</strong>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span>当前账号 × 剧专属模板草稿</span>
-                      <strong className="font-mono text-slate-900">1.1 GB</strong>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span>成片草稿及相关生成过程数据</span>
-                      <strong className="font-mono text-slate-900">2.3 GB</strong>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span>临时缓存与中间文件</span>
-                      <strong className="font-mono text-slate-900">0.4 GB</strong>
-                    </div>
-                  </>
+                {visibleCleanupItems.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-slate-700"><span className="min-w-0 truncate" title={item.name}>{item.name}</span><strong className="shrink-0 font-mono text-slate-900">{item.sizeText}</strong></div>)}
+                {hiddenCleanupItemCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCleanupListExpanded(true)}
+                    className="w-full pt-1 text-left text-[11px] font-bold text-slate-500 hover:text-[#1A1D2E] cursor-pointer"
+                  >
+                    已省略 {hiddenCleanupItemCount} 项，点击查看全部
+                  </button>
+                )}
+                {isCleanupListExpanded && cleanupItems.length > 10 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCleanupListExpanded(false)}
+                    className="w-full pt-1 text-left text-[11px] font-bold text-slate-500 hover:text-[#1A1D2E] cursor-pointer"
+                  >
+                    收起明细，仅显示前 10 项
+                  </button>
                 )}
               </div>
             </div>
@@ -1383,7 +1794,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                 <span className="font-extrabold text-xs text-[#1A1D2E]">预计释放磁盘空间</span>
               </div>
               <span className="font-black text-base text-[#1A1D2E] font-mono">
-                {selectedUnit.releaseStatus === 'registered' ? '3.8 GB' : '4.7 GB'}
+                {cleanupPreview?.estimatedSpaceText || '读取中'}
               </span>
             </div>
 
@@ -1410,7 +1821,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
 
               {selectedUnit.releaseStatus === 'registered' ? (
                 <button
-                  onClick={handleExecuteRegisteredCleanup}
+                  onClick={handleExecuteCleanup}
                   disabled={cleanupActionState === 'executing'}
                   className="px-4 py-2 rounded-xl bg-[#1A1D2E] hover:bg-black text-[#DDFD00] text-xs font-black transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
                 >
@@ -1419,7 +1830,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                 </button>
               ) : (
                 <button
-                  onClick={handleExecuteDeleteDramaTask}
+                  onClick={handleExecuteCleanup}
                   disabled={cleanupActionState === 'executing'}
                   className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
                 >
@@ -1433,57 +1844,82 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
         </div>
       )}
 
-      {/* Final Video Preview Modal */}
-      {previewVideo && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-black/[0.08] space-y-4 animate-in fade-in zoom-in-95">
+      {/* Completed final-video preview: only real, successfully exported MP4 files. */}
+      {isFinalVideoPreviewOpen && selectedUnit && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setIsFinalVideoPreviewOpen(false)}>
+          <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[calc(100vh-2rem)] p-5 shadow-2xl border border-black/[0.08] space-y-4 animate-in fade-in zoom-in-95 overflow-y-auto" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div>
-                <h3 className="font-black text-base text-[#1A1D2E]">{previewVideo.title}</h3>
-                <p className="text-xs text-[#64748B]">视频时长：{previewVideo.durationSec} 秒 · 草稿工程：{previewVideo.capcutDraftName}</p>
+                <h3 className="font-black text-base text-[#1A1D2E]">成片预览</h3>
+                <p className="text-xs text-[#64748B] mt-0.5">{selectedUnit.accountName} · {selectedUnit.dramaName}</p>
               </div>
-              <button 
-                onClick={() => setPreviewVideo(null)}
-                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-              >
+              <button onClick={() => setIsFinalVideoPreviewOpen(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer" title="关闭">
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            <div className="aspect-[9/16] max-h-[380px] mx-auto rounded-2xl bg-black overflow-hidden relative flex items-center justify-center">
-              {selectedUnit.coverUrl && <img 
-                src={selectedUnit.coverUrl} 
-                alt="Video Preview"
-                className="w-full h-full object-cover opacity-85"
-              />}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-4">
-                <div className="flex items-center gap-2 text-white">
-                  <span className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center">
-                    <Play className="w-4 h-4 fill-white" />
-                  </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {completedFinalVideos.map((video) => (
+                <div key={video.id} className="border border-black/[0.06] rounded-xl p-3 space-y-2.5">
+                  <video
+                    src={video.videoUrl}
+                    poster={video.thumbnailUrl}
+                    controls
+                    preload="none"
+                    playsInline
+                    muted
+                    className="final-preview-video w-full aspect-[9/20] object-contain bg-black rounded-lg cursor-pointer"
+                    title="单击播放或暂停"
+                    onPlay={(event) => {
+                      document.querySelectorAll<HTMLVideoElement>('.final-preview-video').forEach((other) => {
+                        if (other !== event.currentTarget) other.pause();
+                      });
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const element = event.currentTarget;
+                      if (element.paused) {
+                        void element.play().catch(() => undefined);
+                      } else {
+                        element.pause();
+                      }
+                    }}
+                  />
                   <div>
-                    <p className="text-xs font-bold">{previewVideo.title}</p>
-                    <p className="text-[10px] text-white/70">剪映已渲染成片 (1080×1920)</p>
+                    <p className="font-black text-xs text-[#1A1D2E]">{video.dramaPrefix}-{video.sequenceNumber}</p>
+                    <p className="text-[11px] text-[#64748B] mt-0.5 truncate" title={video.materialName}>{video.materialName || '—'}</p>
+                    <p className="text-[11px] text-[#64748B] mt-1">{formatElapsedSeconds(video.durationSec, '—')} · {video.fileSizeText}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => void handleOpenVideoDraft(video)}
+                      disabled={!canOpenFinalDraft || openingDraftVideoId === video.id}
+                      title={openFinalDraftHint}
+                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl border border-black/[0.06] bg-white hover:bg-slate-50 text-xs font-bold text-[#1A1D2E] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>{openingDraftVideoId === video.id ? '正在打开' : '打开草稿'}</span>
+                    </button>
+                    <button onClick={() => void handleReExportVideo(video)} disabled={!video.exportAttemptId} title="重新排入视频导出队列" className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>重新导出</span>
+                    </button>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="flex items-center justify-between pt-2 border-t border-black/[0.06] text-xs">
-              <span className="text-[#64748B]">
-                草稿耗时: {previewVideo.draftDuration} · 导出耗时: {previewVideo.exportDuration}
-              </span>
-              <button
-                onClick={() => {
-                  showToast(`🖥️ 已在剪映中打开草稿「${previewVideo.capcutDraftName}」`);
-                  setPreviewVideo(null);
-                }}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1A1D2E] text-white font-bold cursor-pointer"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>打开草稿</span>
-              </button>
+      {isTemplateVideoPreviewOpen && selectedUnit?.templateVideoUrl && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setIsTemplateVideoPreviewOpen(false)}>
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-5 shadow-2xl space-y-3" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+              <div><h3 className="font-black text-base text-[#1A1D2E]">模板视频预览</h3><p className="text-xs text-[#64748B]">{selectedUnit.accountName} · {selectedUnit.dramaName}</p></div>
+              <button onClick={() => setIsTemplateVideoPreviewOpen(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-500" title="关闭"><X className="w-4 h-4" /></button>
             </div>
+            <video src={selectedUnit.templateVideoUrl} controls autoPlay muted playsInline className="w-full max-h-[70vh] object-contain bg-black rounded-xl" />
           </div>
         </div>
       )}
@@ -1507,7 +1943,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
                   <h3 className="font-black text-base text-[#1A1D2E]">{previewMaterialClip.title}</h3>
                 </div>
                 <p className="text-xs text-[#64748B] mt-0.5">
-                  时长：{previewMaterialClip.durationText} · 大小: {previewMaterialClip.fileSizeText} · 分辨率: 1080×2400 (9:20)
+                  时长：{previewMaterialClip.durationText} · 大小: {previewMaterialClip.fileSizeText} · 分辨率: {previewMaterialClip.resolution || '读取中'}
                 </p>
               </div>
               <button 

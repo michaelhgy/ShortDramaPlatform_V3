@@ -9,16 +9,71 @@ import {
   MOCK_CANDIDATE_PRODUCTION_MATERIALS,
 } from '../assetsMockData';
 import { dataSource } from './dataSource';
-import { createV2Account, createV2AccountsBatch, createV2Drama, createV2DramasBatch, createV2SubTheater, createV2SubTheatersBatch, createV2Theater, createV2TheatersBatch, deleteV2Account, deleteV2Drama, deleteV2SubTheater, deleteV2Theater, getV2Accounts, getV2Dramas, getV2DramaProfiles, getV2ProductionResources, getV2SubTheaters, getV2Theaters, updateV2Account, updateV2Drama, updateV2SubTheater, updateV2Theater } from '../api/v2Catalog';
+import { createV2Account, createV2AccountsBatch, createV2Drama, createV2DramasBatch, createV2SubTheater, createV2SubTheatersBatch, createV2Theater, createV2TheatersBatch, deleteV2Account, deleteV2Drama, deleteV2SubTheater, deleteV2Theater, getV2Account, getV2Accounts, getV2Drama, getV2Dramas, getV2DramaProfiles, getV2ProductionResources, getV2SubTheaters, getV2Theaters, updateV2Account, updateV2Drama, updateV2SubTheater, updateV2Theater } from '../api/v2Catalog';
 import { toBusinessAccount, toBusinessDrama, toBusinessSubTheater, toBusinessTheater } from '../adapters/catalog';
-import type { AccountBusinessItem, DramaBusinessItem, ProductionResourceItem, SubTheaterBusinessItem, TheaterBusinessItem } from '../assetsTypes';
+import type { AccountBusinessItem, DramaBusinessItem, ProductionResourceItem, SubTheaterBusinessItem, TheaterBusinessItem, ViralAssetItem } from '../assetsTypes';
+
+type AssetsCenterSeed = {
+  accounts: AccountBusinessItem[];
+  theaters: TheaterBusinessItem[];
+  subTheaters: SubTheaterBusinessItem[];
+  dramas: DramaBusinessItem[];
+  profiles: any[];
+  productionResources: ProductionResourceItem[];
+  viralAssets: ViralAssetItem[];
+};
+let cachedAssetsSeed: AssetsCenterSeed | null = null;
+let assetsSeedPromise: Promise<AssetsCenterSeed> | null = null;
+const ASSETS_CACHE_KEY = 'v2-assets-center-seed-v1';
+const ASSETS_CACHE_UPDATED_KEY = `${ASSETS_CACHE_KEY}:updated-at`;
+
+export function getCachedAssetsCenterSeed(): AssetsCenterSeed | null {
+  if (!cachedAssetsSeed) {
+    try {
+      const raw = localStorage.getItem(ASSETS_CACHE_KEY);
+      cachedAssetsSeed = raw ? JSON.parse(raw) as AssetsCenterSeed : null;
+    } catch { cachedAssetsSeed = null; }
+  }
+  return cachedAssetsSeed;
+}
+
+function persistAssetsSeed(seed: AssetsCenterSeed): void {
+  cachedAssetsSeed = seed;
+  try { localStorage.setItem(ASSETS_CACHE_KEY, JSON.stringify(seed)); localStorage.setItem(ASSETS_CACHE_UPDATED_KEY, new Date().toISOString()); } catch { /* optional */ }
+}
+
+export async function refreshCachedAssetsItem(change: { accountId?: string; dramaId?: string; method?: string }): Promise<Partial<AssetsCenterSeed> | null> {
+  const current = getCachedAssetsCenterSeed();
+  if (!current) return null;
+  if (change.accountId) {
+    if (change.method === 'DELETE') {
+      const accounts = current.accounts.filter((item) => item.id !== change.accountId);
+      persistAssetsSeed({ ...current, accounts }); return { accounts };
+    }
+    const account = toBusinessAccount(await getV2Account(change.accountId));
+    const accounts = [...current.accounts.filter((item) => item.id !== account.id), account];
+    persistAssetsSeed({ ...current, accounts });
+    return { accounts };
+  }
+  if (change.dramaId) {
+    if (change.method === 'DELETE') {
+      const dramas = current.dramas.filter((item) => item.id !== change.dramaId);
+      persistAssetsSeed({ ...current, dramas }); return { dramas };
+    }
+    const drama = toBusinessDrama(await getV2Drama(change.dramaId));
+    const dramas = [...current.dramas.filter((item) => item.id !== drama.id), drama];
+    persistAssetsSeed({ ...current, dramas });
+    return { dramas };
+  }
+  return null;
+}
 
 /**
  * Temporary data boundary for the new Assets Center UI.
  * V2 mode loads only the V2 catalog. Modules without an implemented V2 contract
  * remain empty; mock content remains opt-in only.
  */
-export async function loadAssetsCenterSeed() {
+export async function loadAssetsCenterSeed(force = false) {
   if (dataSource === 'mock') {
     return {
       accounts: MOCK_BUSINESS_ACCOUNTS,
@@ -30,17 +85,25 @@ export async function loadAssetsCenterSeed() {
       viralAssets: MOCK_VIRAL_ASSETS,
     };
   }
+  if (cachedAssetsSeed && !force) return cachedAssetsSeed;
+  if (assetsSeedPromise) return assetsSeedPromise;
+  assetsSeedPromise = (async () => {
   const [accounts, theaters, subTheaters, dramas, profiles, productionResources] = await Promise.all([getV2Accounts(), getV2Theaters(), getV2SubTheaters(), getV2Dramas(), getV2DramaProfiles(), getV2ProductionResources()]);
   const dramaItems = dramas.items.map(toBusinessDrama);
   const profileItems = profiles.items.map((profile) => {
     const drama = dramaItems.find((item) => item.id === profile.drama_id);
     return drama ? { id: `profile-${profile.drama_id}`, dramaId: profile.drama_id, dramaCurrentName: drama.currentName, theaterName: drama.theaterName, category: '', tags: [], totalEpisodes: 0, cover: { filePath: profile.cover_path, mainCoverUrl: profile.cover_path ? `/api/v2/dramas/${profile.drama_id}/cover` : '' }, masterVideoPackage: { folderPath: profile.master_path, totalFiles: 0, totalSizeGb: 0, resolution: '', status: '待导入' as const, files: [] }, associatedViralAssetsCount: 0, updatedAt: profile.updated_at } : null;
   }).filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
-  return {
+  const seed = {
     accounts: accounts.items.map(toBusinessAccount),
     theaters: theaters.items.map(toBusinessTheater),
     subTheaters: subTheaters.items.map(toBusinessSubTheater), dramas: dramaItems, profiles: profileItems, productionResources: productionResources.items as ProductionResourceItem[], viralAssets: [],
   };
+  persistAssetsSeed(seed);
+  assetsSeedPromise = null;
+  return seed;
+  })();
+  try { return await assetsSeedPromise; } catch (error) { assetsSeedPromise = null; throw error; }
 }
 
 export function loadViralCandidateMaterials() {

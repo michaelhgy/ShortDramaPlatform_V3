@@ -34,14 +34,14 @@ export const DramaPriorityBanner: React.FC<DramaPriorityBannerProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h4 className="font-extrabold text-xs text-[#1A1D2E]">
-                今日剧集动态生产优先级调度
+                今日账号×剧集动态生产优先级调度
               </h4>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
                 动态保障最高优先级整剧交付
               </span>
             </div>
             <p className="text-[11px] text-[#64748B] mt-0.5">
-              首要排序：计划发布时间越早优先级越高；相同发布时间按开工时间优先。
+              每张卡对应一个账号×剧集发布计划；计划发布时间越早优先级越高，相同发布时间按开工时间优先。
             </p>
           </div>
         </div>
@@ -65,7 +65,7 @@ export const DramaPriorityBanner: React.FC<DramaPriorityBannerProps> = ({
 
           return (
             <div
-              key={item.dramaName}
+              key={item.productionTaskId}
               className={`p-2.5 rounded-xl border transition-all ${
                 item.priorityRank === 1
                   ? 'bg-amber-500/10 border-amber-500/30 shadow-2xs'
@@ -85,9 +85,14 @@ export const DramaPriorityBanner: React.FC<DramaPriorityBannerProps> = ({
                   >
                     #{item.priorityRank}
                   </span>
-                  <span className="font-extrabold text-xs text-[#1A1D2E] truncate max-w-[110px]" title={item.dramaName}>
-                    {item.dramaName}
-                  </span>
+                  <div className="min-w-0 leading-tight">
+                    <span className="block font-extrabold text-xs text-[#1A1D2E] truncate max-w-[110px]" title={item.dramaName}>
+                      {item.dramaName}
+                    </span>
+                    <span className="block text-[9px] text-[#64748B] truncate max-w-[110px]" title={item.accountName}>
+                      {item.accountName}
+                    </span>
+                  </div>
                 </div>
 
                 <span className="text-[10px] font-mono text-[#64748B]">
@@ -135,9 +140,9 @@ export const DramaPriorityBanner: React.FC<DramaPriorityBannerProps> = ({
         <div className="mt-3 p-3.5 bg-white rounded-xl border border-black/[0.06] space-y-2.5 text-xs text-[#64748B] animate-in fade-in duration-150">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-              <strong className="text-[#1A1D2E] block mb-1">🎯 1. 剧集优先级调度</strong>
+              <strong className="text-[#1A1D2E] block mb-1">🎯 1. 账号×剧集优先级调度</strong>
               <p className="text-[11px] leading-relaxed">
-                按照【计划发布时间早 &gt; 进场生产早】排序。成片生成器优先保障高优先级剧集尽快全量就绪，避免多剧平均分流导致首发剧延误。
+                每个账号发布同一剧集都独立计算。按照【计划发布时间早 &gt; 进场生产早】排序，成片生成器优先保障高优先级发布计划尽快全量就绪。
               </p>
             </div>
 

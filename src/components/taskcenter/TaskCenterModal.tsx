@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Zap, 
   X, 
@@ -25,9 +25,10 @@ import { ExecutorsOverview } from './ExecutorsOverview';
 import { DramaPriorityBanner } from './DramaPriorityBanner';
 import { TaskListSection } from './TaskListSection';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
-import { loadTaskCenterSeed } from '../../services/taskCenterService';
-import { cleanupV2OrphanTask, regenerateV2Template, retryV2Template, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
+import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, refreshSharedTaskCenterProductionTask, storeSharedTaskCenterSnapshot } from '../../services/taskCenterService';
+import { cleanupV2OrphanTask, regenerateV2Template, retryV2Template, reExportV2Task, setV2ExecutorPaused, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
 import { dataSource } from '../../services/dataSource';
+import { changeAffects, eventDetail } from '../../services/dataChangeEvents';
 
 interface TaskCenterModalProps {
   isOpen: boolean;
@@ -40,34 +41,83 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
   onClose,
   showToast,
 }) => {
-  const [executors, setExecutors] = useState<ExecutorInfo[]>(dataSource === 'mock' ? INITIAL_EXECUTORS : []);
-  const [tasks, setTasks] = useState<TaskItem[]>(dataSource === 'mock' ? INITIAL_PREVIEW_TASKS : []);
-  const [dramaPriorities, setDramaPriorities] = useState<DramaSchedulePriority[]>(dataSource === 'mock' ? INITIAL_DRAMA_PRIORITIES : []);
+  const cachedSnapshot = getCachedTaskCenterSnapshot();
+  const [executors, setExecutors] = useState<ExecutorInfo[]>(dataSource === 'mock' ? INITIAL_EXECUTORS : (cachedSnapshot?.executors || []));
+  const [tasks, setTasks] = useState<TaskItem[]>(dataSource === 'mock' ? INITIAL_PREVIEW_TASKS : (cachedSnapshot?.tasks || []));
+  const [dramaPriorities, setDramaPriorities] = useState<DramaSchedulePriority[]>(dataSource === 'mock' ? INITIAL_DRAMA_PRIORITIES : (cachedSnapshot?.dramaPriorities || []));
   const [isQueuePaused, setIsQueuePaused] = useState(false);
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(() => {
+    try { const value = localStorage.getItem('v2-task-center-snapshot-v1:updated-at'); return value ? new Date(value) : null; } catch { return null; }
+  });
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<TaskItem | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [retryConfirmTask, setRetryConfirmTask] = useState<TaskItem | null>(null);
   const [orphanCleanupTask, setOrphanCleanupTask] = useState<TaskItem | null>(null);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  const tasksRef = useRef<TaskItem[]>([]);
+
+  // Durations are display-only: the backend supplies started/completed times,
+  // while this lightweight clock keeps active timers ticking without polling.
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isOpen]);
+
+  const liveTasks = useMemo(() => tasks.map((task) => {
+    if (!task.startedAt || task.completedAt || task.status !== 'running') return task;
+    const started = Date.parse(task.startedAt);
+    if (!Number.isFinite(started)) return task;
+    return { ...task, durationSeconds: Math.max(0, Math.floor((clockNow - started) / 1000)) };
+  }), [tasks, clockNow]);
+
+  const liveExecutors = useMemo(() => executors.map((executor) => {
+    const task = liveTasks.find((item) => item.id === executor.currentTaskId);
+    if (!task || !task.startedAt || executor.status !== 'running') return executor;
+    const started = Date.parse(task.startedAt);
+    return Number.isFinite(started) ? { ...executor, runningSeconds: Math.max(0, Math.floor((clockNow - started) / 1000)) } : executor;
+  }), [executors, liveTasks, clockNow]);
 
   useEffect(() => {
     if (!isOpen || dataSource === 'mock') return;
     let active = true;
-    const refresh = () => loadTaskCenterSeed().then((snapshot) => {
+    const refresh = () => loadSharedTaskCenter(true).then((snapshot) => {
       if (!active) return;
       setExecutors(snapshot.executors);
+      tasksRef.current = snapshot.tasks;
       setTasks(snapshot.tasks);
       setDramaPriorities(snapshot.dramaPriorities);
+      setLastRefreshAt(new Date());
       if (typeof snapshot.isQueuePaused === 'boolean') setIsQueuePaused(snapshot.isQueuePaused);
     }).catch(() => {
-      if (active) {
-        setExecutors([]);
-        setTasks([]);
-        setDramaPriorities([]);
-      }
+      // Keep the last confirmed snapshot. A transient local-service request
+      // failure must not make the entire task center appear empty.
     });
     refresh();
-    const timer = window.setInterval(refresh, 1000);
-    return () => { active = false; window.clearInterval(timer); };
+    let timer: number | undefined;
+    const schedule = () => {
+      if (timer) window.clearTimeout(timer);
+      const delay = document.hidden ? 60000 : (tasksRef.current.some((task) => task.status === 'running') ? 30000 : 60000);
+      timer = window.setTimeout(() => { refresh(); schedule(); }, delay);
+    };
+    schedule();
+    const onVisibilityChange = () => { if (!document.hidden) refresh(); schedule(); };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const onDataChanged = (event: Event) => {
+      const detail = eventDetail(event);
+      if (!changeAffects(detail, 'task_center')) return;
+      if (detail.productionTaskId) {
+        void refreshSharedTaskCenterProductionTask(detail.productionTaskId).then((changed) => {
+          if (!active) return;
+          setTasks((previous) => [...previous.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed]);
+          tasksRef.current = [...tasksRef.current.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed];
+          setLastRefreshAt(new Date());
+        }).catch(() => undefined);
+      } else { refresh(); }
+      schedule();
+    };
+    window.addEventListener('v2-data-changed', onDataChanged);
+    return () => { active = false; if (timer) window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisibilityChange); window.removeEventListener('v2-data-changed', onDataChanged); };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -78,13 +128,17 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
   const timeoutTasksCount = tasks.filter(t => t.isTimeout || t.status === 'timeout').length;
   const waitingTasksCount = tasks.filter(t => t.status === 'waiting').length;
   const doneTasksCount = tasks.filter(t => t.status === 'done').length;
+  const retryIsVideoExport = retryConfirmTask?.executorId === 'video_exporter' || retryConfirmTask?.taskType === 'video_export' || ['error', 'timeout'].includes(retryConfirmTask?.videoStage?.status || '');
 
   // Action 1: 重试 (Retry) -> 先确认，再针对当前任务重新执行
   const executeRetryTask = (task: TaskItem) => {
     if (dataSource !== 'mock') {
-      retryV2Template(task.id).then(() => {
+      const retryRequest = task.executorId === 'video_exporter' || task.taskType === 'video_export' || ['error', 'timeout'].includes(task.videoStage?.status || '')
+        ? reExportV2Task(task.videoExportTaskId || task.id)
+        : retryV2Template(task.id);
+      retryRequest.then(() => {
         showToast(`⚡ [重试] 已停止并重新排队：《${task.title}》`);
-        return loadTaskCenterSeed();
+        return loadSharedTaskCenter(true);
       }).then((snapshot) => {
         setExecutors(snapshot.executors); setTasks(snapshot.tasks); setDramaPriorities(snapshot.dramaPriorities);
       }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '任务重新执行失败，请稍后重试。'));
@@ -137,7 +191,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
   const executeOrphanCleanup = (task: TaskItem) => {
     cleanupV2OrphanTask(task.id).then(() => {
       showToast('异常任务记录已清理');
-      return loadTaskCenterSeed();
+      return loadSharedTaskCenter(true);
     }).then((snapshot) => {
       setExecutors(snapshot.executors); setTasks(snapshot.tasks); setDramaPriorities(snapshot.dramaPriorities);
       setSelectedTaskForDetail(null);
@@ -150,7 +204,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
     if (dataSource !== 'mock') {
       regenerateV2Template(task.id).then(() => {
         showToast(`模板已重新排入队列：《${task.dramaName}》`);
-        return loadTaskCenterSeed();
+      return loadSharedTaskCenter(true);
       }).then((snapshot) => {
         setExecutors(snapshot.executors); setTasks(snapshot.tasks); setDramaPriorities(snapshot.dramaPriorities);
       }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '模板重新生成失败，请稍后重试。'));
@@ -182,6 +236,13 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
 
   // Action 3: 重新导出 (Re-export) -> 针对模板或成片重新走剪映导出
   const handleReExportVideo = (task: TaskItem) => {
+    if (dataSource !== 'mock') {
+      reExportV2Task(task.videoExportTaskId || task.id).then(() => loadSharedTaskCenter(true)).then((snapshot) => {
+        setExecutors(snapshot.executors); setTasks(snapshot.tasks); setDramaPriorities(snapshot.dramaPriorities);
+        showToast(`视频已重新排入导出队列：《${task.dramaName}》`);
+      }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '重新导出失败，请稍后重试。'));
+      return;
+    }
     const isTemplate = task.taskCategory === 'template';
     setTasks(prev => prev.map(current => current.id === task.id ? {
       ...current,
@@ -211,6 +272,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
     setIsQueuePaused(next);
     if (dataSource !== 'mock') {
       setV2TaskCenterPaused(next).then((snapshot) => {
+        storeSharedTaskCenterSnapshot(snapshot);
         setExecutors(snapshot.executors);
         setTasks(snapshot.tasks);
         setDramaPriorities(snapshot.dramaPriorities);
@@ -220,6 +282,17 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
       });
     }
     showToast(next ? '⏸️ 全局后台执行队列已暂停' : '▶️ 全局后台执行队列已恢复调度');
+  };
+
+  const handleToggleExecutor = (executor: ExecutorInfo) => {
+    const shouldPause = executor.status !== 'manual_paused' && executor.status !== 'error_paused';
+    setV2ExecutorPaused(executor.id, shouldPause).then((snapshot) => {
+      storeSharedTaskCenterSnapshot(snapshot);
+      setExecutors(snapshot.executors);
+      setTasks(snapshot.tasks);
+      setDramaPriorities(snapshot.dramaPriorities);
+      showToast(shouldPause ? `${executor.name} 已请求暂停，当前任务结束后生效` : `${executor.name} 已恢复运行`);
+    }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '执行器状态更新失败，请稍后重试。'));
   };
 
   return (
@@ -253,7 +326,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-[#64748B] mt-0.5">
-                实时把控视频导出器、成片生成器、模板生成器运行状态与整体生产节奏
+                实时把控视频导出器、成片生成器、模板生成器运行状态与整体生产节奏{lastRefreshAt && <span className="ml-2 text-slate-400">更新于 {lastRefreshAt.toLocaleTimeString('zh-CN')}</span>}
               </p>
             </div>
           </div>
@@ -331,10 +404,11 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           {/* Section 1: Three Independent Executors (Top Core) */}
           <ExecutorsOverview
-            executors={executors}
-            tasks={tasks}
+            executors={liveExecutors}
+            tasks={liveTasks}
             onRetryTask={handleRetryTask}
             onViewTaskDetail={(task) => setSelectedTaskForDetail(task)}
+            onToggleExecutor={handleToggleExecutor}
           />
 
           {/* Section 2: Dynamic Scheduling Priority Banner */}
@@ -342,7 +416,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
 
           {/* Section 3: Task List Section (Bottom Detailed Tasks) */}
           <TaskListSection
-            tasks={tasks}
+            tasks={liveTasks}
             onRetryTask={handleRetryTask}
             onRegenerateDraft={handleRegenerateDraft}
             onReExportVideo={handleReExportVideo}
@@ -407,10 +481,10 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
               </div>
               <div className="min-w-0">
                 <h3 id="retry-confirm-title" className="text-sm font-extrabold text-[#1A1D2E]">
-                  确认重新执行任务？
+                  {retryIsVideoExport ? '确认重新导出视频？' : '确认重新执行任务？'}
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-[#64748B] break-words">
-                  将结束当前异常任务并重新执行：{retryConfirmTask.title}
+                  {retryIsVideoExport ? '将保留现有草稿，并重新排入视频导出队列：' : '将结束当前异常任务并重新执行：'}{retryConfirmTask.title}
                 </p>
               </div>
               <button
@@ -436,7 +510,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
                 onClick={() => executeRetryTask(retryConfirmTask)}
                 className="px-3.5 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] text-xs font-bold hover:bg-black transition-all cursor-pointer shadow-xs"
               >
-                确认重试
+                {retryIsVideoExport ? '确认重新导出' : '确认重试'}
               </button>
             </div>
           </div>

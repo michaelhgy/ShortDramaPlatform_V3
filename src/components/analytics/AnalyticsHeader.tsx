@@ -58,19 +58,11 @@ export const AnalyticsHeader: React.FC<AnalyticsHeaderProps> = ({
   const dataCapabilityHint = React.useMemo(() => {
     switch (selectedTheater) {
       case 'all':
-        return '收益覆盖全部 5 个剧场 · 视频级指标由青柠剧场提供';
+        return '当前第一期仅接入青柠剧场真实收益数据';
       case 'qingning':
         return '青柠剧场 · 支持收益、视频播放、剧集播放数据';
-      case 'jiuzhou':
-        return '九州剧场 · 当前剧场支持收益数据 · 暂无平台视频级数据';
-      case 'dianzhong':
-        return '点众微剧 · 当前剧场支持收益数据 · 暂无平台视频级数据';
-      case 'fanqie':
-        return '番茄剧场 · 当前剧场支持收益数据 · 暂无平台视频级数据';
-      case 'huasheng':
-        return '花生剧场 · 当前剧场支持推测收益 · 暂无平台视频级数据';
       default:
-        return '当前剧场支持收益数据';
+        return '该剧场尚未接入真实收益数据';
     }
   }, [selectedTheater]);
 
@@ -92,6 +84,7 @@ export const AnalyticsHeader: React.FC<AnalyticsHeaderProps> = ({
   const timeRanges: { key: TimeRangeFilter; label: string }[] = [
     { key: 'yesterday', label: '昨日' },
     { key: '7days', label: '近7日' },
+    { key: '14days', label: '近14日' },
     { key: '30days', label: '近30日' },
     { key: 'this_month', label: '本月' },
     { 
@@ -103,17 +96,11 @@ export const AnalyticsHeader: React.FC<AnalyticsHeaderProps> = ({
   ];
 
   const theaters: { key: TheaterFilter; label: string }[] = [
-    { key: 'all', label: '全部剧场' },
     { key: 'qingning', label: '青柠剧场' },
-    { key: 'jiuzhou', label: '九州剧场' },
-    { key: 'dianzhong', label: '点众微剧' },
-    { key: 'fanqie', label: '番茄剧场' },
-    { key: 'huasheng', label: '花生剧场' },
   ];
 
   const handleTimeRangeClick = (key: TimeRangeFilter) => {
     if (key === 'custom') {
-      onTimeRangeChange('custom');
       setIsDatePickerOpen(true);
     } else {
       onTimeRangeChange(key);

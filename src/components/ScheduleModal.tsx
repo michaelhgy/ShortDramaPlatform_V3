@@ -17,7 +17,6 @@ import {
   AlertCircle,
   Calendar,
   SlidersHorizontal,
-  Flame,
   CheckCircle2,
   Trash2,
   ArrowRight,
@@ -51,6 +50,13 @@ const publishLabel = (value: string) => {
   if (dateValue === tomorrow) return `明天 ${timeValue}`;
   const [, month, day] = dateValue.split('-');
   return `${Number(month)}月${Number(day)}日 ${timeValue}`;
+};
+
+const scheduleDateLabel = (value?: string) => {
+  if (!value) return '尚未安排';
+  const dateValue = value.slice(0, 10);
+  const [, month, day] = dateValue.split('-');
+  return month && day ? `最近安排：${Number(month)}月${Number(day)}日` : '尚未安排';
 };
 
 interface ScheduleModalProps {
@@ -195,8 +201,16 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       list = list.filter(d => (d.theaterName || '青柠剧场') === lockedTheaterName);
     }
 
-    // 2. Default sort by historical usage frequency (usageCount) descending
-    list = [...list].sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+    // 活跃度：当前正在排队/生产优先，其次最近安排，再其次生产次数。
+    list = [...list].sort((left, right) => {
+      const active = (right.activeProductionCount || 0) - (left.activeProductionCount || 0);
+      if (active) return active;
+      const recent = Date.parse(right.lastScheduledAt || '') - Date.parse(left.lastScheduledAt || '');
+      if (Number.isFinite(recent) && recent) return recent;
+      const produced = (right.productionCount || 0) - (left.productionCount || 0);
+      if (produced) return produced;
+      return left.name.localeCompare(right.name, 'zh-CN');
+    });
 
     // 3. Fuzzy / substring search (contains matching)
     if (dramaSearchTerm.trim()) {
@@ -344,7 +358,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       totalEpisodes: newDramaEpisodes || 80,
       theaterName: effectiveTheater,
       theaterId: effectiveTheater === '青柠剧场' ? 'th-qn' : 'th-01',
-      usageCount: 1, // newly created
+      productionCount: 0,
+      lastScheduledAt: '',
       colorPlaceholder: {
         bg: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
         text: '#DDFD00',
@@ -510,7 +525,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                       <div className={`text-[10px] mt-1 flex items-center gap-2 ${
                         isSelected ? 'text-slate-300' : isTheaterMismatch ? 'text-slate-300' : 'text-slate-500'
                       }`}>
-                        <span>昨日 ¥{acc.yesterdayRevenue.toFixed(2)}</span>
+                        <span>{acc.yesterdayRevenueState === 'success'
+                          ? `昨日 ¥${acc.yesterdayRevenue.toFixed(2)}`
+                          : acc.yesterdayRevenueState === 'no_data' ? '昨日无结算数据'
+                            : acc.yesterdayRevenueState === 'failed' ? '昨日采集失败'
+                              : '昨日未采集'}</span>
                         <span>·</span>
                         <span>{acc.manualStatus}</span>
                       </div>
@@ -546,7 +565,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 <div className="w-5 h-5 rounded-lg bg-[#1A1D2E] text-[#DDFD00] flex items-center justify-center text-[10px] font-bold">
                   2
                 </div>
-                <span>选择剧集（按历史使用频次排序 · 支持多选）</span>
+                <span>选择剧集（按活跃度排序 · 支持多选）</span>
               </label>
 
               <div className="flex items-center gap-2">
@@ -624,7 +643,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             </div>
 
             {/* Dramas Candidate List */}
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-1">
               {displayedDramas.length > 0 ? (
                 displayedDramas.map(drama => {
                   const isSelected = selectedDramaIds.includes(drama.id);
@@ -633,7 +652,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                       key={drama.id}
                       type="button"
                       onClick={() => handleToggleDrama(drama.id)}
-                      className={`w-full p-2.5 rounded-xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
+                      className={`min-h-[86px] w-full p-2.5 rounded-xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
                         isSelected
                           ? 'bg-[#1A1D2E]/[0.03] border-[#1A1D2E] shadow-2xs'
                           : 'bg-[#F8FAFC] border-black/[0.05] hover:bg-white hover:border-black/[0.1]'
@@ -647,26 +666,18 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                       />
 
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-extrabold text-xs text-[#1A1D2E] truncate">
+                        <div className="flex items-start gap-1.5">
+                          <span className="line-clamp-2 font-extrabold text-xs leading-5 text-[#1A1D2E]">
                             《{drama.name}》
                           </span>
-                          {drama.usageCount && drama.usageCount > 50 && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200/80 font-bold shrink-0">
-                              <Flame className="w-2.5 h-2.5 text-amber-600" />
-                              高频常用
-                            </span>
-                          )}
                         </div>
 
-                        <div className="text-[10px] text-[#64748B] flex items-center gap-2 mt-1">
-                          <span>{drama.category || '短剧'}</span>
-                          <span>·</span>
-                          <span>共 {drama.totalEpisodes || 80} 集</span>
-                          <span>·</span>
+                        <div className="text-[10px] text-[#64748B] flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
                           <span className="text-slate-500 font-mono">
-                            历史生产 {drama.usageCount || 1} 次
+                            生产 {drama.productionCount || 0} 次
                           </span>
+                          <span>·</span>
+                          <span>{scheduleDateLabel(drama.lastScheduledAt)}</span>
                         </div>
                       </div>
 
@@ -796,7 +807,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                           <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
                             <span>所属剧场: {combo.account.theaterName || lockedTheaterName}</span>
                             <span>·</span>
-                            <span>单集 {combo.drama.totalEpisodes || 80} 集</span>
+                            <span>生产 {combo.drama.productionCount || 0} 次</span>
                           </div>
                         </div>
                       </div>

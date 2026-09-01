@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { useAdaptivePageSize } from '../../hooks/useAdaptivePageSize';
+import { formatDisplayDateTime } from '../../utils/dateDisplay';
 import { DramaContentProfile, DramaBusinessItem, ViralAssetItem } from '../../assetsTypes';
 import {
   Film,
@@ -63,7 +65,8 @@ export const DramaLibraryTab: React.FC<DramaLibraryTabProps> = ({
 
   // Drama list pagination
   const [dramaListPage, setDramaListPage] = useState(1);
-  const DRAMAS_PER_PAGE = 7;
+  const [dramaListElement, setDramaListElement] = useState<HTMLDivElement | null>(null);
+  const dramasPerPage = useAdaptivePageSize(dramaListElement, 70, { minimum: 4, footerHeight: 72 });
 
   // New tag input
   const [newTagInput, setNewTagInput] = useState('');
@@ -131,11 +134,15 @@ export const DramaLibraryTab: React.FC<DramaLibraryTabProps> = ({
   }, [dramas, profiles, searchTerm, selectedTheaterFilter]);
 
   // Paginated dramas
-  const totalPages = Math.max(1, Math.ceil(filteredDramas.length / DRAMAS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(filteredDramas.length / dramasPerPage));
   const paginatedDramas = useMemo(() => {
-    const start = (dramaListPage - 1) * DRAMAS_PER_PAGE;
-    return filteredDramas.slice(start, start + DRAMAS_PER_PAGE);
-  }, [filteredDramas, dramaListPage]);
+    const start = (dramaListPage - 1) * dramasPerPage;
+    return filteredDramas.slice(start, start + dramasPerPage);
+  }, [filteredDramas, dramaListPage, dramasPerPage]);
+
+  React.useEffect(() => {
+    setDramaListPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   const handleCopyFolder = (path: string) => {
     navigator.clipboard.writeText(path);
@@ -286,7 +293,7 @@ export const DramaLibraryTab: React.FC<DramaLibraryTabProps> = ({
           </div>
 
           {/* Drama Cards List */}
-          <div className="space-y-1.5 min-h-[360px]">
+          <div ref={setDramaListElement} className="space-y-1.5 min-h-[280px]">
             {paginatedDramas.length > 0 ? (
               paginatedDramas.map(drama => {
                 const isSelected = drama.id === currentDramaId;
@@ -434,7 +441,7 @@ export const DramaLibraryTab: React.FC<DramaLibraryTabProps> = ({
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        <span>更新于 {currentProfile.updatedAt}</span>
+                        <span>更新于 {formatDisplayDateTime(currentProfile.updatedAt)}</span>
                       </span>
                     </div>
                   </div>

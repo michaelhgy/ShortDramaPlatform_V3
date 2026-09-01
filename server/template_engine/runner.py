@@ -135,6 +135,10 @@ def run_template_job(job_id: str) -> None:
             pairing_path = Path(str(row["template_path"])) / f"{service.template_stem(row)}-配对参数.json"
             pairing_path.write_text(json.dumps(_pairing_payload(decision, draft_path), ensure_ascii=False, indent=2), encoding="utf-8")
             _set_job(job_id, status="draft_ready", draft_path=str(draft_path), pairing_path=str(pairing_path), finished_at=service.now_text(), error_message="")
+            # A ready template automatically becomes a queued template-video export.
+            # The export job is idempotent per template version.
+            service.ensure_export_job_for_template(row, draft_path=draft_path)
+            _report_executor("completed")
         except subprocess.TimeoutExpired:
             if _is_retry_requested(job_id):
                 _requeue_after_retry(job_id, row)
@@ -157,8 +161,12 @@ def _fail(job_id: str, row: object, message: str, *, status: str = "error") -> N
         attempt_root = Path(str(row["template_path"])) / f"R{int(row['version_no']):02d}"  # type: ignore[index]
         for child_name in ("模板剧照缓存", "照片缓存"):
             shutil.rmtree(attempt_root / child_name, ignore_errors=True)
+        draft_path = Path(str(row["draft_path"] or ""))  # type: ignore[index]
+        if draft_path and draft_path.name and draft_path.exists():
+            shutil.rmtree(draft_path, ignore_errors=True)
     finally:
         _set_job(job_id, status=status, error_message=message, finished_at=service.now_text())
+        _report_executor("timed_out" if status == "timeout" else "failed", message)
 
 
 def _is_retry_requested(job_id: str) -> bool:
@@ -173,7 +181,21 @@ def _is_retry_requested(job_id: str) -> bool:
 def _requeue_after_retry(job_id: str, row: object) -> None:
     """Clean the interrupted attempt, then reuse its version for a fresh run."""
     _fail(job_id, row, "人工重试：已停止当前执行并重新排队", status="error")
-    service.queue_template_job(str(row["task_id"]), regenerate=True)  # type: ignore[index]
+    service.queue_template_job(str(row["task_id"]), retry=True)  # type: ignore[index]
+
+
+def _report_executor(outcome: str, message: str = "") -> None:
+    """Release this executor and apply the shared failure policy."""
+    conn = service.connection()
+    try:
+        from server.executor_management import ExecutorManager
+        manager = ExecutorManager(conn)
+        manager.report_result("template_generator", outcome=outcome)
+        if message:
+            conn.execute("UPDATE executor_controls SET last_error_message=? WHERE executor_id=?", (message, "template_generator"))
+            conn.commit()
+    finally:
+        conn.close()
 
 
 def request_retry(job_id: str) -> dict[str, object]:
@@ -188,7 +210,7 @@ def request_retry(job_id: str) -> dict[str, object]:
     status = str(row["status"])
     if status in {"queued", "dispatching"}:
         _fail(job_id, row, "人工重试：原任务已取消并重新排队", status="error")
-        return service.queue_template_job(str(row["task_id"]), regenerate=True)
+        return service.queue_template_job(str(row["task_id"]), retry=True)
     if status not in {"running", "error", "timeout", "retry_requested"}:
         raise ValueError("当前任务状态不支持重试")
     with PROCESS_LOCK:
@@ -204,4 +226,4 @@ def request_retry(job_id: str) -> dict[str, object]:
         process.terminate()
         return {"id": job_id, "task_id": str(row["task_id"]), "status": "retry_requested"}
     _fail(job_id, row, "人工重试：原任务已清理并重新排队", status="error")
-    return service.queue_template_job(str(row["task_id"]), regenerate=True)
+    return service.queue_template_job(str(row["task_id"]), retry=True)

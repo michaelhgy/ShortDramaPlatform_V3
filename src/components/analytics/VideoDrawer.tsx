@@ -38,6 +38,7 @@ export const VideoDrawer: React.FC<VideoDrawerProps> = ({
   const timeRangeLabelMap: Record<TimeRangeFilter, string> = {
     yesterday: '昨日 (08-23)',
     '7days': '近7日 (08-17 ~ 08-23)',
+    '14days': '近14日 (08-10 ~ 08-23)',
     '30days': '近30日 (07-25 ~ 08-23)',
     this_month: '本月 (08-01 ~ 08-23)',
     custom: '自定义周期',

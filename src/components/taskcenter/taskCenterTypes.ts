@@ -17,7 +17,12 @@ export interface ExecutorInfo {
   name: string;
   subtitle: string;
   description: string;
-  status: 'running' | 'idle' | 'waiting';
+  status: 'running' | 'idle' | 'waiting' | 'pausing' | 'manual_paused' | 'error_paused';
+  controlState?: 'idle' | 'running' | 'pausing' | 'manual_paused' | 'error_paused';
+  pauseRequested?: boolean;
+  pauseReason?: string;
+  consecutiveFailures?: number;
+  lastErrorMessage?: string;
   currentTaskId: string | null;
   runningSeconds: number;
   isTimeout: boolean;
@@ -33,6 +38,8 @@ export interface ExecutorInfo {
 
 export interface TaskItem {
   id: string;
+  /** Owning account × drama production task; used for targeted refresh. */
+  productionTaskId?: string;
   // Core Business Identity
   taskCategory: TaskCategory; // 'template' | 'final_video'
   accountName: string; // e.g. "微雨问海棠火"
@@ -46,18 +53,22 @@ export interface TaskItem {
     status: DraftStageStatus; // 'waiting' | 'running' | 'done' | 'error' | 'timeout'
     progress?: number; // 0 - 100
     durationFormatted?: string;
+    durationSeconds?: number;
     errorDetail?: string;
   };
   videoStage: {
     status: VideoStageStatus; // 'idle' | 'waiting' | 'running' | 'done' | 'error' | 'timeout'
+    rawStatus?: string;
     progress?: number; // 0 - 100
     durationFormatted?: string;
+    durationSeconds?: number;
     errorDetail?: string;
   };
 
   // Scheduling & Priority
   scheduledPublishTime: string; // e.g. "18:00"
   priorityRank: number; // 1 = highest
+  sequenceNo?: number; // 成片在所属剧集中的素材序号
   priorityTag?: string; // e.g. "优先 #1", "模板优先"
   
   // High-level status & timing
@@ -84,6 +95,8 @@ export interface TaskItem {
   // File paths & Diagnostics
   draftPath?: string;
   outputPath?: string;
+  /** Underlying export-attempt id used by the re-export API after card merge. */
+  videoExportTaskId?: string;
   fileSizeMb?: number;
   diagnosticLog?: string;
   errorDetail?: string;
@@ -96,6 +109,8 @@ export interface TaskItem {
 }
 
 export interface DramaSchedulePriority {
+  productionTaskId: string;
+  accountName: string;
   dramaName: string;
   scheduledPublishTime: string;
   priorityRank: number;

@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { StatusBadge } from './common/StatusBadge';
 import { HelpTooltip, ModuleInfoPopover } from './common/HelpTooltip';
+import { toQingningCombinationMatrix } from '../../adapters/revenue';
+import type { VideoAnalysisResult } from '../../utils/videoEngine';
 
 interface CombinationModuleProps {
   timeRange: TimeRangeFilter;
@@ -32,6 +34,7 @@ interface CombinationModuleProps {
   customEndDate?: string;
   onNavigateToTab?: (tab: AnalyticsTopTab, entityId?: string) => void;
   onScheduleToday?: (dramaId?: string, accountId?: string) => void;
+  videoAnalysis?: VideoAnalysisResult;
 }
 
 export const CombinationModule: React.FC<CombinationModuleProps> = ({
@@ -41,6 +44,7 @@ export const CombinationModule: React.FC<CombinationModuleProps> = ({
   customEndDate,
   onNavigateToTab,
   onScheduleToday,
+  videoAnalysis,
 }) => {
   // 1. Core State: Default metric is 'total_revenue' (总收益)
   const [dimension, setDimension] = useState<CombinationDimension>('account_x_drama');
@@ -49,6 +53,7 @@ export const CombinationModule: React.FC<CombinationModuleProps> = ({
 
   // 2. Compute dynamic combination matrix based on Global Filters (timeRange & selectedTheater)
   const matrixData = useMemo(() => {
+    if (videoAnalysis) return toQingningCombinationMatrix(videoAnalysis, dimension, metric, timeRange, selectedTheater);
     return calculateCombinationMatrix(
       dimension, 
       metric, 
@@ -57,14 +62,14 @@ export const CombinationModule: React.FC<CombinationModuleProps> = ({
       customStartDate,
       customEndDate
     );
-  }, [dimension, metric, timeRange, selectedTheater, customStartDate, customEndDate]);
+  }, [dimension, metric, timeRange, selectedTheater, customStartDate, customEndDate, videoAnalysis]);
 
   const { rowHeaders, colHeaders, cellMap, percentiles } = matrixData;
 
   const dimensionLabels: Record<CombinationDimension, string> = {
     account_x_drama: '账号 × 剧集',
-    account_x_location: '账号 × 虚拟定位',
-    drama_x_location: '剧集 × 虚拟定位',
+    account_x_location: '账号 × 发布地址',
+    drama_x_location: '剧集 × 发布地址',
   };
 
   const metricLabels: Record<CombinationMetric, string> = {
@@ -78,6 +83,7 @@ export const CombinationModule: React.FC<CombinationModuleProps> = ({
   const timeRangeLabels: Record<TimeRangeFilter, string> = {
     yesterday: '昨日 (2026-08-23)',
     '7days': '近7日 (2026-08-17 ~ 2026-08-23)',
+    '14days': '近14日 (2026-08-10 ~ 2026-08-23)',
     '30days': '近30日 (2026-07-25 ~ 2026-08-23)',
     this_month: '本月 (2026-08-01 ~ 2026-08-23)',
     custom: `自定义 (${customStartDate || '2026-08-10'} ~ ${customEndDate || '2026-08-23'})`,
@@ -168,7 +174,7 @@ export const CombinationModule: React.FC<CombinationModuleProps> = ({
                 title="组合矩阵说明"
                 content={
                   <>
-                    <p>• <strong>矩阵维度</strong>：支持账号×剧集、账号×虚拟定位、剧集×虚拟定位三种交织分析。</p>
+                    <p>• <strong>矩阵维度</strong>：支持账号×剧集、账号×发布地址、剧集×发布地址三种交织分析。</p>
                     <p>• <strong>默认指标</strong>：严格默认「总收益」，避免均值受极值误导。</p>
                     <p>• <strong>样本规模</strong>：发布次数标记样本丰富度，辅助判断组合真实置信度。</p>
                     <p>• <strong>业务边界</strong>：严格遵守「一部剧归属单一剧场」，跨剧场组合直接标明「不适用」。</p>
@@ -266,7 +272,7 @@ export const CombinationModule: React.FC<CombinationModuleProps> = ({
                 <tr>
                   {/* Top-Left Corner Header */}
                   <th className="sticky top-0 left-0 z-20 bg-slate-100 p-2.5 text-left font-bold text-[#1A1D2E] border-b border-r border-black/[0.08] min-w-[150px] shadow-2xs">
-                    {dimension === 'drama_x_location' ? '剧集 \\ 虚拟定位' : dimension === 'account_x_location' ? '账号 \\ 虚拟定位' : '账号 \\ 剧集'}
+                    {dimension === 'drama_x_location' ? '剧集 \\ 发布地址' : dimension === 'account_x_location' ? '账号 \\ 发布地址' : '账号 \\ 剧集'}
                   </th>
 
                   {/* Column Headers */}
@@ -564,7 +570,7 @@ export const CombinationModule: React.FC<CombinationModuleProps> = ({
                             <th className="py-2.5 px-3 min-w-[140px]">成片/视频名称</th>
                             <th className="py-2.5 px-3 whitespace-nowrap">账号</th>
                             <th className="py-2.5 px-3 whitespace-nowrap">剧集</th>
-                            <th className="py-2.5 px-3 min-w-[130px]">虚拟定位</th>
+                            <th className="py-2.5 px-3 min-w-[130px]">发布地址</th>
                             <th className="py-2.5 px-3 text-right whitespace-nowrap">收益 (¥)</th>
                             <th className="py-2.5 px-3 text-right whitespace-nowrap">视频播放</th>
                             <th className="py-2.5 px-3 text-right whitespace-nowrap">剧集播放</th>

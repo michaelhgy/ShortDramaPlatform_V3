@@ -10,12 +10,14 @@ import {
   ViralAssetItem,
 } from '../../assetsTypes';
 import { calculateResourceMetrics } from '../../utils/resourceMetrics';
-import { loadAssetsCenterSeed } from '../../services/assetsCenterService';
+import { getCachedAssetsCenterSeed, loadAssetsCenterSeed, refreshCachedAssetsItem } from '../../services/assetsCenterService';
 import { BusinessDataTab } from './BusinessDataTab';
 import { DramaLibraryTab } from './DramaLibraryTab';
 import { ProductionResourcesTab } from './ProductionResourcesTab';
 import { ViralAssetsTab } from './ViralAssetsTab';
 import { openV2Folder } from '../../api/v2Catalog';
+import { getV2ProductionResources } from '../../api/v2Catalog';
+import { changeAffects, eventDetail } from '../../services/dataChangeEvents';
 import {
   Building2,
   Film,
@@ -36,13 +38,17 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
   const [activeTab, setActiveTab] = useState<AssetsCenterTab>('business_data');
 
   // State collections
-  const [accounts, setAccounts] = useState<AccountBusinessItem[]>([]);
-  const [theaters, setTheaters] = useState<TheaterBusinessItem[]>([]);
-  const [subTheaters, setSubTheaters] = useState<SubTheaterBusinessItem[]>([]);
-  const [dramas, setDramas] = useState<DramaBusinessItem[]>([]);
-  const [profiles, setProfiles] = useState<DramaContentProfile[]>([]);
-  const [productionResources, setProductionResources] = useState<ProductionResourceItem[]>([]);
-  const [viralAssets, setViralAssets] = useState<ViralAssetItem[]>([]);
+  const cachedSeed = getCachedAssetsCenterSeed();
+  const [accounts, setAccounts] = useState<AccountBusinessItem[]>(cachedSeed?.accounts || []);
+  const [theaters, setTheaters] = useState<TheaterBusinessItem[]>(cachedSeed?.theaters || []);
+  const [subTheaters, setSubTheaters] = useState<SubTheaterBusinessItem[]>(cachedSeed?.subTheaters || []);
+  const [dramas, setDramas] = useState<DramaBusinessItem[]>(cachedSeed?.dramas || []);
+  const [profiles, setProfiles] = useState<DramaContentProfile[]>(cachedSeed?.profiles || []);
+  const [productionResources, setProductionResources] = useState<ProductionResourceItem[]>(cachedSeed?.productionResources || []);
+  const [viralAssets, setViralAssets] = useState<ViralAssetItem[]>(cachedSeed?.viralAssets || []);
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(() => {
+    try { const value = localStorage.getItem('v2-assets-center-seed-v1:updated-at'); return value ? new Date(value) : null; } catch { return null; }
+  });
 
   // Selected drama for library tab navigation
   const [targetDramaIdForLibrary, setTargetDramaIdForLibrary] = useState<string | undefined>(undefined);
@@ -51,7 +57,9 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    loadAssetsCenterSeed().then((seed) => {
+    let active = true;
+    const applySeed = (seed: Awaited<ReturnType<typeof loadAssetsCenterSeed>>) => {
+      if (!active) return;
       setAccounts(seed.accounts);
       setTheaters(seed.theaters);
       setSubTheaters(seed.subTheaters);
@@ -59,7 +67,36 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
       setProfiles(seed.profiles);
       setProductionResources(seed.productionResources);
       setViralAssets(seed.viralAssets);
-    }).catch(() => setToastMessage('资料数据加载失败，请稍后刷新。'));
+      setLastRefreshAt(new Date());
+    };
+    const refresh = () => loadAssetsCenterSeed(true).then(applySeed).catch(() => {
+      if (active) setToastMessage('资料数据更新失败，已保留上次数据。');
+    });
+    void refresh();
+    const onVisibilityChange = () => { if (!document.hidden) void refresh(); };
+    const onDataChanged = (event: Event) => {
+      const detail = eventDetail(event);
+      if (!changeAffects(detail, 'assets')) return;
+      if (detail.accountId || detail.dramaId) {
+        void refreshCachedAssetsItem(detail).then((changed) => {
+          if (!active || !changed) return;
+          if (changed.accounts) setAccounts(changed.accounts);
+          if (changed.dramas) setDramas(changed.dramas);
+          setLastRefreshAt(new Date());
+        }).catch(() => undefined);
+      } else if (detail.changeType === 'resource_changed') {
+        void getV2ProductionResources().then((response) => {
+          if (!active) return;
+          setProductionResources(response.items); setLastRefreshAt(new Date());
+        }).catch(() => undefined);
+      } else { void refresh(); }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('v2-data-changed', onDataChanged);
+    // Change events refresh the affected catalog area immediately.  This is
+    // only a recovery check when a local event was missed.
+    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 60000);
+    return () => { active = false; document.removeEventListener('visibilitychange', onVisibilityChange); window.removeEventListener('v2-data-changed', onDataChanged); window.clearInterval(timer); };
   }, []);
 
   const showToast = (msg: string) => {
@@ -100,7 +137,7 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-base font-black text-[#1A1D2E] tracking-tight">资料中心</h1>
+                  <h1 className="text-base font-black text-[#1A1D2E] tracking-tight">资料中心</h1>{lastRefreshAt && <span className="text-[10px] font-normal text-slate-400">更新于 {lastRefreshAt.toLocaleTimeString('zh-CN')}</span>}
                   <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
                     资产与生产资源总库
                   </span>

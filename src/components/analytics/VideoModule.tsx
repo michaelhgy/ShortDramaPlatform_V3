@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge } from './common/StatusBadge';
 import { HelpTooltip, ModuleInfoPopover } from './common/HelpTooltip';
+import { confirmV2RevenueVideoLink, loadV2RevenueVideoCandidates, type V2RevenueVideoCandidate } from '../../api/v2Revenue';
 
 interface VideoModuleProps {
   timeRange: TimeRangeFilter;
@@ -29,6 +30,7 @@ interface VideoModuleProps {
   autoOpenDrawerForVideoId?: string;
   onNavigateToTab?: (tab: AnalyticsTopTab, entityId?: string) => void;
   onLinkVideo?: (videoId: string, materialId: string, clipName: string) => void;
+  analysisOverride?: VideoAnalysisResult;
 }
 
 type SortField = 'revenue' | 'videoViews' | 'dramaViews' | 'rpm' | 'receptionStrength' | 'date';
@@ -44,6 +46,7 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
   autoOpenDrawerForVideoId,
   onNavigateToTab,
   onLinkVideo,
+  analysisOverride,
 }) => {
   // Session link overrides state
   const [linkOverrides, setLinkOverrides] = useState<
@@ -67,13 +70,17 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [linkingVideo, setLinkingVideo] = useState<AggregatedPlatformVideo | null>(null);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState<boolean>(false);
+  const [linkCandidates, setLinkCandidates] = useState<V2RevenueVideoCandidate[]>([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [linkError, setLinkError] = useState('');
 
   const tableRef = useRef<HTMLDivElement>(null);
 
   // 1. Calculate aggregated dataset based on global filters
   const analysisResult: VideoAnalysisResult = useMemo(() => {
+    if (analysisOverride) return analysisOverride;
     return calculatePlatformVideosAnalytics(timeRange, selectedTheater, linkOverrides, customStartDate, customEndDate);
-  }, [timeRange, selectedTheater, linkOverrides, customStartDate, customEndDate]);
+  }, [timeRange, selectedTheater, linkOverrides, customStartDate, customEndDate, analysisOverride]);
 
   // Handle auto open drawer / navigate from external tabs
   useEffect(() => {
@@ -197,23 +204,35 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
   const handleOpenLinkModal = (video: AggregatedPlatformVideo) => {
     setLinkingVideo(video);
     setIsLinkModalOpen(true);
+    setLoadingCandidates(true); setLinkError(''); setLinkCandidates([]);
+    void loadV2RevenueVideoCandidates(video.accountId, video.id)
+      .then((result) => setLinkCandidates(result.candidates))
+      .catch((error: unknown) => setLinkError(error instanceof Error ? error.message : '读取候选原素材失败'))
+      .finally(() => setLoadingCandidates(false));
   };
 
   // Handle confirmed link
-  const handleConfirmLink = (videoId: string, clipName: string, materialId: string, materialName: string) => {
+  const handleConfirmLink = (candidate: V2RevenueVideoCandidate, note: string) => {
+    if (!linkingVideo) return;
+    void confirmV2RevenueVideoLink({ account_id: linkingVideo.accountId, video_id: linkingVideo.id,
+      production_task_id: candidate.production_task_id, production_video_task_id: candidate.production_video_task_id,
+      source_material_id: candidate.source_material_id, note })
+      .then(() => {
     setLinkOverrides((prev) => ({
       ...prev,
-      [videoId]: {
+      [linkingVideo.id]: {
         isLinked: true,
-        clipName,
-        materialId,
-        materialName,
+        clipName: candidate.file_name || candidate.original_name,
+        materialId: candidate.source_material_id,
+        materialName: candidate.original_name || candidate.file_name,
       },
     }));
-
     if (onLinkVideo) {
-      onLinkVideo(videoId, materialId, clipName);
+      onLinkVideo(linkingVideo.id, candidate.source_material_id, candidate.file_name || candidate.original_name);
     }
+      setIsLinkModalOpen(false);
+    })
+      .catch((error: unknown) => setLinkError(error instanceof Error ? error.message : '保存人工确认关联失败'));
   };
 
   const handleSort = (field: SortField) => {
@@ -563,6 +582,7 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
                 </th>
                 <th className="py-3 px-3.5 font-medium">账号</th>
                 <th className="py-3 px-3.5 font-medium">剧集</th>
+                <th className="py-3 px-3.5 font-medium">平台视频 ID</th>
                 <th 
                   onClick={() => handleSort('videoViews')}
                   className="py-3 px-3.5 font-medium text-right cursor-pointer hover:text-[#1A1D2E] select-none"
@@ -618,7 +638,7 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
             <tbody className="divide-y divide-black/[0.04]">
               {paginatedVideos.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-8 text-center text-slate-400 text-xs">
+                  <td colSpan={11} className="py-8 text-center text-slate-400 text-xs">
                     未找到符合当前筛选条件的平台视频
                   </td>
                 </tr>
@@ -654,15 +674,17 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
 
                       {/* 3. 剧集 */}
                       <td className="py-3 px-3.5 text-[#1A1D2E] font-medium max-w-[200px] truncate">
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate">{v.dramaName}</span>
-                          <span className="font-mono text-[10px] text-slate-400 bg-slate-100 px-1 py-0.2 rounded shrink-0">
-                            {v.id.replace('vid-qn-', '#')}
-                          </span>
-                        </div>
+                        <span className="truncate">{v.dramaName}</span>
                       </td>
 
-                      {/* 4. 视频播放 */}
+                      {/* 4. 平台视频 ID */}
+                      <td className="py-3 px-3.5 max-w-[220px]">
+                        <span className="block truncate font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-1 rounded" title={v.id}>
+                          {v.id}
+                        </span>
+                      </td>
+
+                      {/* 5. 视频播放 */}
                       <td className="py-3 px-3.5 text-right font-mono text-slate-700 whitespace-nowrap">
                         {v.periodVideoViews.toLocaleString()}
                       </td>
@@ -807,6 +829,9 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
         video={linkingVideo}
         isOpen={isLinkModalOpen}
         onClose={() => setIsLinkModalOpen(false)}
+        candidates={linkCandidates}
+        isLoadingCandidates={loadingCandidates}
+        errorMessage={linkError}
         onConfirmLink={handleConfirmLink}
       />
 

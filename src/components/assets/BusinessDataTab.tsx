@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useAdaptivePageSize } from '../../hooks/useAdaptivePageSize';
 import {
   AccountBusinessItem,
   TheaterBusinessItem,
@@ -56,6 +57,21 @@ interface BusinessDataTabProps {
 type BusinessSubCategory = 'accounts' | 'theaters' | 'sub_theaters' | 'dramas';
 
 const ALL_ACCOUNT_STATUSES: AccountBusinessStatus[] = ['正常', '观察', '限流', '二限', '实名', '封禁', '停用'];
+const ACCOUNT_STATUS_ORDER: Record<AccountBusinessStatus, number> = {
+  '正常': 0, '观察': 1, '限流': 2, '二限': 3, '实名': 4, '封禁': 5, '停用': 6,
+};
+
+const AdaptivePagination: React.FC<{ total: number; page: number; totalPages: number; onChange: (page: number) => void }> = ({ total, page, totalPages, onChange }) => {
+  if (totalPages <= 1) return null;
+  return <div className="px-4 py-3 border-t border-black/[0.06] flex items-center justify-between bg-slate-50/50">
+    <div className="text-xs text-[#64748B]">共 <span className="font-bold text-[#1A1D2E]">{total}</span> 条，当前第 {page} / {totalPages} 页</div>
+    <div className="flex items-center gap-1.5">
+      <button onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1} className={`p-1.5 rounded-lg border text-xs transition-all ${page === 1 ? 'border-transparent text-slate-300 cursor-not-allowed' : 'border-black/[0.08] bg-white text-slate-700 hover:bg-slate-100 cursor-pointer'}`}><ChevronLeft className="w-4 h-4" /></button>
+      {Array.from({ length: totalPages }, (_, index) => index + 1).map((item) => <button key={item} onClick={() => onChange(item)} className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${item === page ? 'bg-[#1A1D2E] text-white shadow-2xs' : 'bg-white text-slate-700 border border-black/[0.08] hover:bg-slate-100'}`}>{item}</button>)}
+      <button onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} className={`p-1.5 rounded-lg border text-xs transition-all ${page === totalPages ? 'border-transparent text-slate-300 cursor-not-allowed' : 'border-black/[0.08] bg-white text-slate-700 hover:bg-slate-100 cursor-pointer'}`}><ChevronRight className="w-4 h-4" /></button>
+    </div>
+  </div>;
+};
 
 export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
   accounts,
@@ -74,9 +90,14 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
   const [selectedTheaterFilter, setSelectedTheaterFilter] = useState('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
 
-  // Pagination for dramas
-  const [dramaCurrentPage, setDramaCurrentPage] = useState(1);
-  const DRAMAS_PER_PAGE = 8;
+  const [currentPages, setCurrentPages] = useState<Record<BusinessSubCategory, number>>({ accounts: 1, theaters: 1, sub_theaters: 1, dramas: 1 });
+  const [tableElement, setTableElement] = useState<HTMLDivElement | null>(null);
+  const tableRowHeight = activeCategory === 'accounts' ? 74 : activeCategory === 'dramas' ? 62 : 54;
+  const recordsPerPage = useAdaptivePageSize(tableElement, tableRowHeight, { minimum: 3, footerHeight: 76 });
+
+  const setCurrentPage = (category: BusinessSubCategory, page: number) => {
+    setCurrentPages((previous) => ({ ...previous, [category]: page }));
+  };
 
   // Modals state
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
@@ -401,7 +422,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
       const matchTheater = selectedTheaterFilter === 'ALL' || acc.theaterName === selectedTheaterFilter;
       const matchStatus = selectedStatusFilter === 'ALL' || acc.status === selectedStatusFilter;
       return matchSearch && matchTheater && matchStatus;
-    });
+    }).sort((left, right) => ACCOUNT_STATUS_ORDER[left.status] - ACCOUNT_STATUS_ORDER[right.status]);
   }, [accounts, searchTerm, selectedTheaterFilter, selectedStatusFilter]);
 
   const filteredTheaters = useMemo(() => {
@@ -439,12 +460,20 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
     }).filter(dr => dr.isMatched);
   }, [dramas, searchTerm, selectedTheaterFilter]);
 
-  // Paginated dramas
-  const totalDramaPages = Math.max(1, Math.ceil(filteredDramas.length / DRAMAS_PER_PAGE));
-  const paginatedDramas = useMemo(() => {
-    const start = (dramaCurrentPage - 1) * DRAMAS_PER_PAGE;
-    return filteredDramas.slice(start, start + DRAMAS_PER_PAGE);
-  }, [filteredDramas, dramaCurrentPage]);
+  const totalPages = (count: number) => Math.max(1, Math.ceil(count / recordsPerPage));
+  const paginatedAccounts: AccountBusinessItem[] = filteredAccounts.slice((currentPages.accounts - 1) * recordsPerPage, currentPages.accounts * recordsPerPage);
+  const paginatedTheaters: TheaterBusinessItem[] = filteredTheaters.slice((currentPages.theaters - 1) * recordsPerPage, currentPages.theaters * recordsPerPage);
+  const paginatedSubTheaters: SubTheaterBusinessItem[] = filteredSubTheaters.slice((currentPages.sub_theaters - 1) * recordsPerPage, currentPages.sub_theaters * recordsPerPage);
+  const paginatedDramas: (DramaBusinessItem & { isMatched: boolean; matchedHistoryHint: string | null })[] = filteredDramas.slice((currentPages.dramas - 1) * recordsPerPage, currentPages.dramas * recordsPerPage);
+
+  useEffect(() => {
+    setCurrentPages((previous) => ({
+      accounts: Math.min(previous.accounts, totalPages(filteredAccounts.length)),
+      theaters: Math.min(previous.theaters, totalPages(filteredTheaters.length)),
+      sub_theaters: Math.min(previous.sub_theaters, totalPages(filteredSubTheaters.length)),
+      dramas: Math.min(previous.dramas, totalPages(filteredDramas.length)),
+    }));
+  }, [filteredAccounts.length, filteredDramas.length, filteredSubTheaters.length, filteredTheaters.length, recordsPerPage]);
 
   return (
     <div className="space-y-6">
@@ -509,7 +538,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
             onClick={() => {
               setActiveCategory('dramas');
               setSearchTerm('');
-              setDramaCurrentPage(1);
+              setCurrentPage('dramas', 1);
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeCategory === 'dramas'
@@ -674,7 +703,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                   value={selectedTheaterFilter}
                   onChange={e => {
                     setSelectedTheaterFilter(e.target.value);
-                    setDramaCurrentPage(1);
+                    setCurrentPage(activeCategory, 1);
                   }}
                   className="px-2.5 py-1.5 rounded-xl border border-black/[0.08] bg-white text-xs font-semibold text-[#1A1D2E] focus:outline-none"
                 >
@@ -704,7 +733,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                 value={searchTerm}
                 onChange={e => {
                   setSearchTerm(e.target.value);
-                  setDramaCurrentPage(1);
+                  setCurrentPage(activeCategory, 1);
                 }}
                 className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-black/[0.08] bg-white text-xs font-medium text-[#1A1D2E] focus:outline-none focus:ring-2 focus:ring-[#1A1D2E]/20"
               />
@@ -717,7 +746,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
       
       {/* 3.1 ACCOUNTS TABLE */}
       {activeCategory === 'accounts' && (
-        <div className="bg-white rounded-2xl border border-black/[0.06] shadow-xs overflow-hidden">
+        <div ref={setTableElement} className="bg-white rounded-2xl border border-black/[0.06] shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/90 text-[#64748B] font-bold border-b border-black/[0.06]">
@@ -733,7 +762,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
               </thead>
               <tbody className="divide-y divide-black/[0.04] text-slate-700">
                 {filteredAccounts.length > 0 ? (
-                  filteredAccounts.map(acc => {
+                  paginatedAccounts.map(acc => {
                     return (
                       <tr key={acc.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-3 px-4">
@@ -803,12 +832,13 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
               </tbody>
             </table>
           </div>
+          <AdaptivePagination total={filteredAccounts.length} page={currentPages.accounts} totalPages={totalPages(filteredAccounts.length)} onChange={(page) => setCurrentPage('accounts', page)} />
         </div>
       )}
 
       {/* 3.2 THEATERS TABLE */}
       {activeCategory === 'theaters' && (
-        <div className="bg-white rounded-2xl border border-black/[0.06] shadow-xs overflow-hidden">
+        <div ref={setTableElement} className="bg-white rounded-2xl border border-black/[0.06] shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/90 text-[#64748B] font-bold border-b border-black/[0.06]">
@@ -824,7 +854,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
               </thead>
               <tbody className="divide-y divide-black/[0.04] text-slate-700">
                 {filteredTheaters.length > 0 ? (
-                  filteredTheaters.map(th => (
+                  paginatedTheaters.map(th => (
                     <tr key={th.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4 font-bold text-[#1A1D2E]">
                         {th.name}
@@ -874,12 +904,13 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
               </tbody>
             </table>
           </div>
+          <AdaptivePagination total={filteredTheaters.length} page={currentPages.theaters} totalPages={totalPages(filteredTheaters.length)} onChange={(page) => setCurrentPage('theaters', page)} />
         </div>
       )}
 
       {/* 3.3 SUB-THEATERS TABLE */}
       {activeCategory === 'sub_theaters' && (
-        <div className="bg-white rounded-2xl border border-black/[0.06] shadow-xs overflow-hidden">
+        <div ref={setTableElement} className="bg-white rounded-2xl border border-black/[0.06] shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/90 text-[#64748B] font-bold border-b border-black/[0.06]">
@@ -895,7 +926,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
               </thead>
               <tbody className="divide-y divide-black/[0.04] text-slate-700">
                 {filteredSubTheaters.length > 0 ? (
-                  filteredSubTheaters.map(st => (
+                  paginatedSubTheaters.map(st => (
                     <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4 font-bold text-[#1A1D2E]">
                         {st.name}
@@ -960,12 +991,13 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
               </tbody>
             </table>
           </div>
+          <AdaptivePagination total={filteredSubTheaters.length} page={currentPages.sub_theaters} totalPages={totalPages(filteredSubTheaters.length)} onChange={(page) => setCurrentPage('sub_theaters', page)} />
         </div>
       )}
 
       {/* 3.4 DRAMAS TABLE (With Pagination & History Names display) */}
       {activeCategory === 'dramas' && (
-        <div className="bg-white rounded-2xl border border-black/[0.06] shadow-xs overflow-hidden flex flex-col">
+        <div ref={setTableElement} className="bg-white rounded-2xl border border-black/[0.06] shadow-xs overflow-hidden flex flex-col">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/90 text-[#64748B] font-bold border-b border-black/[0.06]">
@@ -1054,51 +1086,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
             </table>
           </div>
 
-          {/* Drama Pagination Controls */}
-          {filteredDramas.length > DRAMAS_PER_PAGE && (
-            <div className="px-4 py-3 border-t border-black/[0.06] flex items-center justify-between bg-slate-50/50">
-              <div className="text-xs text-[#64748B]">
-                共 <span className="font-bold text-[#1A1D2E]">{filteredDramas.length}</span> 部剧集，当前第 {dramaCurrentPage} / {totalDramaPages} 页
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setDramaCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={dramaCurrentPage === 1}
-                  className={`p-1.5 rounded-lg border text-xs transition-all ${
-                    dramaCurrentPage === 1
-                      ? 'border-transparent text-slate-300 cursor-not-allowed'
-                      : 'border-black/[0.08] bg-white text-slate-700 hover:bg-slate-100 cursor-pointer'
-                  }`}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                {Array.from({ length: totalDramaPages }, (_, i) => i + 1).map(page => (
-                  <button
-                    key={page}
-                    onClick={() => setDramaCurrentPage(page)}
-                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      page === dramaCurrentPage
-                        ? 'bg-[#1A1D2E] text-white shadow-2xs'
-                        : 'bg-white text-slate-700 border border-black/[0.08] hover:bg-slate-100'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setDramaCurrentPage(prev => Math.min(totalDramaPages, prev + 1))}
-                  disabled={dramaCurrentPage === totalDramaPages}
-                  className={`p-1.5 rounded-lg border text-xs transition-all ${
-                    dramaCurrentPage === totalDramaPages
-                      ? 'border-transparent text-slate-300 cursor-not-allowed'
-                      : 'border-black/[0.08] bg-white text-slate-700 hover:bg-slate-100 cursor-pointer'
-                  }`}
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
+          <AdaptivePagination total={filteredDramas.length} page={currentPages.dramas} totalPages={totalPages(filteredDramas.length)} onChange={(page) => setCurrentPage('dramas', page)} />
         </div>
       )}
 

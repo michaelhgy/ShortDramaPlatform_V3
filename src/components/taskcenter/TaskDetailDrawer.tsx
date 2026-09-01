@@ -19,6 +19,7 @@ import {
 import { TaskItem } from './taskCenterTypes';
 import { getTaskCenterActions } from './taskCenterActionPolicy';
 import { formatTaskDateTime } from './taskCenterFormat';
+import { taskElapsedLabel } from '../../utils/duration';
 
 interface TaskDetailDrawerProps {
   task: TaskItem | null;
@@ -27,6 +28,15 @@ interface TaskDetailDrawerProps {
   onRegenerateDraft: (task: TaskItem) => void;
   onReExportVideo: (task: TaskItem) => void;
   onCleanupOrphan: (task: TaskItem) => void;
+}
+
+function exportPhaseLabel(rawStatus?: string): string {
+  const labels: Record<string, string> = {
+    queued: '排队中', preparing: '准备中', submitting: '提交导出',
+    observing_output: '观察输出', finalizing: '验收收口', completed: '已完成',
+    failed: '导出失败', timeout: '导出超时',
+  };
+  return labels[rawStatus || ''] || '';
 }
 
 export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
@@ -44,6 +54,8 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   const isDone = task.status === 'done';
   const isTemplateDraft = task.taskType === 'template_draft';
   const isVideoExport = task.taskType === 'video_export';
+  const videoPhase = exportPhaseLabel(task.videoStage.rawStatus);
+  const activeExecutorName = task.videoStage.rawStatus ? '视频导出器' : task.executorName;
   const allowedActions = getTaskCenterActions(task);
 
   return (
@@ -103,7 +115,9 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-[#64748B] mt-0.5">
-                执行器: <strong className="text-[#1A1D2E]">{task.executorName}</strong> · 任务ID: {task.id}
+                执行器: <strong className="text-[#1A1D2E]">{activeExecutorName}</strong>
+                {videoPhase ? <> · 导出阶段: <strong className="text-[#1A1D2E]">{videoPhase}</strong></> : null}
+                {' · '}任务ID: {task.id}
               </p>
             </div>
           </div>
@@ -148,7 +162,7 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
               <div>
                 <span>当前/最终耗时:</span>
                 <p className={`font-mono font-bold mt-0.5 ${isTimeout ? 'text-rose-700' : 'text-[#1A1D2E]'}`}>
-                  {task.durationFormatted}
+                  {taskElapsedLabel(task.durationSeconds, task.durationFormatted)}
                 </p>
               </div>
             </div>

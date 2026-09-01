@@ -37,6 +37,7 @@ interface DramaModuleProps {
   onNavigateToTab?: (tab: AnalyticsTopTab, entityId?: string) => void;
   onSelectVideoAndOpenDrawer?: (videoId: string) => void;
   onScheduleToday?: (dramaId?: string, accountId?: string) => void;
+  dramas?: CalculatedDramaItem[];
 }
 
 export const DramaModule: React.FC<DramaModuleProps> = ({
@@ -48,11 +49,12 @@ export const DramaModule: React.FC<DramaModuleProps> = ({
   onNavigateToTab,
   onSelectVideoAndOpenDrawer,
   onScheduleToday,
+  dramas: realDramas,
 }) => {
   // 1. Calculate dynamic drama analytics according to Global Filter (timeRange + selectedTheater)
   const calculatedDramas = useMemo(() => {
-    return calculateDramasAnalytics(timeRange, selectedTheater, customStartDate, customEndDate);
-  }, [timeRange, selectedTheater, customStartDate, customEndDate]);
+    return realDramas || calculateDramasAnalytics(timeRange, selectedTheater, customStartDate, customEndDate);
+  }, [timeRange, selectedTheater, customStartDate, customEndDate, realDramas]);
 
   const [selectedDramaId, setSelectedDramaId] = useState<string>(
     initialDramaId || calculatedDramas[0]?.id || 'd-1'
@@ -101,6 +103,7 @@ export const DramaModule: React.FC<DramaModuleProps> = ({
     switch (timeRange) {
       case 'yesterday': return '昨日';
       case '7days': return '近7日';
+      case '14days': return '近14日';
       case '30days': return '近30日';
       case 'this_month': return '本月';
       case 'custom': return '周期';
@@ -112,6 +115,7 @@ export const DramaModule: React.FC<DramaModuleProps> = ({
     switch (timeRange) {
       case 'yesterday': return '昨日收益';
       case '7days': return '近7日收益';
+      case '14days': return '近14日收益';
       case '30days': return '近30日收益';
       case 'this_month': return '本月收益';
       case 'custom': return '周期收益';
@@ -123,6 +127,7 @@ export const DramaModule: React.FC<DramaModuleProps> = ({
     switch (timeRange) {
       case 'yesterday': return '昨日收益降序';
       case '7days': return '7日收益降序';
+      case '14days': return '14日收益降序';
       case '30days': return '30日收益降序';
       case 'this_month': return '本月收益降序';
       case 'custom': return '周期收益降序';
@@ -553,20 +558,20 @@ export const DramaModule: React.FC<DramaModuleProps> = ({
             )}
           </div>
 
-          {/* 4. 虚拟定位历史表现 · 历史累计 */}
+          {/* 4. 发布地址历史表现 · 历史累计 */}
           <div className="bg-white rounded-2xl p-5 border border-black/[0.06] shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold text-[#1A1D2E] flex items-center gap-2">
-                  <span>虚拟定位历史表现</span>
+                  <span>发布地址历史表现</span>
                   <StatusBadge 
                     variant="historical" 
                     text="历史累计" 
-                    tooltip="按实际登记发布该剧时所采用的虚拟地址快照聚合，展示全历史真实数据（不随顶部周期变动）" 
+                    tooltip="按实际登记发布该剧时实际记录的发布地址快照聚合，展示全历史真实数据（不随顶部周期变动）"
                   />
                 </h3>
                 <p className="text-[11px] text-[#64748B] mt-0.5">
-                  按实际登记发布该剧时所采用的虚拟地址快照聚合，展示全历史真实数据（不随顶部周期变动）
+                  仅统计已人工核对关联的平台视频，按该剧发布登记时实际记录的地址聚合。
                 </p>
               </div>
             </div>
@@ -575,7 +580,7 @@ export const DramaModule: React.FC<DramaModuleProps> = ({
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-black/[0.06] text-[#64748B] font-medium">
-                    <th className="py-2.5 px-2">虚拟定位地址</th>
+                    <th className="py-2.5 px-2">发布地址</th>
                     <th className="py-2.5 px-2 text-center">发布次数</th>
                     <th className="py-2.5 px-2 text-right">总收益</th>
                     <th className="py-2.5 px-2 text-right">视频播放</th>

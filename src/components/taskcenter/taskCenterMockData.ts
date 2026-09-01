@@ -2,6 +2,8 @@ import { ExecutorInfo, TaskItem, DramaSchedulePriority } from './taskCenterTypes
 
 export const INITIAL_DRAMA_PRIORITIES: DramaSchedulePriority[] = [
   {
+    productionTaskId: 'mock-account-a-drama-1',
+    accountName: '账号A',
     dramaName: '风雪草原苍狼少女',
     scheduledPublishTime: '18:00',
     priorityRank: 1,
@@ -10,6 +12,8 @@ export const INITIAL_DRAMA_PRIORITIES: DramaSchedulePriority[] = [
     completedTasks: 3,
   },
   {
+    productionTaskId: 'mock-account-b-drama-2',
+    accountName: '账号B',
     dramaName: '辣厨回乡鲜椒越香店越旺',
     scheduledPublishTime: '18:30',
     priorityRank: 2,
@@ -19,6 +23,8 @@ export const INITIAL_DRAMA_PRIORITIES: DramaSchedulePriority[] = [
     isSupplementing: true,
   },
   {
+    productionTaskId: 'mock-account-c-drama-3',
+    accountName: '账号C',
     dramaName: '坠海逢生我率万鲨踏浪归来',
     scheduledPublishTime: '19:00',
     priorityRank: 3,
@@ -27,6 +33,8 @@ export const INITIAL_DRAMA_PRIORITIES: DramaSchedulePriority[] = [
     completedTasks: 2,
   },
   {
+    productionTaskId: 'mock-account-d-drama-4',
+    accountName: '账号D',
     dramaName: '我用十元盒饭惊艳全城',
     scheduledPublishTime: '19:30',
     priorityRank: 4,

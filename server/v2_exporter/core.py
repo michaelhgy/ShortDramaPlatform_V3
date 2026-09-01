@@ -138,6 +138,40 @@ class ExportRepository:
         self.connection.commit()
         return self.attempt(attempt_id)
 
+    def activate_attempt_deadline(self, attempt_id: str) -> dict[str, Any]:
+        """Start the export timeout when this serial attempt actually starts.
+
+        A queued attempt can legitimately wait behind earlier renders.  Its
+        configured export allowance must therefore not be consumed by queue
+        waiting time.  Keep the allowance encoded by the original
+        ``created_at -> deadline_at`` interval, but move the deadline to the
+        moment this worker begins.
+        """
+        attempt = self.attempt(attempt_id)
+        if AttemptStatus(str(attempt["status"])) != AttemptStatus.QUEUED:
+            return attempt
+        try:
+            original_budget = datetime.fromisoformat(str(attempt["deadline_at"])) - datetime.fromisoformat(str(attempt["created_at"]))
+        except ValueError as exc:
+            raise ExportStateError("导出尝试期限无效") from exc
+        if original_budget.total_seconds() <= 0:
+            raise ExportStateError("导出尝试期限必须大于零")
+        stamp = self._now()
+        deadline = (datetime.fromisoformat(stamp) + original_budget).isoformat(timespec="seconds")
+        self.connection.execute(
+            "UPDATE export_attempts SET deadline_at=?,updated_at=? WHERE id=? AND status='queued'",
+            (deadline, stamp, attempt_id),
+        )
+        self._event(
+            attempt_id,
+            "ATTEMPT_STARTED_TIMEOUT_WINDOW",
+            AttemptStatus.QUEUED,
+            "已开始本次导出计时；排队等待时间不计入超时",
+            {"deadline_at": deadline, "timeout_started_at": stamp},
+        )
+        self.connection.commit()
+        return self.attempt(attempt_id)
+
     def attempt(self, attempt_id: str) -> dict[str, Any]:
         row = self.connection.execute("SELECT * FROM export_attempts WHERE id=?", (attempt_id,)).fetchone()
         if not row:
@@ -183,6 +217,17 @@ class ExportRepository:
         result = self.transition(attempt_id, AttemptStatus.FAILED, event_type="ATTEMPT_FAILED", message=message, detail={"code": code})
         return result
 
+    def record_source_baseline(self, attempt_id: str, *, source_output_path: str, baseline: dict[str, Any]) -> None:
+        """Persist the observed Jianying path before the irreversible final click."""
+        if not source_output_path:
+            raise ValueError("剪映原始输出路径不能为空")
+        self.connection.execute(
+            "UPDATE export_attempts SET source_output_path=?,source_baseline_json=?,updated_at=? WHERE id=?",
+            (source_output_path, json.dumps(baseline, ensure_ascii=False, sort_keys=True), self._now(), attempt_id),
+        )
+        self._event(attempt_id, "SOURCE_BASELINE_RECORDED", AttemptStatus.SUBMITTING, "已记录剪映原始输出路径及提交前基线", {"source_output_path": source_output_path, "baseline": baseline})
+        self.connection.commit()
+
     def _event(self, attempt_id: str, event_type: str, phase: AttemptStatus, message: str, detail: dict[str, Any]) -> None:
         sequence = int(self.connection.execute("SELECT COALESCE(MAX(sequence_no), 0) FROM export_events WHERE attempt_id=?", (attempt_id,)).fetchone()[0]) + 1
         self.connection.execute(
@@ -203,8 +248,12 @@ class AttemptCoordinator:
 
     def await_human_check(self, attempt_id: str) -> dict[str, Any]:
         job = self.repository.job_for_attempt(attempt_id)
-        if str(job["subject_type"]) != "final" or not bool(job["manual_check_required"]):
-            raise ExportStateError("只有启用人工检查模式的成片导出才能等待人工检查")
+        # The runner re-reads the live drama-level policy immediately after
+        # opening the draft.  ``manual_check_required`` is only the value that
+        # happened to be stored when this export job was queued, so rejecting
+        # it here would make a later user toggle fail a queued export.
+        if str(job["subject_type"]) != "final":
+            raise ExportStateError("只有成片导出才能等待人工检查")
         self.input_lease.release(attempt_id)
         return self.repository.transition(attempt_id, AttemptStatus.AWAITING_HUMAN_CHECK, event_type="HUMAN_CHECK_REQUIRED", message="成片人工检查中；按 Enter 后继续，双 ESC 终止本次尝试")
 
@@ -218,11 +267,11 @@ class AttemptCoordinator:
     def submission_confirmed(self, attempt_id: str, *, source_output_path: str, baseline: dict[str, Any]) -> dict[str, Any]:
         if not source_output_path:
             raise ValueError("最终提交前必须记录剪映原始输出路径")
-        self.repository.connection.execute(
-            "UPDATE export_attempts SET source_output_path=?,source_baseline_json=?,updated_at=? WHERE id=?",
-            (source_output_path, json.dumps(baseline, ensure_ascii=False, sort_keys=True), self.repository._now(), attempt_id),
-        )
-        self.repository.connection.commit()
+        recorded = self.repository.attempt(attempt_id)
+        if not str(recorded["source_output_path"]):
+            self.repository.record_source_baseline(attempt_id, source_output_path=source_output_path, baseline=baseline)
+        elif str(recorded["source_output_path"]) != source_output_path:
+            raise ExportStateError("最终提交回执的原始输出路径与提交前记录不一致")
         self.input_lease.release(attempt_id)
         return self.repository.transition(attempt_id, AttemptStatus.OBSERVING_OUTPUT, event_type="SUBMISSION_CONFIRMED", message="剪映已接受导出；已释放键鼠并开始被动观察输出", detail={"source_output_path": source_output_path})
 

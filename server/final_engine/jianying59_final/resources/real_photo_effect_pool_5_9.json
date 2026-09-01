@@ -1,0 +1,19 @@
+{
+  "schema": "jianying59_real_photo_effect_pool_v1",
+  "source": "真人图层参考草稿，2026-08-19 已登记",
+  "effects": [
+    {"name":"四屏","resource_id":"6706773500490682888","effect_id":"635027","payload_md5":"f0074ead79e0a8dd9a10518667beb0f1","category_id":"7733","category_name":"分屏","adjust_params":[]},
+    {"name":"跳色四宫格","resource_id":"7447351620641247754","effect_id":"96240759","payload_md5":"7472057d48afda752984c3d22d84cb03","category_id":"7733","category_name":"分屏","adjust_params":[{"default_value":0.33333333333333,"name":"effects_adjust_speed","value":0.33333333333333}]},
+    {"name":"两屏分割","resource_id":"7069602912057430558","effect_id":"1594946","payload_md5":"2eba26aa15c0e44d2c258ce63a38d243","category_id":"7733","category_name":"分屏","adjust_params":[{"default_value":0.33,"name":"effects_adjust_speed","value":0.33},{"default_value":0.8,"name":"effects_adjust_filter","value":0.8},{"default_value":0.1,"name":"effects_adjust_range","value":0.1}]},
+    {"name":"动态格","resource_id":"7065593660921877028","effect_id":"1570398","payload_md5":"eb35001e4b8d3d9e2c7b797578d1e97c","category_id":"7733","category_name":"分屏","adjust_params":[{"default_value":1.0,"name":"effects_adjust_size","value":1.0},{"default_value":0.33,"name":"effects_adjust_speed","value":0.33}]},
+    {"name":"矩形闪白","resource_id":"7434412782289703450","effect_id":"89308030","payload_md5":"160ed769f0845a0e2d3f8944f14708ae","category_id":"7733","category_name":"分屏","adjust_params":[{"default_value":0.33333333333333,"name":"effects_adjust_speed","value":0.33333333333333}]},
+    {"name":"相机框抖动","resource_id":"7447351621207462426","effect_id":"96240754","payload_md5":"aa7ee627cd11bbf4d8c83ae2b90f59ca","category_id":"7733","category_name":"分屏","adjust_params":[{"default_value":0.33333333333333,"name":"effects_adjust_speed","value":0.33333333333333}]},
+    {"name":"三段式黑白","resource_id":"7447351620641231369","effect_id":"96240756","payload_md5":"5a47368758c30ac86bead6f943caf268","category_id":"7733","category_name":"分屏","adjust_params":[{"default_value":0.33333333333333,"name":"effects_adjust_speed","value":0.33333333333333}]},
+    {"name":"两屏","resource_id":"6706773500796867075","effect_id":"635025","payload_md5":"69926ac7983e4e234c1b833e8c50896a","category_id":"7733","category_name":"分屏","adjust_params":[]},
+    {"name":"三屏","resource_id":"6706773500209664515","effect_id":"635029","payload_md5":"a753c93aef7a37f2e86870529f2cd06c","category_id":"7733","category_name":"分屏","adjust_params":[]},
+    {"name":"九屏","resource_id":"6719657094741496333","effect_id":"635011","payload_md5":"8abb86f5699f22f9d2c8d1647458b55a","category_id":"7733","category_name":"分屏","adjust_params":[]},
+    {"name":"六屏","resource_id":"6719657243039502851","effect_id":"635013","payload_md5":"95d23405c9441a388784c0749ab99471","category_id":"7733","category_name":"分屏","adjust_params":[]},
+    {"name":"黑白三格","resource_id":"6719657002571665934","effect_id":"635017","payload_md5":"e4022fb9e226f41f58c33d255c647eed","category_id":"7733","category_name":"分屏","adjust_params":[]},
+    {"name":"九屏跑马灯","resource_id":"6726773973683540491","effect_id":"635031","payload_md5":"0bc85f7544b92909bfef4d20ad17c256","category_id":"7733","category_name":"分屏","adjust_params":[]}
+  ]
+}

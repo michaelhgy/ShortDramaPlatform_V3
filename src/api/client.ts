@@ -14,6 +14,27 @@ export interface ApiClientOptions {
   timeoutMs?: number;
 }
 
+function changeTypeForPath(path: string): string {
+  if (path.includes('/revenue/')) return 'revenue_changed';
+  if (path.includes('/release')) return 'release_changed';
+  if (path.includes('/production-videos/')) return path.includes('/export') ? 'video_export_changed' : 'video_changed';
+  if (path.includes('/production-tasks/')) {
+    if (path.includes('/template')) return 'template_changed';
+    if (path.includes('/scan')) return 'material_changed';
+    return 'production_task_changed';
+  }
+  if (path.includes('/task-center')) return path.includes('/re-export') ? 'video_export_changed' : 'task_changed';
+  if (path.includes('/production-resources')) return 'resource_changed';
+  if (path.includes('/accounts')) return 'account_changed';
+  if (path.includes('/dramas')) return 'drama_changed';
+  return 'unknown';
+}
+
+function idFromPath(path: string, segment: string): string | undefined {
+  const match = path.match(new RegExp(`/${segment}/([^/?]+)`));
+  return match?.[1];
+}
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -73,13 +94,34 @@ export class ApiClient {
           : 'V2 本地服务请求失败。';
         throw new ApiError(message, response.status, payload);
       }
+      if (init.method && init.method !== 'GET') {
+        const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+        const changeType = changeTypeForPath(path);
+        const returnedId = typeof body.id === 'string' ? body.id : undefined;
+        const detail = {
+          path, method: init.method, changeType,
+          accountId: typeof body.account_id === 'string' ? body.account_id : changeType === 'account_changed' ? (returnedId || idFromPath(path, 'accounts')) : undefined,
+          dramaId: typeof body.drama_id === 'string' ? body.drama_id : changeType === 'drama_changed' ? (returnedId || idFromPath(path, 'dramas')) : undefined,
+          productionTaskId: typeof body.task_id === 'string' ? body.task_id : idFromPath(path, 'production-tasks'),
+          taskId: ['task_changed', 'video_export_changed'].includes(changeType) ? (returnedId || idFromPath(path, 'tasks')) : idFromPath(path, 'tasks'),
+          videoId: typeof body.video_id === 'string' ? body.video_id : idFromPath(path, 'production-videos'),
+          materialId: typeof body.material_id === 'string' ? body.material_id : undefined,
+          updatedAt: typeof body.updated_at === 'string' ? body.updated_at : new Date().toISOString(),
+        };
+        window.dispatchEvent(new CustomEvent('v2-data-changed', { detail }));
+      }
       return payload as T;
     } catch (error) {
       if (error instanceof ApiError) throw error;
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw new ApiError(`请求 V2 本地服务超时（${this.timeoutMs}ms）。`);
       }
-      throw new ApiError(error instanceof Error ? error.message : '无法连接 V2 本地服务。');
+      // fetch throws TypeError("Failed to fetch") when the local service is
+      // unavailable. Surface an actionable product message instead.
+      if (error instanceof TypeError) {
+        throw new ApiError('V2 本地服务请求失败，请检查服务是否已启动。');
+      }
+      throw new ApiError('V2 本地服务请求失败。');
     } finally {
       window.clearTimeout(timer);
     }

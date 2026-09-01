@@ -16,11 +16,11 @@ import ctypes
 import threading
 import shutil
 import subprocess
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
@@ -28,6 +28,8 @@ BGM_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
 HOST = os.environ.get("V2_FILE_SERVICE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("V2_FILE_SERVICE_PORT", "8782"))
 STANDARD_SYSTEM_ROOT_NAME = "短剧推广运营系统"
+REVENUE_RUN_RECOVERY_LOCK = threading.Lock()
+REVENUE_RUNS_RECOVERED = False
 
 
 def _bootstrap_settings_path() -> Path:
@@ -90,7 +92,9 @@ WORKSPACE = _configured_workspace()
 DATA_ROOT = WORKSPACE / "系统数据" if WORKSPACE is not None else None
 ROOT_DIRECTORIES = ("生产文件", "内容资产", "生成资源", "剧集资料", "系统数据")
 TEMPLATE_JOB_LOCK = threading.Lock()
+RESOURCE_RESERVATION_LOCK = threading.Lock()
 SCAN_LOCK = threading.Lock()
+RESOURCE_PROBE_CACHE: dict[str, tuple[int, int, float, str, str]] = {}
 
 
 def require_configured_paths() -> tuple[Path, Path]:
@@ -115,7 +119,10 @@ def db_path() -> Path:
 def connection() -> sqlite3.Connection:
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # Background executors and button actions share this SQLite database.
+    # Wait briefly for the active writer instead of dropping the HTTP request
+    # with ``database is locked`` while a task is being retried.
+    conn = sqlite3.connect(path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.executescript(
         """
@@ -131,8 +138,15 @@ def connection() -> sqlite3.Connection:
             final_path TEXT NOT NULL,
             planned_publish_at TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'materials_pending',
+            final_video_manual_check INTEGER NOT NULL DEFAULT 0 CHECK(final_video_manual_check IN (0, 1)),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS cleanup_records (
+            id TEXT PRIMARY KEY, task_id TEXT NOT NULL, cleanup_type TEXT NOT NULL,
+            status TEXT NOT NULL, deleted_json TEXT NOT NULL DEFAULT '[]',
+            retained_json TEXT NOT NULL DEFAULT '[]', error_message TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL, finished_at TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS production_files (
             id TEXT PRIMARY KEY,
@@ -150,7 +164,22 @@ def connection() -> sqlite3.Connection:
             updated_at TEXT NOT NULL,
             duration_seconds REAL NOT NULL DEFAULT 0,
             thumbnail_path TEXT NOT NULL DEFAULT '',
+            resolution TEXT NOT NULL DEFAULT '',
+            missing_scan_count INTEGER NOT NULL DEFAULT 0,
             UNIQUE(task_id, file_path)
+        );
+        CREATE TABLE IF NOT EXISTS resource_index (
+            resource_id TEXT PRIMARY KEY,
+            category TEXT NOT NULL,
+            category_name TEXT NOT NULL,
+            file_path TEXT NOT NULL UNIQUE,
+            file_size_bytes INTEGER NOT NULL,
+            file_mtime_ns INTEGER NOT NULL,
+            duration_seconds REAL,
+            resolution TEXT NOT NULL DEFAULT '',
+            thumbnail_path TEXT NOT NULL DEFAULT '',
+            last_seen_at TEXT NOT NULL,
+            source_present INTEGER NOT NULL DEFAULT 1
         );
         CREATE TABLE IF NOT EXISTS production_video_tasks (
             id TEXT PRIMARY KEY,
@@ -182,6 +211,22 @@ def connection() -> sqlite3.Connection:
             finished_at TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL,
             UNIQUE(task_id, version_no)
+        );
+        CREATE TABLE IF NOT EXISTS production_resource_reservations (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES production_tasks(id) ON DELETE CASCADE,
+            resource_type TEXT NOT NULL CHECK(resource_type IN ('real_video','real_image')),
+            version_no INTEGER NOT NULL DEFAULT 1,
+            sequence_no INTEGER NOT NULL,
+            original_path TEXT NOT NULL,
+            reserved_path TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            reserved_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'reserved' CHECK(status IN ('reserved','released','missing')),
+            created_at TEXT NOT NULL,
+            released_at TEXT NOT NULL DEFAULT '',
+            UNIQUE(task_id, resource_type, version_no, sequence_no),
+            UNIQUE(reserved_path)
         );
         CREATE TABLE IF NOT EXISTS theaters (
             id TEXT PRIMARY KEY,
@@ -241,6 +286,19 @@ def connection() -> sqlite3.Connection:
             value_json TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS release_address_history (
+            id TEXT PRIMARY KEY,
+            account_name TEXT NOT NULL,
+            province TEXT NOT NULL,
+            city TEXT NOT NULL,
+            district TEXT NOT NULL,
+            detail_address TEXT NOT NULL,
+            normalized_key TEXT NOT NULL,
+            use_count INTEGER NOT NULL DEFAULT 0,
+            first_used_at TEXT NOT NULL,
+            last_used_at TEXT NOT NULL,
+            UNIQUE(account_name, normalized_key)
+        );
         CREATE TABLE IF NOT EXISTS export_jobs (
             id TEXT PRIMARY KEY,
             production_task_id TEXT NOT NULL REFERENCES production_tasks(id) ON DELETE CASCADE,
@@ -286,6 +344,89 @@ def connection() -> sqlite3.Connection:
             executor_id TEXT PRIMARY KEY,
             consecutive_failures INTEGER NOT NULL DEFAULT 0,
             is_paused INTEGER NOT NULL DEFAULT 0 CHECK(is_paused IN (0, 1)),
+            control_state TEXT NOT NULL DEFAULT 'idle',
+            pause_requested INTEGER NOT NULL DEFAULT 0 CHECK(pause_requested IN (0, 1)),
+            pause_reason TEXT NOT NULL DEFAULT '',
+            current_task_id TEXT NOT NULL DEFAULT '',
+            last_error_message TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS v2_revenue_collection_attempts (
+            id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL,
+            account_id TEXT NOT NULL REFERENCES accounts(id),
+            theater_id TEXT NOT NULL REFERENCES theaters(id),
+            adapter_key TEXT NOT NULL,
+            revenue_date TEXT NOT NULL,
+            collection_status TEXT NOT NULL CHECK(collection_status IN ('success', 'no_data', 'failed')),
+            amount TEXT,
+            error_message TEXT NOT NULL DEFAULT '',
+            collected_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS v2_revenue_collection_runs (
+            id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            trigger_source TEXT NOT NULL DEFAULT 'manual',
+            scheduled_slots_json TEXT NOT NULL DEFAULT '[]',
+            total_units INTEGER NOT NULL DEFAULT 0,
+            completed_units INTEGER NOT NULL DEFAULT 0,
+            success_units INTEGER NOT NULL DEFAULT 0,
+            no_data_units INTEGER NOT NULL DEFAULT 0,
+            failed_units INTEGER NOT NULL DEFAULT 0,
+            current_theater TEXT NOT NULL DEFAULT '',
+            current_account TEXT NOT NULL DEFAULT '',
+            error_message TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            started_at TEXT NOT NULL DEFAULT '',
+            finished_at TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS v2_daily_revenues (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL REFERENCES accounts(id),
+            theater_id TEXT NOT NULL REFERENCES theaters(id),
+            revenue_date TEXT NOT NULL,
+            amount TEXT NOT NULL,
+            quality TEXT NOT NULL CHECK(quality='direct'),
+            source_attempt_id TEXT NOT NULL REFERENCES v2_revenue_collection_attempts(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(account_id, revenue_date)
+        );
+        CREATE TABLE IF NOT EXISTS v2_revenue_video_details (
+            id TEXT PRIMARY KEY,
+            attempt_id TEXT NOT NULL REFERENCES v2_revenue_collection_attempts(id) ON DELETE CASCADE,
+            account_id TEXT NOT NULL REFERENCES accounts(id), theater_id TEXT NOT NULL REFERENCES theaters(id),
+            revenue_date TEXT NOT NULL, source_video_id TEXT NOT NULL, source_drama_name TEXT NOT NULL,
+            video_views INTEGER NOT NULL DEFAULT 0, drama_views INTEGER NOT NULL DEFAULT 0,
+            gross_revenue TEXT NOT NULL, source_rank INTEGER NOT NULL DEFAULT 0,
+            matched_drama_id TEXT REFERENCES dramas(id), match_status TEXT NOT NULL DEFAULT 'unmatched',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            UNIQUE(revenue_date, account_id, source_video_id)
+        );
+        CREATE TABLE IF NOT EXISTS v2_revenue_video_links (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL REFERENCES accounts(id),
+            source_video_id TEXT NOT NULL,
+            production_task_id TEXT NOT NULL REFERENCES production_tasks(id),
+            production_video_task_id TEXT NOT NULL REFERENCES production_video_tasks(id),
+            source_material_id TEXT NOT NULL REFERENCES production_files(id),
+            note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(account_id, source_video_id)
+        );
+        CREATE TABLE IF NOT EXISTS v2_change_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            change_type TEXT NOT NULL,
+            production_task_id TEXT NOT NULL DEFAULT '',
+            task_id TEXT NOT NULL DEFAULT '',
+            account_id TEXT NOT NULL DEFAULT '',
+            drama_id TEXT NOT NULL DEFAULT '',
+            video_id TEXT NOT NULL DEFAULT '',
+            material_id TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL
         );
         """
@@ -293,21 +434,149 @@ def connection() -> sqlite3.Connection:
     task_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_tasks)")}
     if "planned_publish_at" not in task_columns:
         conn.execute("ALTER TABLE production_tasks ADD COLUMN planned_publish_at TEXT NOT NULL DEFAULT ''")
+    if "release_status" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN release_status TEXT NOT NULL DEFAULT 'unregistered'")
+    if "actual_release_time" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN actual_release_time TEXT NOT NULL DEFAULT ''")
+    for column in ("release_province", "release_city", "release_district", "release_detail_address"):
+        if column not in task_columns:
+            conn.execute(f"ALTER TABLE production_tasks ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+    if "cleanup_status" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN cleanup_status TEXT NOT NULL DEFAULT 'active'")
+    if "cleaned_at" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN cleaned_at TEXT NOT NULL DEFAULT ''")
+    if "process_cleanup_at" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN process_cleanup_at TEXT NOT NULL DEFAULT ''")
+    if "raw_cleanup_at" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN raw_cleanup_at TEXT NOT NULL DEFAULT ''")
+    if "final_video_manual_check" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN final_video_manual_check INTEGER NOT NULL DEFAULT 0")
     file_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_files)")}
+    revenue_attempt_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(v2_revenue_collection_attempts)")}
+    for column, definition in (("data_kind", "TEXT NOT NULL DEFAULT 'account_daily_total'"), ("period_end", "TEXT NOT NULL DEFAULT ''"), ("period_type", "TEXT NOT NULL DEFAULT 'date_range'")):
+        if column not in revenue_attempt_columns:
+            conn.execute(f"ALTER TABLE v2_revenue_collection_attempts ADD COLUMN {column} {definition}")
+    revenue_run_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(v2_revenue_collection_runs)")}
+    for column, definition in (("trigger_source", "TEXT NOT NULL DEFAULT 'manual'"), ("scheduled_slots_json", "TEXT NOT NULL DEFAULT '[]'")):
+        if column not in revenue_run_columns:
+            conn.execute(f"ALTER TABLE v2_revenue_collection_runs ADD COLUMN {column} {definition}")
     if "duration_seconds" not in file_columns:
         conn.execute("ALTER TABLE production_files ADD COLUMN duration_seconds REAL NOT NULL DEFAULT 0")
     if "thumbnail_path" not in file_columns:
         conn.execute("ALTER TABLE production_files ADD COLUMN thumbnail_path TEXT NOT NULL DEFAULT ''")
-    stamp = now_text()
-    conn.execute(
-        "INSERT OR IGNORE INTO production_video_tasks "
-        "(id, task_id, source_material_id, status, draft_path, output_path, created_at, updated_at) "
-        "SELECT lower(hex(randomblob(16))), task_id, id, 'pending_generation', '', '', ?, ? "
-        "FROM production_files WHERE file_type='original_material' AND status='available'",
-        (stamp, stamp),
+    if "missing_scan_count" not in file_columns:
+        conn.execute("ALTER TABLE production_files ADD COLUMN missing_scan_count INTEGER NOT NULL DEFAULT 0")
+    if "resolution" not in file_columns:
+        conn.execute("ALTER TABLE production_files ADD COLUMN resolution TEXT NOT NULL DEFAULT ''")
+    video_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_video_tasks)")}
+    for column, definition in (("error_message", "TEXT NOT NULL DEFAULT ''"), ("started_at", "TEXT NOT NULL DEFAULT ''"), ("finished_at", "TEXT NOT NULL DEFAULT ''")):
+        if column not in video_columns:
+            conn.execute(f"ALTER TABLE production_video_tasks ADD COLUMN {column} {definition}")
+    conn.executescript(
+        "CREATE INDEX IF NOT EXISTS idx_production_tasks_release_status ON production_tasks(release_status, cleanup_status);"
+        "CREATE INDEX IF NOT EXISTS idx_production_tasks_schedule ON production_tasks(planned_publish_at, created_at);"
+        "CREATE INDEX IF NOT EXISTS idx_template_jobs_task_version ON template_jobs(task_id, version_no DESC);"
+        "CREATE INDEX IF NOT EXISTS idx_production_video_tasks_task_status ON production_video_tasks(task_id, status, created_at);"
+        "CREATE INDEX IF NOT EXISTS idx_export_jobs_subject ON export_jobs(subject_type, subject_id, created_at DESC);"
+        "CREATE INDEX IF NOT EXISTS idx_export_attempts_job_attempt ON export_attempts(job_id, attempt_no DESC);"
+        "CREATE INDEX IF NOT EXISTS idx_v2_revenue_attempts_date ON v2_revenue_collection_attempts(revenue_date, account_id, collected_at DESC);"
+        "CREATE INDEX IF NOT EXISTS idx_v2_daily_revenues_date ON v2_daily_revenues(revenue_date, account_id);"
+        "CREATE INDEX IF NOT EXISTS idx_v2_revenue_video_details_date ON v2_revenue_video_details(revenue_date, account_id, source_video_id);"
+        "CREATE INDEX IF NOT EXISTS idx_v2_revenue_video_details_video_first ON v2_revenue_video_details(account_id, source_video_id, revenue_date);"
+        "CREATE INDEX IF NOT EXISTS idx_production_tasks_account_drama_dates ON production_tasks(account_name, drama_name, planned_publish_at, actual_release_time);"
+        "CREATE INDEX IF NOT EXISTS idx_v2_revenue_video_links_video ON v2_revenue_video_links(account_id, source_video_id);"
+        "CREATE INDEX IF NOT EXISTS idx_v2_change_events_id ON v2_change_events(id);"
     )
+    # SQLite triggers make background executors participate in the same
+    # change stream as button-driven API operations.  They carry ownership
+    # IDs only; the UI still reads the authoritative single-object endpoint.
+    # Keep trigger creation idempotent. Dropping a trigger on every connection
+    # needlessly takes a schema write lock and races with executor updates.
+    conn.executescript("""
+        CREATE TRIGGER IF NOT EXISTS v2_evt_production_task_update AFTER UPDATE ON production_tasks BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,updated_at) VALUES ('production_task_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_production_task_insert AFTER INSERT ON production_tasks BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,updated_at) VALUES ('production_task_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_material_change AFTER INSERT ON production_files BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,material_id,updated_at) VALUES ('material_changed',NEW.task_id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_material_update AFTER UPDATE ON production_files BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,material_id,updated_at) VALUES ('material_changed',NEW.task_id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_template_change AFTER INSERT ON template_jobs BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,task_id,updated_at) VALUES ('template_changed',NEW.task_id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_template_update AFTER UPDATE ON template_jobs BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,task_id,updated_at) VALUES ('template_changed',NEW.task_id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_video_change AFTER INSERT ON production_video_tasks BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,task_id,video_id,updated_at) VALUES ('video_changed',NEW.task_id,NEW.id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_video_update AFTER UPDATE ON production_video_tasks BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,task_id,video_id,updated_at) VALUES ('video_changed',NEW.task_id,NEW.id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_export_job_update AFTER UPDATE ON export_jobs BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,task_id,updated_at) VALUES ('video_export_changed',NEW.production_task_id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_export_attempt_update AFTER UPDATE ON export_attempts BEGIN
+          INSERT INTO v2_change_events(change_type,production_task_id,task_id,updated_at)
+          SELECT 'video_export_changed', j.production_task_id, NEW.id, NEW.updated_at FROM export_jobs j WHERE j.id=NEW.job_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_executor_update AFTER UPDATE ON executor_controls BEGIN
+          INSERT INTO v2_change_events(change_type,task_id,updated_at) VALUES ('task_changed',NEW.current_task_id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_account_update AFTER UPDATE ON accounts BEGIN
+          INSERT INTO v2_change_events(change_type,account_id,updated_at) VALUES ('account_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_account_insert AFTER INSERT ON accounts BEGIN
+          INSERT INTO v2_change_events(change_type,account_id,updated_at) VALUES ('account_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_drama_update AFTER UPDATE ON dramas BEGIN
+          INSERT INTO v2_change_events(change_type,drama_id,updated_at) VALUES ('drama_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_drama_insert AFTER INSERT ON dramas BEGIN
+          INSERT INTO v2_change_events(change_type,drama_id,updated_at) VALUES ('drama_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_resource_insert AFTER INSERT ON resource_index BEGIN
+          INSERT INTO v2_change_events(change_type,updated_at) VALUES ('resource_changed',NEW.last_seen_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_resource_update AFTER UPDATE ON resource_index BEGIN
+          INSERT INTO v2_change_events(change_type,updated_at) VALUES ('resource_changed',NEW.last_seen_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_revenue_run_update AFTER UPDATE OF status ON v2_revenue_collection_runs
+        WHEN NEW.status IN ('completed','failed') AND OLD.status<>NEW.status BEGIN
+          INSERT INTO v2_change_events(change_type,updated_at) VALUES ('revenue_changed',NEW.updated_at);
+        END;
+    """)
+    global REVENUE_RUNS_RECOVERED
+    with REVENUE_RUN_RECOVERY_LOCK:
+        if not REVENUE_RUNS_RECOVERED:
+            now = datetime.now().isoformat(timespec="seconds")
+            conn.execute("""UPDATE v2_revenue_collection_runs SET status='failed', error_message='软件重启，未完成的收益采集已停止，请重新发起采集',
+                finished_at=?, updated_at=? WHERE status IN ('queued', 'running')""", (now, now))
+            REVENUE_RUNS_RECOVERED = True
     conn.commit()
     return conn
+
+
+def list_change_events(after_id: int | None, limit: int = 200) -> dict[str, object]:
+    """Return lightweight ownership changes without returning business data."""
+    conn = connection()
+    try:
+        latest = int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM v2_change_events").fetchone()[0])
+        # A fresh desktop session starts at the current point. Its normal
+        # cache-then-summary startup check already reconciles older changes.
+        if after_id is None:
+            return {"items": [], "latest_id": latest}
+        rows = conn.execute(
+            "SELECT id,change_type,production_task_id,task_id,account_id,drama_id,video_id,material_id,updated_at "
+            "FROM v2_change_events WHERE id>? ORDER BY id LIMIT ?", (after_id, max(1, min(limit, 500))),
+        ).fetchall()
+        return {"items": [dict(row) for row in rows], "latest_id": latest}
+    finally:
+        conn.close()
 
 
 def safe_component(value: str, label: str) -> str:
@@ -377,18 +646,90 @@ def probe_material(path: Path, cache_key: str) -> tuple[float, str]:
             duration = max(0.0, float((result.stdout or "").strip() or 0))
         except (OSError, ValueError, subprocess.TimeoutExpired):
             duration = 0.0
-    thumbnail = DATA_ROOT / "cache" / "material-thumbnails" / f"{cache_key}.jpg"
+    # Versioned cache name forces regeneration after thumbnail quality/frame rules change.
+    thumbnail = DATA_ROOT / "cache" / "material-thumbnails" / f"{cache_key}-v3.jpg"
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg and not thumbnail.is_file():
         try:
             thumbnail.parent.mkdir(parents=True, exist_ok=True)
             subprocess.run(
-                [ffmpeg, "-y", "-ss", "00:00:01", "-i", str(path), "-frames:v", "1", "-vf", "scale=180:-2", str(thumbnail)],
+                [ffmpeg, "-y", "-i", str(path), "-frames:v", "1", str(thumbnail)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             thumbnail.unlink(missing_ok=True)
     return duration, str(thumbnail) if thumbnail.is_file() else ""
+
+
+def probe_resource_metadata(path: Path, cache_key: str) -> tuple[float, str, str]:
+    duration, thumbnail_path = probe_material(path, cache_key)
+    resolution = ""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        try:
+            result = subprocess.run(
+                [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", str(path)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False,
+            )
+            value = (result.stdout or "").strip()
+            if re.fullmatch(r"\d+x\d+", value):
+                resolution = value
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return duration, resolution, thumbnail_path
+
+def media_resolution(path: Path) -> str:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe: return ""
+    try:
+        result = subprocess.run([ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False)
+        value = (result.stdout or "").strip()
+        return value if re.fullmatch(r"\d+x\d+", value) else ""
+    except (OSError, subprocess.TimeoutExpired): return ""
+
+
+def _resource_index_row(resource_id: str) -> sqlite3.Row | None:
+    conn = connection()
+    try:
+        return conn.execute("SELECT * FROM resource_index WHERE resource_id=?", (resource_id,)).fetchone()
+    finally:
+        conn.close()
+
+
+def _upsert_resource_index(*, resource_id: str, category: str, category_name: str, path: Path,
+                           stat: os.stat_result, duration: float | None, resolution: str,
+                           thumbnail_path: str, source_present: bool = True) -> None:
+    conn = connection()
+    try:
+        conn.execute(
+            "INSERT INTO resource_index(resource_id,category,category_name,file_path,file_size_bytes,file_mtime_ns,duration_seconds,resolution,thumbnail_path,last_seen_at,source_present) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(resource_id) DO UPDATE SET category=excluded.category,category_name=excluded.category_name,file_path=excluded.file_path,file_size_bytes=excluded.file_size_bytes,file_mtime_ns=excluded.file_mtime_ns,duration_seconds=excluded.duration_seconds,resolution=excluded.resolution,thumbnail_path=excluded.thumbnail_path,last_seen_at=excluded.last_seen_at,source_present=excluded.source_present",
+            (resource_id, category, category_name, str(path), stat.st_size, stat.st_mtime_ns, duration, resolution, thumbnail_path, now_text(), 1 if source_present else 0),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _cleanup_missing_resource_index(active_ids: set[str]) -> None:
+    """Remove short-lived thumbnails; retain reusable lead-video/BGM cache rows."""
+    conn = connection()
+    try:
+        rows = conn.execute("SELECT resource_id, category, thumbnail_path FROM resource_index").fetchall()
+        for row in rows:
+            resource_id = str(row["resource_id"])
+            if resource_id in active_ids:
+                continue
+            category = str(row["category"])
+            thumbnail = Path(str(row["thumbnail_path"] or ""))
+            if category not in {"lead_video", "bgm"} and thumbnail.is_file():
+                thumbnail.unlink(missing_ok=True)
+                conn.execute("DELETE FROM resource_index WHERE resource_id=?", (resource_id,))
+            else:
+                conn.execute("UPDATE resource_index SET source_present=0,last_seen_at=? WHERE resource_id=?", (now_text(), resource_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def format_media_duration(seconds: float) -> str:
@@ -443,6 +784,13 @@ def task_response(task: sqlite3.Row) -> dict[str, object]:
         "account_name": str(task["account_name"]),
         "drama_name": str(task["drama_name"]),
         "planned_publish_at": str(task["planned_publish_at"]),
+        "release_status": str(task["release_status"] or "unregistered"),
+        "actual_release_time": str(task["actual_release_time"] or ""),
+        "release_province": str(task["release_province"] or ""),
+        "release_city": str(task["release_city"] or ""),
+        "release_district": str(task["release_district"] or ""),
+        "release_detail_address": str(task["release_detail_address"] or ""),
+        "final_video_manual_check": bool(task["final_video_manual_check"]),
         "paths": {
             "root": str(task["root_path"]), "materials": str(task["material_path"]),
             "template": str(task["template_path"]), "finals": str(task["final_path"]),
@@ -482,6 +830,17 @@ def list_accounts() -> dict[str, object]:
         conn.close()
 
 
+def get_account(account_id: str) -> dict[str, object]:
+    conn = connection()
+    try:
+        row = conn.execute("SELECT a.*, t.name AS theater_name FROM accounts a JOIN theaters t ON t.id=a.theater_id WHERE a.id=?", (account_id,)).fetchone()
+        if not row:
+            raise ValueError("账号不存在")
+        return dict(row)
+    finally:
+        conn.close()
+
+
 def list_sub_theaters() -> dict[str, object]:
     conn = connection()
     try:
@@ -500,13 +859,47 @@ def list_sub_theaters() -> dict[str, object]:
 def list_dramas() -> dict[str, object]:
     conn = connection()
     try:
-        rows = conn.execute("SELECT d.*, t.name AS theater_name FROM dramas d JOIN theaters t ON t.id=d.theater_id ORDER BY d.current_name COLLATE NOCASE").fetchall()
+        task_matches_drama = """(p.drama_name=d.current_name OR EXISTS
+            (SELECT 1 FROM drama_aliases da WHERE da.drama_id=d.id AND da.alias_name=p.drama_name))"""
+        rows = conn.execute(f"""SELECT d.*, t.name AS theater_name,
+            (SELECT COUNT(*) FROM production_tasks p WHERE {task_matches_drama}) AS production_count,
+            (SELECT MAX(COALESCE(NULLIF(p.planned_publish_at, ''), p.created_at)) FROM production_tasks p WHERE {task_matches_drama}) AS last_scheduled_at,
+            (SELECT COUNT(*) FROM production_tasks p WHERE {task_matches_drama} AND (
+                EXISTS (SELECT 1 FROM template_jobs j WHERE j.task_id=p.id AND j.status IN ('queued','dispatching','running','retry_requested'))
+                OR EXISTS (SELECT 1 FROM production_video_tasks v WHERE v.task_id=p.id AND v.status IN ('pending_generation','generation_queued','generating'))
+                OR EXISTS (SELECT 1 FROM export_jobs e WHERE e.production_task_id=p.id AND e.status IN ('queued','active'))
+            )) AS active_production_count
+            FROM dramas d JOIN theaters t ON t.id=d.theater_id
+            ORDER BY active_production_count DESC, last_scheduled_at DESC, production_count DESC, d.current_name COLLATE NOCASE""").fetchall()
         items = []
         for row in rows:
             item = dict(row)
             item["history_names"] = [str(value[0]) for value in conn.execute("SELECT alias_name FROM drama_aliases WHERE drama_id=? ORDER BY created_at", (row["id"],)).fetchall()]
             items.append(item)
         return {"items": items}
+    finally:
+        conn.close()
+
+
+def get_drama(drama_id: str) -> dict[str, object]:
+    conn = connection()
+    try:
+        task_matches_drama = """(p.drama_name=d.current_name OR EXISTS
+            (SELECT 1 FROM drama_aliases da WHERE da.drama_id=d.id AND da.alias_name=p.drama_name))"""
+        row = conn.execute(f"""SELECT d.*, t.name AS theater_name,
+            (SELECT COUNT(*) FROM production_tasks p WHERE {task_matches_drama}) AS production_count,
+            (SELECT MAX(COALESCE(NULLIF(p.planned_publish_at, ''), p.created_at)) FROM production_tasks p WHERE {task_matches_drama}) AS last_scheduled_at,
+            (SELECT COUNT(*) FROM production_tasks p WHERE {task_matches_drama} AND (
+                EXISTS (SELECT 1 FROM template_jobs j WHERE j.task_id=p.id AND j.status IN ('queued','dispatching','running','retry_requested'))
+                OR EXISTS (SELECT 1 FROM production_video_tasks v WHERE v.task_id=p.id AND v.status IN ('pending_generation','generation_queued','generating'))
+                OR EXISTS (SELECT 1 FROM export_jobs e WHERE e.production_task_id=p.id AND e.status IN ('queued','active'))
+            )) AS active_production_count
+            FROM dramas d JOIN theaters t ON t.id=d.theater_id WHERE d.id=?""", (drama_id,)).fetchone()
+        if not row:
+            raise ValueError("剧集不存在")
+        item = dict(row)
+        item["history_names"] = [str(value[0]) for value in conn.execute("SELECT alias_name FROM drama_aliases WHERE drama_id=? ORDER BY created_at", (drama_id,)).fetchall()]
+        return item
     finally:
         conn.close()
 
@@ -598,8 +991,9 @@ def list_drama_profiles() -> dict[str, object]:
 
 
 def list_production_resources() -> dict[str, object]:
-    roots = (("真人视频", "real_video", "真人视频", VIDEO_EXTENSIONS), ("真人图片", "real_image", "真人图片", IMAGE_EXTENSIONS), ("BGM", "bgm", "BGM", BGM_EXTENSIONS))
+    roots = (("真人视频", "real_video", "真人视频", VIDEO_EXTENSIONS), ("真人图片", "real_image", "真人图片", IMAGE_EXTENSIONS), ("BGM", "bgm", "BGM", BGM_EXTENSIONS), ("引流视频", "lead_video", "引流视频", VIDEO_EXTENSIONS))
     items: list[dict[str, object]] = []
+    active_ids: set[str] = set()
     for folder, category, category_name, extensions in roots:
         root = WORKSPACE / "生成资源" / folder
         root.mkdir(parents=True, exist_ok=True)
@@ -607,8 +1001,63 @@ def list_production_resources() -> dict[str, object]:
             if not path.is_file() or path.suffix.lower() not in extensions:
                 continue
             stat = path.stat()
-            items.append({"id": hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:24], "name": path.name, "category": category, "categoryName": category_name, "filePath": str(path), "fileSizeMb": round(stat.st_size / 1024 / 1024, 2), "status": "used" if path.name.startswith("已使用") else "available", "addedAt": date.fromtimestamp(stat.st_mtime).isoformat(), "tags": []})
+            resource_id = hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:24]
+            active_ids.add(resource_id)
+            duration_seconds, thumbnail_path, resolution = (None, "", "")
+            indexed = _resource_index_row(resource_id)
+            unchanged = indexed and int(indexed["file_size_bytes"]) == stat.st_size and int(indexed["file_mtime_ns"]) == stat.st_mtime_ns
+            if unchanged:
+                duration_seconds, resolution, thumbnail_path = indexed["duration_seconds"], str(indexed["resolution"] or ""), str(indexed["thumbnail_path"] or "")
+            elif path.suffix.lower() in VIDEO_EXTENSIONS:
+                duration_seconds, resolution, thumbnail_path = probe_resource_metadata(path, resource_id)
+                RESOURCE_PROBE_CACHE[str(path.resolve())] = (stat.st_size, stat.st_mtime_ns, duration_seconds, thumbnail_path, resolution)
+            elif path.suffix.lower() in IMAGE_EXTENSIONS:
+                # 图片本身就是可直接展示的缩略图，不能留空而让界面退回占位图。
+                thumbnail_path = str(path.resolve())
+            if path.suffix.lower() in IMAGE_EXTENSIONS:
+                thumbnail_path = str(path.resolve())
+            _upsert_resource_index(resource_id=resource_id, category=category, category_name=category_name, path=path, stat=stat, duration=duration_seconds, resolution=resolution, thumbnail_path=thumbnail_path)
+            items.append({"id": resource_id, "name": path.name, "category": category, "categoryName": category_name, "filePath": str(path), "fileSizeMb": round(stat.st_size / 1024 / 1024, 2), "status": "used" if category != "lead_video" and path.name.startswith("已使用") else "available", "addedAt": date.fromtimestamp(stat.st_mtime).isoformat(), "tags": [], "durationSeconds": duration_seconds, "resolution": resolution, "thumbnailUrl": f"/api/v2/production-resources/{resource_id}/thumbnail" if thumbnail_path else "", "mediaUrl": f"/api/v2/production-resources/{resource_id}/media" if path.suffix.lower() in VIDEO_EXTENSIONS or path.suffix.lower() in IMAGE_EXTENSIONS else ""})
+    _cleanup_missing_resource_index(active_ids)
     return {"items": items}
+
+
+def production_resource_media(resource_id: str, *, thumbnail: bool = False) -> Path:
+    """Resolve a scanned resource by id, constrained to the configured workspace."""
+    indexed = _resource_index_row(resource_id)
+    if indexed and thumbnail:
+        source = Path(str(indexed["file_path"] or ""))
+        try:
+            source_stat = source.stat()
+        except OSError:
+            source_stat = None
+        candidate = Path(str(indexed["thumbnail_path"] or "")).resolve()
+        if (source_stat is not None and int(indexed["file_size_bytes"]) == source_stat.st_size
+                and int(indexed["file_mtime_ns"]) == source_stat.st_mtime_ns
+                and candidate.is_file() and candidate.is_relative_to(WORKSPACE.resolve())):
+            return candidate
+    roots = ("真人视频", "真人图片", "BGM", "引流视频")
+    for folder in roots:
+        root = (WORKSPACE / "生成资源" / folder).resolve()
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:24] != resource_id:
+                continue
+            if thumbnail:
+                stat = path.stat()
+                current = _resource_index_row(resource_id)
+                if current and int(current["file_size_bytes"]) == stat.st_size and int(current["file_mtime_ns"]) == stat.st_mtime_ns:
+                    thumbnail_path = str(current["thumbnail_path"] or "")
+                else:
+                    duration, resolution, thumbnail_path = probe_resource_metadata(path, resource_id)
+                    _upsert_resource_index(resource_id=resource_id, category=str(current["category"] if current else "lead_video"), category_name=str(current["category_name"] if current else "引流视频"), path=path, stat=stat, duration=duration, resolution=resolution, thumbnail_path=thumbnail_path)
+                candidate = Path(thumbnail_path) if thumbnail_path else Path()
+                if candidate.is_file():
+                    return candidate.resolve()
+                raise ValueError("资源缩略图不存在")
+            return path.resolve()
+    raise ValueError("生产资源不存在")
 
 
 DEFAULT_SETTINGS = {
@@ -621,9 +1070,13 @@ DEFAULT_SETTINGS = {
     "jianying_executable": "",
     "jianying_draft_root": "",
     "template_timeout_min": 15,
+    "final_generation_timeout_min": 30,
     "video_export_timeout_min": 20,
     "final_video_manual_check": False,
     "video_export_debug": False,
+    "revenue_auto_collection_enabled": True,
+    "revenue_auto_collection_times": ["06:00", "12:30", "18:00"],
+    "local_vision_ai_mode": "compatibility",
 }
 
 
@@ -694,8 +1147,19 @@ def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
         raise ValueError("剪映草稿目录必须是存在的文件夹")
     if not isinstance(values["template_timeout_min"], int) or not 1 <= values["template_timeout_min"] <= 120:
         raise ValueError("模板生成超时时间必须为 1-120 分钟")
+    if not isinstance(values["final_generation_timeout_min"], int) or not 1 <= values["final_generation_timeout_min"] <= 180:
+        raise ValueError("成片生成超时时间必须为 1-180 分钟")
     if not isinstance(values["video_export_timeout_min"], int) or not 1 <= values["video_export_timeout_min"] <= 120:
         raise ValueError("视频导出超时时间必须为 1-120 分钟")
+    if not isinstance(values["revenue_auto_collection_enabled"], bool):
+        raise ValueError("收益自动采集开关必须是布尔值")
+    if values["local_vision_ai_mode"] not in {"compatibility", "quality", "disabled"}:
+        raise ValueError("本地视觉 AI 模式不正确")
+    if (not isinstance(values["revenue_auto_collection_times"], list)
+            or not values["revenue_auto_collection_times"]
+            or not all(isinstance(item, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", item) for item in values["revenue_auto_collection_times"])
+            or len(set(values["revenue_auto_collection_times"])) != len(values["revenue_auto_collection_times"])):
+        raise ValueError("收益自动采集时间必须是互不重复的 HH:MM 时间点")
     for key in ("final_video_manual_check", "video_export_debug"):
         if not isinstance(values[key], bool):
             raise ValueError("视频导出器开关必须是布尔值")
@@ -1118,14 +1582,23 @@ def create_task(payload: dict[str, object]) -> dict[str, object]:
         existing = conn.execute("SELECT * FROM production_tasks WHERE source_id=?", (source_id,)).fetchone()
         if existing:
             return task_response(existing)
+        account_row = conn.execute("SELECT status FROM accounts WHERE nickname=?", (account,)).fetchone()
+        if account_row and str(account_row["status"]) != "正常":
+            raise ValueError("只有正常账号可以安排生产任务")
+        same_identity = conn.execute(
+            "SELECT * FROM production_tasks WHERE created_date=? AND account_name=? AND drama_name=?",
+            (created_date, account, drama),
+        ).fetchone()
+        if same_identity:
+            return task_response(same_identity)
         conn.execute(
             """
             INSERT INTO production_tasks (
                 id, source_id, created_date, account_name, drama_name, root_path, material_path,
-                template_path, final_path, planned_publish_at, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                template_path, final_path, planned_publish_at, status, final_video_manual_check, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, source_id, created_date, account, drama, str(root), str(materials), str(template), str(finals), planned_publish_at, "materials_pending", stamp, stamp),
+            (task_id, source_id, created_date, account, drama, str(root), str(materials), str(template), str(finals), planned_publish_at, "materials_pending", int(bool(get_v2_settings()["final_video_manual_check"])), stamp, stamp),
         )
         conn.commit()
     finally:
@@ -1167,6 +1640,154 @@ def create_export_job(payload: dict[str, object]) -> dict[str, object]:
         conn.close()
 
 
+def ensure_export_job_for_template(template_row: object, *, draft_path: Path) -> dict[str, object]:
+    """Create the automatic template-video export job once a draft is ready."""
+    task_id = str(template_row["task_id"])  # type: ignore[index]
+    subject_id = str(template_row["id"])  # type: ignore[index]
+    from server.v2_exporter.core import ExportRepository
+    conn = connection()
+    try:
+        existing = conn.execute("SELECT * FROM export_jobs WHERE subject_type='template' AND subject_id=?", (subject_id,)).fetchone()
+        if existing:
+            job = dict(existing)
+            attempts = conn.execute("SELECT 1 FROM export_attempts WHERE job_id=? LIMIT 1", (str(existing["id"]),)).fetchone()
+            if not attempts and str(existing["status"]) == "ready":
+                settings = get_v2_settings()
+                ExportRepository(conn).queue_new_attempt(
+                    str(existing["id"]),
+                    deadline_minutes=int(settings["video_export_timeout_min"]),
+                    debug_enabled=bool(settings["video_export_debug"]),
+                )
+                job = ExportRepository(conn).job(str(existing["id"]))
+            return {"job": job, "target_path": str(job["target_path"])}
+        task = conn.execute("SELECT * FROM production_tasks WHERE id=?", (task_id,)).fetchone()
+        if not task:
+            raise ValueError("模板任务所属生产任务不存在，无法创建导出任务")
+        group = Path(str(task["template_path"]))
+        filename = f"{safe_component(str(task['created_date']), '日期')}-{safe_component(str(task['account_name']), '账号')}-{safe_component(str(task['drama_name']), '剧集')}-模板.mp4"
+        job = ExportRepository(conn).create_job(
+            production_task_id=task_id, subject_type="template", subject_id=subject_id,
+            draft_name=str(template_row["draft_name"]), draft_path=str(draft_path.resolve()),
+            target_path=str((group / filename).resolve()), manual_check_required=False,
+        )
+        settings = get_v2_settings()
+        ExportRepository(conn).queue_new_attempt(
+            str(job["id"]),
+            deadline_minutes=int(settings["video_export_timeout_min"]),
+            debug_enabled=bool(settings["video_export_debug"]),
+        )
+        job = ExportRepository(conn).job(str(job["id"]))
+        return {"job": job, "target_path": job["target_path"]}
+    finally:
+        conn.close()
+
+
+def ensure_export_job_for_finished_video(video_row: object, *, draft_name: str, draft_path: Path) -> dict[str, object]:
+    """Queue the first export attempt for one completed finished-video draft."""
+    task_id = str(video_row["task_id"])  # type: ignore[index]
+    video_id = str(video_row["id"])  # type: ignore[index]
+    conn = connection()
+    try:
+        from server.v2_exporter.core import ExportRepository
+        existing = conn.execute("SELECT * FROM export_jobs WHERE subject_type='final' AND subject_id=?", (video_id,)).fetchone()
+        if existing:
+            job = dict(existing)
+            attempts = conn.execute("SELECT 1 FROM export_attempts WHERE job_id=? LIMIT 1", (str(existing["id"]),)).fetchone()
+            if not attempts and str(existing["status"]) == "ready":
+                settings = get_v2_settings()
+                ExportRepository(conn).queue_new_attempt(str(existing["id"]), deadline_minutes=int(settings["video_export_timeout_min"]), debug_enabled=bool(settings["video_export_debug"]))
+                job = ExportRepository(conn).job(str(existing["id"]))
+            return {"job": job, "target_path": str(job["target_path"])}
+        task = conn.execute(
+            "SELECT t.final_path, t.drama_name, f.sequence_no FROM production_tasks t "
+            "JOIN production_video_tasks v ON v.task_id=t.id "
+            "JOIN production_files f ON f.id=v.source_material_id WHERE v.id=?",
+            (video_id,),
+        ).fetchone()
+        if not task:
+            raise ValueError("成片任务所属生产任务不存在，无法创建导出任务")
+        sequence_no = task["sequence_no"]
+        if sequence_no is None:
+            raise ValueError("成片素材缺少序号，无法确定正式视频名称")
+        output_stem = safe_component(f"{task['drama_name']}-{int(sequence_no)}", "成片视频名称")
+        output = Path(str(task["final_path"])) / f"{output_stem}.mp4"
+        job = ExportRepository(conn).create_job(
+            production_task_id=task_id, subject_type="final", subject_id=video_id,
+            draft_name=draft_name, draft_path=str(draft_path.resolve()), target_path=str(output.resolve()),
+            manual_check_required=bool(get_v2_settings()["final_video_manual_check"]),
+        )
+        settings = get_v2_settings()
+        ExportRepository(conn).queue_new_attempt(str(job["id"]), deadline_minutes=int(settings["video_export_timeout_min"]), debug_enabled=bool(settings["video_export_debug"]))
+        job = ExportRepository(conn).job(str(job["id"]))
+        return {"job": job, "target_path": str(job["target_path"])}
+    finally:
+        conn.close()
+
+
+def requeue_finished_video(video_id: str) -> dict[str, str]:
+    """Stop and clean a finished-video run, then return it to the queue."""
+    from server.final_engine.runner import cancel_finished_video, _final_work_dir
+    conn = connection()
+    try:
+        row = conn.execute(
+            "SELECT v.status, v.draft_path, v.output_path, v.task_id, f.sequence_no, t.created_date, t.account_name, t.drama_name "
+            "FROM production_video_tasks v JOIN production_tasks t ON t.id=v.task_id JOIN production_files f ON f.id=v.source_material_id WHERE v.id=?",
+            (video_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("成片生成任务不存在")
+        if str(row["status"]) not in {"generation_queued", "generating", "generation_failed", "generation_timeout"}:
+            raise ValueError("当前成片任务不支持重新执行")
+        cancel_finished_video(video_id)
+        # The cancelled worker must release its executor pointer immediately;
+        # its late callback is intentionally ignored by the run token guard.
+        conn.execute(
+            "UPDATE executor_controls SET current_task_id='', control_state=CASE WHEN pause_requested THEN 'manual_paused' ELSE 'idle' END, updated_at=? "
+            "WHERE executor_id='final_generator' AND current_task_id=?",
+            (now_text(), video_id),
+        )
+        task = conn.execute("SELECT root_path FROM production_tasks WHERE id=?", (str(row["task_id"]),)).fetchone()
+        if task:
+            shutil.rmtree(_final_work_dir(task_root=Path(str(task["root_path"])), video_id=video_id), ignore_errors=True)
+        old_draft = Path(str(row["draft_path"] or ""))
+        draft_root = Path(str(get_v2_settings().get("jianying_draft_root") or "")).expanduser()
+        if old_draft.is_dir():
+            try:
+                if draft_root.is_dir() and old_draft.resolve().is_relative_to(draft_root.resolve()):
+                    shutil.rmtree(old_draft, ignore_errors=True)
+            except OSError:
+                pass
+        # A previous run can have produced a draft but failed before writing
+        # its path back to SQLite. Remove only this task's numbered draft
+        # variants so the next run cannot be mistaken for an existing one.
+        if draft_root.is_dir() and row["sequence_no"] is not None:
+            prefix = f"{row['created_date']}-{row['account_name']}-{row['drama_name']}-成片-{int(row['sequence_no'])}"
+            for candidate in draft_root.glob(prefix + "*"):
+                if candidate.is_dir():
+                    shutil.rmtree(candidate, ignore_errors=True)
+        conn.execute("UPDATE production_video_tasks SET status='pending_generation', draft_path='', error_message='', started_at='', finished_at='', updated_at=? WHERE id=?", (now_text(), video_id))
+        conn.commit()
+        return {"id": video_id, "status": "pending_generation"}
+    finally:
+        conn.close()
+
+
+def requeue_export_attempt(attempt_id: str) -> dict[str, object]:
+    """Create exactly one new export attempt for a completed or failed task-center card."""
+    from server.v2_exporter.core import ExportRepository
+    conn = connection()
+    try:
+        attempt = conn.execute("SELECT job_id FROM export_attempts WHERE id=?", (attempt_id,)).fetchone()
+        if not attempt:
+            raise ValueError("视频导出尝试不存在")
+        settings = get_v2_settings()
+        return ExportRepository(conn).queue_new_attempt(
+            str(attempt["job_id"]), deadline_minutes=int(settings["video_export_timeout_min"]), debug_enabled=bool(settings["video_export_debug"]),
+        )
+    finally:
+        conn.close()
+
+
 def start_export_job(job_id: str) -> dict[str, object]:
     """The testable real-entry point: queue exactly one V2 attempt and run it."""
     from server.executor_management import ExecutorManager
@@ -1185,11 +1806,116 @@ def start_export_job(job_id: str) -> dict[str, object]:
     return {"attempt": attempt}
 
 
-def list_tasks() -> dict[str, object]:
+_ACTIVE_EXPORT_ATTEMPTS = {"preparing", "awaiting_human_check", "submitting", "observing_output", "finalizing"}
+
+
+def _executor_current_tasks(conn: sqlite3.Connection) -> dict[str, str]:
+    return {
+        str(row["executor_id"]): str(row["current_task_id"] or "")
+        for row in conn.execute(
+            "SELECT executor_id, current_task_id FROM executor_controls "
+            "WHERE executor_id IN ('template_generator','final_generator','video_exporter')"
+        ).fetchall()
+    }
+
+
+def _final_display_status(video: object, *, final_current_id: str, exporter_current_id: str,
+                          output_exists: bool) -> str:
+    """Return the sole user-facing state for one submitted finished-video task."""
+    raw = str(video["status"] or "")
+    attempt_id = str(video["export_attempt_id"] or "")
+    export = str(video["export_status"] or "")
+    if export == "completed":
+        return "video_exported" if output_exists else "video_error"
+    if export in {"failed", "timeout"}:
+        return "video_error"
+    # The executor claim is the source of truth for “导出中”, including the
+    # short handoff before the attempt changes from queued to preparing.
+    if attempt_id and attempt_id == exporter_current_id:
+        return "video_exporting"
+    if export == "queued":
+        return "video_queued"
+    if export in _ACTIVE_EXPORT_ATTEMPTS:
+        return "video_error"  # an active attempt without its owner is unsafe to misreport
+    if raw in {"generation_failed", "generation_timeout", "error"}:
+        return "draft_error"
+    if str(video["id"]) == final_current_id or raw == "generating":
+        return "draft_generating"
+    if raw in {"pending_generation", "generation_queued"}:
+        return "draft_queued"
+    if raw == "draft_ready":
+        return "draft_ready"
+    return "draft_error"
+
+
+def _template_display_status(template: dict[str, object] | None, *, template_current_id: str,
+                             exporter_current_id: str) -> str:
+    if not template:
+        return "not_generated"
+    raw = str(template.get("status") or "")
+    export = str(template.get("export_status") or "")
+    attempt_id = str(template.get("export_attempt_id") or "")
+    if export == "completed":
+        return "video_ready" if Path(str(template.get("video_path") or "")).is_file() and Path(str(template.get("pairing_path") or "")).is_file() else "video_error"
+    if export in {"failed", "timeout"}:
+        return "video_error"
+    if attempt_id and attempt_id == exporter_current_id:
+        return "video_exporting"
+    if export == "queued":
+        return "video_queued"
+    if export in _ACTIVE_EXPORT_ATTEMPTS:
+        return "video_error"
+    if raw in {"error", "timeout"}:
+        return "draft_error"
+    if raw == "retry_requested":
+        return "draft_retrying"
+    if str(template.get("id") or "") == template_current_id or raw == "running":
+        return "draft_generating"
+    if raw in {"queued", "dispatching"}:
+        return "draft_queued"
+    if raw == "draft_ready":
+        return "draft_ready"
+    return "draft_error"
+
+
+def _task_display_status(*, task: sqlite3.Row, material_count: int, pending_material_count: int,
+                         final_statuses: list[str], template_status: str) -> str:
+    """Aggregate only the task-card lifecycle; item-level phases stay on the right."""
+    if str(task["release_status"] or "unregistered") == "registered":
+        return "released"
+    active = {"draft_generating", "video_exporting", "draft_queued", "video_queued", "draft_ready"}
+    if any(status in active for status in final_statuses):
+        return "final_processing"
+    if any(status in {"draft_error", "video_error"} for status in final_statuses):
+        return "action_required"
+    if material_count and len(final_statuses) == material_count and all(status == "video_exported" for status in final_statuses):
+        return "awaiting_release"
+    if template_status == "video_ready":
+        return "awaiting_final_generation"
+    if template_status in {"draft_queued", "draft_generating", "draft_retrying", "draft_ready", "video_queued", "video_exporting"}:
+        return "template_processing"
+    if template_status in {"draft_error", "video_error"}:
+        return "template_error"
+    if material_count:
+        return "awaiting_template"
+    return "awaiting_scan" if pending_material_count else "awaiting_material"
+
+
+def list_tasks(task_id: str | None = None) -> dict[str, object]:
     conn = connection()
     try:
         items: list[dict[str, object]] = []
-        for row in conn.execute("SELECT * FROM production_tasks ORDER BY created_at DESC").fetchall():
+        current_tasks = _executor_current_tasks(conn)
+        if task_id:
+            rows = conn.execute(
+                "SELECT * FROM production_tasks WHERE id=? AND COALESCE(cleanup_status, 'active')='active'",
+                (task_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM production_tasks WHERE COALESCE(cleanup_status, 'active')='active' ORDER BY created_at DESC"
+            ).fetchall()
+        for row in rows:
             item = task_response(row)
             material_directory = Path(str(row["material_path"]))
             scanned_paths = {
@@ -1219,34 +1945,70 @@ def list_tasks() -> dict[str, object]:
                     "size_bytes": int(file["size_bytes"]),
                     "duration_seconds": float(file["duration_seconds"] or 0),
                     "thumbnail_path": str(file["thumbnail_path"] or ""),
+                    "resolution": str(file["resolution"] or ""),
                     "scanned_at": str(file["updated_at"]),
+                    "status": str(file["status"]),
                 }
                 for file in material_rows
                 if Path(str(file["file_path"])).is_file()
             ]
             video_rows = conn.execute(
-                "SELECT v.*, f.sequence_no, f.file_name, f.file_path, f.size_bytes "
+                "SELECT v.*, f.sequence_no, f.file_name, f.file_path, f.size_bytes, f.duration_seconds AS source_duration_seconds, "
+                "f.original_name, "
+                "j.id AS export_job_id, j.status AS export_job_status, j.target_path AS export_target_path, "
+                "a.id AS export_attempt_id, a.status AS export_status, a.error_message AS export_error_message, "
+                "a.started_at AS export_started_at, a.finished_at AS export_finished_at "
                 "FROM production_video_tasks v "
                 "JOIN production_files f ON f.id=v.source_material_id "
+                "LEFT JOIN export_jobs j ON j.id=(SELECT candidate.id FROM export_jobs candidate "
+                " WHERE candidate.subject_type='final' AND candidate.subject_id=v.id "
+                " ORDER BY candidate.created_at DESC LIMIT 1) "
+                "LEFT JOIN export_attempts a ON a.job_id=j.id AND a.attempt_no=(SELECT MAX(latest.attempt_no) "
+                " FROM export_attempts latest WHERE latest.job_id=j.id) "
                 "WHERE v.task_id=? AND f.status='available' "
                 "AND v.status NOT IN ('cancelled', 'cancellation_requested', 'invalidated') "
                 "ORDER BY f.sequence_no, f.file_name",
                 (str(row["id"]),),
             ).fetchall()
-            item["videos"] = [
-                {
+            item["videos"] = []
+            for video in video_rows:
+                if not Path(str(video["file_path"])).is_file():
+                    continue
+                recorded_output = Path(str(video["output_path"] or ""))
+                export_target = Path(str(video["export_target_path"] or ""))
+                formal_output = _resolve_recorded_video_path(Path(str(row["final_path"])), recorded_output, export_target, str(row["drama_name"]), video["sequence_no"])
+                output_exists = formal_output.is_file()
+                display_status = _final_display_status(
+                    video, final_current_id=current_tasks.get("final_generator", ""),
+                    exporter_current_id=current_tasks.get("video_exporter", ""), output_exists=output_exists,
+                )
+                item["videos"].append({
                     "id": str(video["id"]),
                     "source_material_id": str(video["source_material_id"]),
                     "status": str(video["status"]),
+                    "error_message": str(video["error_message"] or ""),
+                    "generation_started_at": str(video["started_at"] or ""),
+                    "generation_finished_at": str(video["finished_at"] or ""),
                     "sequence_no": video["sequence_no"],
                     "name": str(video["file_name"]),
+                    "original_name": str(video["original_name"] or video["file_name"]),
                     "size_bytes": int(video["size_bytes"]),
+                    "source_duration_seconds": float(video["source_duration_seconds"] or 0),
                     "draft_path": str(video["draft_path"]),
-                    "output_path": str(video["output_path"]),
+                    "output_path": str(formal_output) if output_exists else str(video["output_path"] or ""),
+                    "output_exists": output_exists,
+                    "output_size_bytes": formal_output.stat().st_size if output_exists else 0,
+                    "export_job_id": str(video["export_job_id"] or ""),
+                    "export_attempt_id": str(video["export_attempt_id"] or ""),
+                    "export_status": str(video["export_status"] or ""),
+                    "export_job_status": str(video["export_job_status"] or ""),
+                    "export_error_message": str(video["export_error_message"] or ""),
+                    "export_started_at": str(video["export_started_at"] or ""),
+                    "export_finished_at": str(video["export_finished_at"] or ""),
+                    "output_duration_seconds": _verified_export_duration(conn, str(video["export_attempt_id"] or "")),
+                    "display_status": display_status,
                 }
-                for video in video_rows
-                if Path(str(video["file_path"])).is_file()
-            ]
+                )
             template = conn.execute(
                 "SELECT * FROM template_jobs WHERE task_id=? ORDER BY version_no DESC LIMIT 1", (str(row["id"]),)
             ).fetchone()
@@ -1258,11 +2020,575 @@ def list_tasks() -> dict[str, object]:
                     str(template["started_at"] or ""), str(template["finished_at"] or "")
                 )
                 item["template"] = template_item
+                export = conn.execute(
+                    "SELECT j.id AS export_job_id, j.status AS export_job_status, j.target_path, a.id AS export_attempt_id, a.status AS export_status, a.error_code, a.error_message, a.started_at AS export_started_at, a.finished_at AS export_finished_at "
+                    "FROM export_jobs j LEFT JOIN export_attempts a ON a.job_id=j.id AND a.attempt_no=(SELECT MAX(x.attempt_no) FROM export_attempts x WHERE x.job_id=j.id) "
+                    "WHERE j.subject_type='template' AND j.subject_id=? ORDER BY j.created_at DESC LIMIT 1", (str(template["id"]),)
+                ).fetchone()
+                if export:
+                    template_item["export_job_id"] = str(export["export_job_id"])
+                    template_item["export_attempt_id"] = str(export["export_attempt_id"] or "")
+                    export_status = str(export["export_status"] or export["export_job_status"] or "")
+                    if "TIMEOUT" in str(export["error_code"] or "").upper():
+                        export_status = "timeout"
+                    template_item["export_status"] = export_status
+                    template_item["export_error_message"] = str(export["error_message"] or "")
+                    template_item["export_error_code"] = str(export["error_code"] or "")
+                    template_item["export_target_path"] = str(export["target_path"] or "")
+                    template_item["export_file_name"] = Path(str(export["target_path"] or "")).name
+                    template_item["export_duration_seconds"], template_item["export_duration_formatted"] = _template_duration(str(export["export_started_at"] or ""), str(export["export_finished_at"] or ""))
+                    target = Path(str(export["target_path"] or ""))
+                    template_item["export_file_size_bytes"] = target.stat().st_size if target.is_file() else 0
+                    template_item["video_duration_seconds"] = _verified_export_duration(conn, str(export["export_attempt_id"] or ""))
             else:
                 item["template"] = None
             item["pending_material_count"] = pending_material_count
+            template_status = _template_display_status(
+                item["template"] if isinstance(item["template"], dict) else None,
+                template_current_id=current_tasks.get("template_generator", ""),
+                exporter_current_id=current_tasks.get("video_exporter", ""),
+            )
+            item["template_display_status"] = template_status
+            item["task_display_status"] = _task_display_status(
+                task=row, material_count=len(item["materials"]), pending_material_count=pending_material_count,
+                final_statuses=[str(video["display_status"]) for video in item["videos"]], template_status=template_status,
+            )
             items.append(item)
         return {"items": items}
+    finally:
+        conn.close()
+
+
+def list_task_summaries() -> dict[str, object]:
+    """Return only the fields needed to render production task cards.
+
+    Heavy material/video path inspection stays in list_tasks() and is loaded
+    only after the user opens a specific production task.
+    """
+    # Status has to come from the same canonical resolver as the detail pane.
+    # The old SQL-only aggregate duplicated part of the state machine and was
+    # the source of contradictory card/detail labels.
+    details = list_tasks()["items"]
+    items: list[dict[str, object]] = []
+    for detail in details:
+        videos = list(detail.get("videos") or [])
+        statuses = [str(video.get("display_status") or "") for video in videos]
+        material_count = int(detail.get("materials_count") or len(detail.get("materials") or []))
+        item = dict(detail)
+        item.update({
+            "materials": [], "videos": [],
+            "videos_count": len(videos),
+            "draft_count": sum(status in {"draft_ready", "video_queued", "video_exporting", "video_exported", "video_error"} for status in statuses),
+            "draft_queued_count": sum(status == "draft_queued" for status in statuses),
+            "draft_generating_count": sum(status == "draft_generating" for status in statuses),
+            "export_queued_count": sum(status == "video_queued" for status in statuses),
+            "exporting_count": sum(status == "video_exporting" for status in statuses),
+            "exported_count": sum(status == "video_exported" for status in statuses),
+            "error_count": sum(status in {"draft_error", "video_error"} for status in statuses),
+            "materials_count": material_count,
+        })
+        items.append(item)
+    return {"items": items}
+
+
+def get_task_details(task_id: str) -> dict[str, object]:
+    for item in list_tasks(task_id)["items"]:
+        if str(item.get("id")) == task_id:
+            return item
+    raise ValueError("生产任务不存在")
+
+
+def list_release_addresses(account_name: str) -> dict[str, object]:
+    conn = connection()
+    try:
+        rows = conn.execute("SELECT province, city, district, detail_address, use_count, last_used_at FROM release_address_history WHERE account_name=? ORDER BY use_count DESC, last_used_at DESC", (account_name,)).fetchall()
+        all_rows = conn.execute("SELECT province, city, district, detail_address, SUM(use_count) AS use_count, MAX(last_used_at) AS last_used_at FROM release_address_history GROUP BY normalized_key ORDER BY use_count DESC, last_used_at DESC").fetchall()
+        def item(row: sqlite3.Row) -> dict[str, object]:
+            return {"province": str(row["province"]), "city": str(row["city"]), "district": str(row["district"]), "detail_address": str(row["detail_address"]), "use_count": int(row["use_count"] or 0), "last_used_at": str(row["last_used_at"] or "")}
+        return {"account": [item(row) for row in rows], "public": [item(row) for row in all_rows]}
+    finally:
+        conn.close()
+
+
+def register_release(task_id: str, payload: object) -> dict[str, object]:
+    data = payload if isinstance(payload, dict) else {"actual_release_time": str(payload or "")}
+    actual = str(data.get("actual_release_time") or "").strip()
+    province = str(data.get("province") or "").strip()
+    city = str(data.get("city") or "").strip()
+    district = str(data.get("district") or "").strip()
+    detail = str(data.get("detail_address") or "").strip()
+    if not actual:
+        raise ValueError("请输入实际发布日期和时间")
+    conn = connection()
+    try:
+        task = conn.execute("SELECT id FROM production_tasks WHERE id=?", (task_id,)).fetchone()
+        if not task:
+            raise ValueError("生产任务不存在")
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM production_video_tasks v JOIN production_files f ON f.id=v.source_material_id "
+            "WHERE v.task_id=? AND f.status='available' AND "
+            "(v.status!='draft_ready' OR v.output_path='' OR NOT EXISTS "
+            "(SELECT 1 FROM export_attempts a JOIN export_jobs j ON j.id=a.job_id "
+            "WHERE j.subject_type='final' AND j.subject_id=v.id AND a.status='completed'))",
+            (task_id,),
+        ).fetchone()[0]
+        if int(pending) > 0:
+            raise ValueError("还有成片没有导出完成，暂不能登记发布")
+        account_name = str(conn.execute("SELECT account_name FROM production_tasks WHERE id=?", (task_id,)).fetchone()[0])
+        if not all((province, city, district, detail)):
+            raise ValueError("请填写完整的发布地址")
+        normalized = "|".join(re.sub(r"[\s　]+", "", value).casefold() for value in (province, city, district, detail))
+        stamp = now_text()
+        conn.execute("INSERT INTO release_address_history (id,account_name,province,city,district,detail_address,normalized_key,use_count,first_used_at,last_used_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(account_name,normalized_key) DO UPDATE SET use_count=use_count+1,last_used_at=excluded.last_used_at", (uuid.uuid4().hex, account_name, province, city, district, detail, normalized, 1, stamp, stamp))
+        released = datetime.fromisoformat(actual.replace('T', ' '))
+        settings = get_v2_settings()
+        process_at = (released + timedelta(hours=int(settings["short_term_cleanup_hours"]))).isoformat(sep=' ')
+        raw_at = (released + timedelta(days=int(settings["raw_material_retention_days"]))).isoformat(sep=' ')
+        conn.execute("UPDATE production_tasks SET release_status='registered', actual_release_time=?, release_province=?, release_city=?, release_district=?, release_detail_address=?, process_cleanup_at=?, raw_cleanup_at=?, cleanup_status='active', updated_at=? WHERE id=?", (actual, province, city, district, detail, process_at, raw_at, now_text(), task_id))
+        conn.commit()
+        return {"id": task_id, "release_status": "registered", "actual_release_time": actual, "province": province, "city": city, "district": district, "detail_address": detail}
+    finally:
+        conn.close()
+
+
+def revoke_release(task_id: str) -> dict[str, object]:
+    conn = connection()
+    try:
+        # Keep the last actual release information so the next registration
+        # opens with the previous values for quick correction/reuse.
+        row = conn.execute("SELECT cleanup_status FROM production_tasks WHERE id=?", (task_id,)).fetchone()
+        if row and str(row["cleanup_status"] or "active") != "active":
+            raise ValueError("该任务已清理，不能撤销发布登记")
+        updated = conn.execute("UPDATE production_tasks SET release_status='unregistered', updated_at=? WHERE id=?", (now_text(), task_id)).rowcount
+        if not updated:
+            raise ValueError("生产任务不存在")
+        conn.commit()
+        return {"id": task_id, "release_status": "unregistered", "actual_release_time": ""}
+    finally:
+        conn.close()
+
+def _cleanup_file_items(paths: list[Path]) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for path in paths:
+        try: resolved = path.resolve()
+        except OSError: continue
+        if str(resolved) in seen or not resolved.exists(): continue
+        seen.add(str(resolved))
+        size = resolved.stat().st_size if resolved.is_file() else sum(p.stat().st_size for p in resolved.rglob('*') if p.is_file())
+        items.append({"name": resolved.name, "path": str(resolved), "size_bytes": size})
+    return items
+
+
+def _task_reserved_resource_paths(conn: sqlite3.Connection, task_id: str) -> list[Path]:
+    paths: list[Path] = []
+    rows = conn.execute(
+        "SELECT reserved_path FROM production_resource_reservations WHERE task_id=? AND status='reserved'",
+        (task_id,),
+    ).fetchall()
+    paths.extend(Path(str(row["reserved_path"])) for row in rows)
+    jobs = conn.execute("SELECT reserved_videos_json FROM template_jobs WHERE task_id=?", (task_id,)).fetchall()
+    for job in jobs:
+        try:
+            paths.extend(Path(str(item.get("reserved_path") or "")) for item in json.loads(str(job["reserved_videos_json"] or "[]")))
+        except (TypeError, json.JSONDecodeError):
+            continue
+    # Only remove the currently renamed reservation. Failed template attempts
+    # restore their original name, so their stale JSON must never cause the
+    # shared source file to be deleted.
+    return [path for path in paths if str(path) and path.is_file() and path.name.startswith("已使用-")]
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    """Return whether a resolved path is inside a verified owner root."""
+    try:
+        return path.resolve().is_relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+
+
+def _task_external_draft_paths(conn: sqlite3.Connection, task_id: str) -> list[Path]:
+    """Return only V2-recorded Jianying drafts inside the configured draft root.
+
+    A database path alone must never allow a cleanup operation to remove an
+    arbitrary user folder.  V2 owns a draft only when it is both recorded on
+    this task and physically below the configured Jianying draft root.
+    """
+    configured_root = str(get_v2_settings().get("jianying_draft_root") or "").strip()
+    if not configured_root:
+        return []
+    draft_root = Path(configured_root).expanduser()
+    if not draft_root.is_dir():
+        return []
+    rows = conn.execute(
+        "SELECT draft_path FROM template_jobs WHERE task_id=? AND draft_path<>'' "
+        "UNION SELECT draft_path FROM production_video_tasks WHERE task_id=? AND draft_path<>'' "
+        "UNION SELECT draft_path FROM export_jobs WHERE production_task_id=? AND draft_path<>''",
+        (task_id, task_id, task_id),
+    ).fetchall()
+    paths: list[Path] = []
+    for row in rows:
+        candidate = Path(str(row["draft_path"])).expanduser()
+        if _is_within(candidate, draft_root):
+            paths.append(candidate)
+    return paths
+
+
+def _task_material_thumbnail_paths(conn: sqlite3.Connection, task_id: str) -> list[Path]:
+    """Material thumbnails are short-lived task cache, never seven-day source data."""
+    if DATA_ROOT is None:
+        return []
+    cache_root = DATA_ROOT / "cache" / "material-thumbnails"
+    rows = conn.execute(
+        "SELECT thumbnail_path FROM production_files WHERE task_id=? AND thumbnail_path<>''",
+        (task_id,),
+    ).fetchall()
+    paths: list[Path] = []
+    for row in rows:
+        candidate = Path(str(row["thumbnail_path"])).expanduser()
+        if _is_within(candidate, cache_root):
+            paths.append(candidate)
+    return paths
+
+
+def _task_source_output_paths(conn: sqlite3.Connection, task_id: str) -> list[Path]:
+    """Exact, recorded exporter leftovers from Jianying's uncontrollable default folder."""
+    rows = conn.execute(
+        "SELECT a.source_output_path FROM export_attempts a "
+        "JOIN export_jobs j ON j.id=a.job_id "
+        "WHERE j.production_task_id=? AND a.source_output_path<>''",
+        (task_id,),
+    ).fetchall()
+    return [Path(str(row["source_output_path"])).expanduser() for row in rows]
+
+
+def _task_process_cleanup_paths(conn: sqlite3.Connection, task: sqlite3.Row) -> list[Path]:
+    """Every removable process artifact owned by one production task.
+
+    This single list is intentionally shared by immediate and scheduled
+    cleanup so the two paths cannot silently drift apart.
+    """
+    task_id = str(task["id"])
+    paths = [
+        Path(str(task["template_path"])),
+        Path(str(task["final_path"])),
+        Path(str(task["root_path"])) / "缓存",
+    ]
+    paths.extend(_task_external_draft_paths(conn, task_id))
+    paths.extend(_task_material_thumbnail_paths(conn, task_id))
+    paths.extend(_task_source_output_paths(conn, task_id))
+    paths.extend(_task_reserved_resource_paths(conn, task_id))
+    return paths
+
+
+def _task_raw_cleanup_paths(conn: sqlite3.Connection, task: sqlite3.Row) -> list[Path]:
+    """Raw-material cleanup removes source files and their derived thumbnails only."""
+    paths = [Path(str(task["material_path"]))]
+    paths.extend(_task_material_thumbnail_paths(conn, str(task["id"])))
+    return paths
+
+
+def _remove_paths(paths: list[Path], *, preserve_directory: Path | None = None) -> tuple[list[str], list[str]]:
+    """Remove exact paths; optionally empty, rather than remove, one source directory."""
+    deleted: list[str] = []
+    errors: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        try:
+            resolved = path.resolve()
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+            continue
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            if preserve_directory is not None and resolved == preserve_directory.resolve():
+                if resolved.exists():
+                    for item in resolved.iterdir():
+                        if item.is_dir():
+                            shutil.rmtree(item)
+                        else:
+                            item.unlink()
+                deleted.append(str(resolved))
+            elif resolved.exists():
+                if resolved.is_dir():
+                    shutil.rmtree(resolved)
+                else:
+                    resolved.unlink()
+                deleted.append(str(resolved))
+        except OSError as exc:
+            errors.append(f"{resolved.name}: {exc}")
+    return deleted, errors
+
+
+def _due_at_or_backfill(conn: sqlite3.Connection, task: sqlite3.Row, column: str, delta: timedelta) -> datetime | None:
+    """Use the release-time snapshot; only legacy blank rows are backfilled once."""
+    value = str(task[column] or "").strip()
+    if value:
+        try:
+            return datetime.fromisoformat(value.replace("T", " "))
+        except ValueError:
+            return None
+    try:
+        released = datetime.fromisoformat(str(task["actual_release_time"] or "").replace("T", " "))
+    except ValueError:
+        return None
+    due = released + delta
+    conn.execute("UPDATE production_tasks SET " + column + "=?, updated_at=? WHERE id=?", (due.isoformat(sep=" "), now_text(), str(task["id"])))
+    return due
+
+
+def _format_storage_size(size_bytes: int) -> str:
+    """Use MB for small values and automatically carry over to GB/TB."""
+    value = float(max(0, size_bytes))
+    units = ("B", "KB", "MB", "GB", "TB")
+    index = 0
+    while value >= 1024 and index < len(units) - 1:
+        value /= 1024
+        index += 1
+    if index < 2:
+        return f"{value:.0f} {units[index]}"
+    return f"{value:.1f} {units[index]}"
+
+
+def _resolve_recorded_video_path(final_root: Path, recorded: Path, target: Path, drama_name: str, sequence_no: object) -> Path:
+    """Resolve legacy export names without changing the stored history."""
+    if recorded.is_file():
+        return recorded
+    if target.is_file():
+        return target
+    try:
+        sequence = int(sequence_no)
+    except (TypeError, ValueError):
+        return recorded
+    exact = final_root / f"{drama_name}-{sequence}.mp4"
+    if exact.is_file():
+        return exact
+    candidates = sorted(final_root.glob(f"*-{sequence}.mp4"), key=lambda path: path.stat().st_mtime, reverse=True)
+    return candidates[0] if candidates else recorded
+
+def cleanup_preview(task_id: str) -> dict[str, object]:
+    conn = connection()
+    try:
+        task = conn.execute("SELECT * FROM production_tasks WHERE id=?", (task_id,)).fetchone()
+        if not task: raise ValueError("生产任务不存在")
+        registered = str(task["release_status"] or "unregistered") == "registered"
+        if str(task["cleanup_status"] or "active") != "active": raise ValueError("该任务已经清理过")
+        paths: list[Path] = []
+        if registered:
+            # 发布后的清理删除全部已证明归属的过程文件；原素材单独保留。
+            paths.extend(_task_process_cleanup_paths(conn, task))
+            retained = _cleanup_file_items([Path(str(task["material_path"]))])
+        else:
+            # 未发布的“删除剧集”删除整个任务根目录，以及根目录外已登记的草稿。
+            paths.append(Path(str(task["root_path"])))
+            paths.extend(_task_external_draft_paths(conn, task_id))
+            paths.extend(_task_material_thumbnail_paths(conn, task_id))
+            paths.extend(_task_source_output_paths(conn, task_id))
+            paths.extend(_task_reserved_resource_paths(conn, task_id))
+            retained = []
+        deleted = _cleanup_file_items(paths)
+        total = sum(int(x["size_bytes"]) for x in deleted)
+        return {"isRegisteredRelease": registered, "taskTitle": f"{task['account_name']} × 《{task['drama_name']}》", "accountName": str(task["account_name"]), "dramaName": str(task["drama_name"]), "currentStage": str(task["status"]), "canExecute": True, "estimatedSpaceMb": round(total / 1024 / 1024, 2), "estimatedSpaceText": _format_storage_size(total), "itemsToDelete": [{"name": x["name"], "sizeMb": round(int(x["size_bytes"]) / 1024 / 1024, 2), "sizeText": _format_storage_size(int(x["size_bytes"]))} for x in deleted], "itemsToRetain": [f"原素材：{x['name']}" for x in retained] + (["账号、剧集、发布时间、发布地址和清理记录"] if registered else [])}
+    finally: conn.close()
+
+def execute_cleanup(task_id: str) -> dict[str, object]:
+    preview = cleanup_preview(task_id)
+    conn = connection(); deleted: list[str] = []; errors: list[str] = []
+    try:
+        task = conn.execute("SELECT * FROM production_tasks WHERE id=?", (task_id,)).fetchone()
+        registered = bool(preview["isRegisteredRelease"])
+        if registered:
+            deleted, errors = _remove_paths(_task_process_cleanup_paths(conn, task))
+        else:
+            active = conn.execute(
+                "SELECT 1 FROM template_jobs WHERE task_id=? AND status IN ('dispatching','running') "
+                "UNION SELECT 1 FROM production_video_tasks WHERE task_id=? AND status IN ('generation_queued','generating') "
+                "UNION SELECT 1 FROM export_attempts a JOIN export_jobs j ON j.id=a.job_id "
+                "WHERE j.production_task_id=? AND a.status IN ('preparing','submitting','observing_output','finalizing') LIMIT 1",
+                (task_id, task_id, task_id),
+            ).fetchone()
+            if active:
+                raise ValueError("当前剧集仍有正在执行的任务，请先等待任务结束或在任务中心停止后再删除")
+            paths = [Path(str(task["root_path"]))]
+            paths.extend(_task_external_draft_paths(conn, task_id))
+            paths.extend(_task_material_thumbnail_paths(conn, task_id))
+            paths.extend(_task_source_output_paths(conn, task_id))
+            paths.extend(_task_reserved_resource_paths(conn, task_id))
+            deleted, errors = _remove_paths(paths)
+        stamp = now_text(); status = "partial" if errors else "completed"
+        if registered:
+            conn.execute("UPDATE production_resource_reservations SET status=?, released_at=? WHERE task_id=? AND status='reserved'", ("missing" if errors else "released", stamp, task_id))
+            conn.execute("INSERT INTO cleanup_records VALUES (?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex, task_id, "immediate", status, json.dumps(deleted, ensure_ascii=False), json.dumps(preview["itemsToRetain"], ensure_ascii=False), "\n".join(errors), stamp, stamp))
+            if not errors:
+                conn.execute("UPDATE production_files SET thumbnail_path='', updated_at=? WHERE task_id=?", (stamp, task_id))
+            # process_cleanup_at is the release-time deadline snapshot.  The
+            # actual completion time belongs in cleaned_at / cleanup_records.
+            conn.execute("UPDATE production_tasks SET cleanup_status=?, cleaned_at=?, updated_at=? WHERE id=?", ("process_cleaned" if not errors else "partial", stamp, stamp, task_id))
+        elif not errors:
+            # “删除剧集”是完全删除：不留下孤立的任务清理记录。
+            conn.execute("DELETE FROM cleanup_records WHERE task_id=?", (task_id,))
+            conn.execute("DELETE FROM production_tasks WHERE id=?", (task_id,))
+        conn.commit()
+        return {"status": status, "deleted": deleted, "errors": errors}
+    finally: conn.close()
+
+def run_due_cleanup() -> dict[str, int]:
+    """Run due post-release cleanup in two independent stages."""
+    conn = connection(); process_count = raw_count = 0
+    try:
+        settings = get_v2_settings()
+        now = datetime.now()
+        rows = conn.execute("SELECT * FROM production_tasks WHERE release_status='registered' AND cleanup_status IN ('active','process_cleaned','partial','raw_partial') AND actual_release_time<>''").fetchall()
+        for task in rows:
+            process_due = _due_at_or_backfill(conn, task, "process_cleanup_at", timedelta(hours=int(settings["short_term_cleanup_hours"])))
+            raw_due = _due_at_or_backfill(conn, task, "raw_cleanup_at", timedelta(days=int(settings["raw_material_retention_days"])))
+            if process_due is None or raw_due is None:
+                continue
+            status = str(task["cleanup_status"] or "active")
+            if status in {"active", "partial"} and now >= process_due:
+                deleted, errors = _remove_paths(_task_process_cleanup_paths(conn, task))
+                stamp = now_text()
+                conn.execute("UPDATE production_tasks SET cleanup_status=?, cleaned_at=?, updated_at=? WHERE id=?", ("partial" if errors else "process_cleaned", stamp, stamp, str(task["id"])))
+                conn.execute("INSERT INTO cleanup_records VALUES (?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex, str(task["id"]), "scheduled_process", "partial" if errors else "completed", json.dumps(deleted, ensure_ascii=False), json.dumps(["原素材、素材登记信息、发布和收益信息"], ensure_ascii=False), "\n".join(errors), stamp, stamp))
+                conn.execute("UPDATE production_resource_reservations SET status=?, released_at=? WHERE task_id=? AND status='reserved'", ("missing" if errors else "released", stamp, str(task["id"])))
+                if not errors:
+                    conn.execute("UPDATE production_files SET thumbnail_path='', updated_at=? WHERE task_id=?", (stamp, str(task["id"])))
+                process_count += 1
+            current = conn.execute("SELECT cleanup_status FROM production_tasks WHERE id=?", (str(task["id"]),)).fetchone()
+            # A partial process cleanup must be retried first.  Never destroy
+            # the seven-day source evidence while process artifacts remain.
+            if not current or str(current["cleanup_status"]) not in {"process_cleaned", "raw_partial"}: continue
+            if now < raw_due: continue
+            material_root = Path(str(task["material_path"])); deleted, errors = _remove_paths(
+                _task_raw_cleanup_paths(conn, task), preserve_directory=material_root,
+            )
+            stamp = now_text(); status = "raw_partial" if errors else "raw_cleaned"
+            conn.execute("UPDATE production_tasks SET cleanup_status=?, cleaned_at=?, updated_at=? WHERE id=?", (status, stamp, stamp, str(task["id"])))
+            if not errors:
+                conn.execute("UPDATE production_files SET status='source_cleaned', thumbnail_path='', missing_scan_count=0, updated_at=? WHERE task_id=?", (stamp, str(task["id"])))
+            conn.execute("INSERT INTO cleanup_records VALUES (?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex, str(task["id"]), "scheduled_raw", status, json.dumps(deleted, ensure_ascii=False), json.dumps(["素材登记信息、账号、剧集、发布时间、发布地址、收益和爆款关联"], ensure_ascii=False), "\n".join(errors), stamp, stamp))
+            raw_count += 1
+        conn.commit()
+        return {"process": process_count, "raw": raw_count}
+    finally: conn.close()
+
+
+def start_finished_video_generation(video_id: str) -> dict[str, str]:
+    from server.final_engine.runner import start_finished_video
+    return start_finished_video(video_id)
+
+
+def create_finished_video_task(task_id: str, source_material_id: str) -> dict[str, str]:
+    """Create one finished-video task only after an explicit user action.
+
+    Scanning records materials, but never submits them for finished-video
+    generation.  This function is the sole submission boundary used by the
+    production-center "生成成片" action.
+    """
+    conn = connection()
+    try:
+        material = conn.execute(
+            "SELECT id, file_path, status FROM production_files "
+            "WHERE id=? AND task_id=? AND file_type='original_material'",
+            (source_material_id, task_id),
+        ).fetchone()
+        if not material:
+            raise ValueError("成片任务对应的素材不存在")
+        if str(material["status"]) != "available" or not Path(str(material["file_path"])).is_file():
+            raise ValueError("成片任务对应的素材不可用")
+        existing = conn.execute(
+            "SELECT * FROM production_video_tasks WHERE task_id=? AND source_material_id=?",
+            (task_id, source_material_id),
+        ).fetchone()
+        stamp = now_text()
+        if existing:
+            if str(existing["status"]) in {"cancelled", "invalidated"}:
+                conn.execute(
+                    "UPDATE production_video_tasks SET status='pending_generation', "
+                    "error_message='', started_at='', finished_at='', updated_at=? WHERE id=?",
+                    (stamp, str(existing["id"])),
+                )
+                conn.commit()
+            return {"id": str(existing["id"]), "status": "pending_generation" if str(existing["status"]) in {"cancelled", "invalidated"} else str(existing["status"])}
+        video_id = uuid.uuid4().hex
+        conn.execute(
+            "INSERT INTO production_video_tasks "
+            "(id, task_id, source_material_id, status, draft_path, output_path, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'pending_generation', '', '', ?, ?)",
+            (video_id, task_id, source_material_id, stamp, stamp),
+        )
+        conn.commit()
+        return {"id": video_id, "status": "pending_generation"}
+    finally:
+        conn.close()
+
+
+def create_finished_video_tasks_batch(task_id: str, source_material_ids: list[str]) -> dict[str, object]:
+    """Submit several material-driven finished-video tasks in one user action."""
+    ids = list(dict.fromkeys(str(item).strip() for item in source_material_ids if str(item).strip()))
+    if not ids:
+        raise ValueError("请至少选择一条素材")
+    conn = connection()
+    try:
+        task = conn.execute("SELECT id FROM production_tasks WHERE id=?", (task_id,)).fetchone()
+        if not task:
+            raise ValueError("生产任务不存在")
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"SELECT id, file_path, status FROM production_files WHERE task_id=? AND file_type='original_material' AND id IN ({placeholders})",
+            (task_id, *ids),
+        ).fetchall()
+        by_id = {str(row["id"]): row for row in rows}
+        missing = [item for item in ids if item not in by_id]
+        if missing:
+            raise ValueError("所选素材不存在或不属于当前生产任务")
+        unavailable = [item for item in ids if str(by_id[item]["status"]) != "available" or not Path(str(by_id[item]["file_path"])).is_file()]
+        if unavailable:
+            raise ValueError("所选素材中存在已删除或不可用文件，请重新扫描")
+        stamp = now_text()
+        created: list[dict[str, str]] = []
+        new_count = 0
+        for material_id in ids:
+            existing = conn.execute(
+                "SELECT id, status FROM production_video_tasks WHERE task_id=? AND source_material_id=?",
+                (task_id, material_id),
+            ).fetchone()
+            if existing:
+                status = str(existing["status"])
+                if status in {"cancelled", "invalidated"}:
+                    conn.execute("UPDATE production_video_tasks SET status='pending_generation', error_message='', started_at='', finished_at='', updated_at=? WHERE id=?", (stamp, str(existing["id"])))
+                    status = "pending_generation"
+                created.append({"id": str(existing["id"]), "source_material_id": material_id, "status": status})
+                continue
+            video_id = uuid.uuid4().hex
+            conn.execute(
+                "INSERT INTO production_video_tasks (id, task_id, source_material_id, status, draft_path, output_path, created_at, updated_at) VALUES (?, ?, ?, 'pending_generation', '', '', ?, ?)",
+                (video_id, task_id, material_id, stamp, stamp),
+            )
+            created.append({"id": video_id, "source_material_id": material_id, "status": "pending_generation"})
+            new_count += 1
+        conn.commit()
+        return {"task_id": task_id, "items": created, "created_count": new_count}
+    finally:
+        conn.close()
+
+
+def update_task_manual_check(task_id: str, enabled: bool) -> dict[str, object]:
+    """Update the live manual-check policy for one production drama."""
+    conn = connection()
+    try:
+        updated = conn.execute(
+            "UPDATE production_tasks SET final_video_manual_check=?, updated_at=? "
+            "WHERE id=? AND COALESCE(cleanup_status, 'active')='active'",
+            (int(bool(enabled)), now_text(), task_id),
+        ).rowcount
+        if updated != 1:
+            raise ValueError("生产任务不存在")
+        conn.commit()
+        return get_task_details(task_id)
     finally:
         conn.close()
 
@@ -1279,6 +2605,23 @@ def _template_duration(started_at: str, finished_at: str = "") -> tuple[int, str
     if seconds < 60:
         return seconds, f"{seconds:02d}秒"
     return seconds, f"{seconds // 60}分{seconds % 60:02d}秒"
+
+
+def _verified_export_duration(conn: sqlite3.Connection, attempt_id: str) -> float:
+    """Read the MP4 duration captured at successful export finalisation."""
+    if not attempt_id:
+        return 0.0
+    row = conn.execute(
+        "SELECT detail_json FROM export_events WHERE attempt_id=? AND event_type='OUTPUT_FINALIZED' "
+        "ORDER BY sequence_no DESC LIMIT 1",
+        (attempt_id,),
+    ).fetchone()
+    if not row:
+        return 0.0
+    try:
+        return max(0.0, float(json.loads(str(row["detail_json"] or "{}")).get("duration_seconds") or 0))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return 0.0
 
 
 def repair_empty_task_date(task_id: str, target_date: str) -> dict[str, object]:
@@ -1355,31 +2698,21 @@ def scan_task(task_id: str) -> dict[str, object]:
             sha256 = content_hash(path, "sha256")
             sequence = canonical_sequence(path, str(task["drama_name"]))
             duration_seconds, thumbnail_path = probe_material(path, md5)
+            resolution = media_resolution(path)
             conn.execute(
                 "INSERT INTO production_files "
-                "(id,task_id,file_type,original_name,file_name,file_path,md5,sha256,size_bytes,sequence_no,status,created_at,updated_at,duration_seconds,thumbnail_path) "
-                "VALUES (?, ?, 'original_material', ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?) "
+                "(id,task_id,file_type,original_name,file_name,file_path,md5,sha256,size_bytes,sequence_no,status,created_at,updated_at,duration_seconds,thumbnail_path,resolution,missing_scan_count) "
+                "VALUES (?, ?, 'original_material', ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?, ?, 0) "
                 "ON CONFLICT(task_id, file_path) DO UPDATE SET "
                 "original_name=excluded.original_name, file_name=excluded.file_name, md5=excluded.md5, sha256=excluded.sha256, "
                 "size_bytes=excluded.size_bytes, sequence_no=excluded.sequence_no, duration_seconds=excluded.duration_seconds, "
-                "thumbnail_path=excluded.thumbnail_path, status='available', updated_at=excluded.updated_at",
-                (uuid.uuid4().hex, task_id, original.name, path.name, str(path), md5, sha256, path.stat().st_size, sequence, stamp, stamp, duration_seconds, thumbnail_path),
+                "thumbnail_path=excluded.thumbnail_path, resolution=excluded.resolution, status='available', missing_scan_count=0, updated_at=excluded.updated_at",
+                (uuid.uuid4().hex, task_id, original.name, path.name, str(path), md5, sha256, path.stat().st_size, sequence, stamp, stamp, duration_seconds, thumbnail_path, resolution),
             )
             material = conn.execute(
                 "SELECT id FROM production_files WHERE task_id=? AND file_path=?",
                 (task_id, str(path)),
             ).fetchone()
-            conn.execute(
-                "INSERT OR IGNORE INTO production_video_tasks "
-                "(id, task_id, source_material_id, status, draft_path, output_path, created_at, updated_at) "
-                "VALUES (?, ?, ?, 'pending_generation', '', '', ?, ?)",
-                (uuid.uuid4().hex, task_id, str(material["id"]), stamp, stamp),
-            )
-            conn.execute(
-                "UPDATE production_video_tasks SET status='pending_generation', updated_at=? "
-                "WHERE source_material_id=? AND status IN ('cancelled', 'invalidated')",
-                (stamp, str(material["id"])),
-            )
             items.append({"name": path.name, "path": str(path), "sequence_no": sequence, "md5": md5, "size_bytes": path.stat().st_size})
         current_paths = {str(path) for path in renamed}
         recorded_paths = conn.execute(
@@ -1389,17 +2722,22 @@ def scan_task(task_id: str) -> dict[str, object]:
         for recorded in recorded_paths:
             if str(recorded["file_path"]) not in current_paths:
                 material_id = str(recorded["id"])
-                conn.execute(
-                    "UPDATE production_files SET status='source_missing', updated_at=? WHERE id=?",
-                    (stamp, material_id),
-                )
-                conn.execute(
-                    "UPDATE production_video_tasks SET status=CASE "
-                    "WHEN status IN ('pending_generation', 'generation_queued') THEN 'cancelled' "
-                    "WHEN status='generating' THEN 'cancellation_requested' "
-                    "ELSE 'invalidated' END, updated_at=? WHERE source_material_id=?",
-                    (stamp, material_id),
-                )
+                previous = conn.execute("SELECT missing_scan_count FROM production_files WHERE id=?", (material_id,)).fetchone()
+                count = int(previous["missing_scan_count"] or 0) + 1
+                if count < 2:
+                    conn.execute("UPDATE production_files SET status='source_missing', missing_scan_count=?, updated_at=? WHERE id=?", (count, stamp, material_id))
+                    continue
+                video_rows = conn.execute("SELECT id, draft_path, output_path FROM production_video_tasks WHERE source_material_id=?", (material_id,)).fetchall()
+                for video in video_rows:
+                    for raw_path in (video["draft_path"], video["output_path"]):
+                        if raw_path:
+                            target = Path(str(raw_path))
+                            if target.is_file(): target.unlink(missing_ok=True)
+                            elif target.is_dir(): shutil.rmtree(target, ignore_errors=True)
+                    shutil.rmtree(Path(str(task["root_path"])) / "缓存" / "成片" / str(video["id"]), ignore_errors=True)
+                    conn.execute("DELETE FROM export_jobs WHERE subject_type='final' AND subject_id=?", (str(video["id"]),))
+                conn.execute("DELETE FROM production_video_tasks WHERE source_material_id=?", (material_id,))
+                conn.execute("DELETE FROM production_files WHERE id=?", (material_id,))
         conn.execute("UPDATE production_tasks SET status=?, updated_at=? WHERE id=?", ("materials_scanned", stamp, task_id))
         conn.commit()
         return {"task_id": task_id, "directory": str(directory), "discovered": len(files), "items": items}
@@ -1412,7 +2750,57 @@ def template_stem(task: sqlite3.Row) -> str:
     return f"{int(created[5:7])}月{int(created[8:10])}日-{safe_component(str(task['account_name']), '账号')}-{safe_component(str(task['drama_name']), '剧集')}"
 
 
-def queue_template_job(task_id: str, *, regenerate: bool = False) -> dict[str, object]:
+def ensure_final_photo_reservation(task_id: str) -> list[Path]:
+    """领取并固定一组真人图片，供该日期/账号/剧集的所有分集复用。"""
+    with RESOURCE_RESERVATION_LOCK:
+        conn = connection()
+        renamed: list[tuple[Path, Path]] = []
+        try:
+            existing = conn.execute(
+                "SELECT reserved_path FROM production_resource_reservations "
+                "WHERE task_id=? AND resource_type='real_image' AND version_no=1 AND status='reserved' ORDER BY sequence_no",
+                (task_id,),
+            ).fetchall()
+            if len(existing) == 6 and all(Path(str(row["reserved_path"])).is_file() for row in existing):
+                return [Path(str(row["reserved_path"])) for row in existing]
+            task = conn.execute("SELECT * FROM production_tasks WHERE id=?", (task_id,)).fetchone()
+            if not task:
+                raise ValueError("生产任务不存在")
+            workspace, _ = require_configured_paths()
+            root = workspace / "生成资源" / "真人图片"
+            root.mkdir(parents=True, exist_ok=True)
+            candidates = sorted(
+                (p for p in root.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS and not p.name.startswith("已使用")),
+                key=lambda path: natural_key(path.name),
+            )
+            if len(candidates) < 6:
+                raise ValueError(f"真人图片不足 6 张，当前可领取 {len(candidates)} 张")
+            stem = template_stem(task)
+            stamp = now_text()
+            paths: list[Path] = []
+            try:
+                for index, source in enumerate(candidates[:6], start=1):
+                    target = source.with_name(f"已使用-{stem}-R01-{index:02d}{source.suffix.lower()}")
+                    if target.exists():
+                        raise ValueError("真人图片领取命名冲突，未覆盖任何文件")
+                    source.rename(target); renamed.append((source, target)); paths.append(target)
+                    conn.execute(
+                        "INSERT INTO production_resource_reservations "
+                        "(id,task_id,resource_type,version_no,sequence_no,original_path,reserved_path,original_name,reserved_name,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (uuid.uuid4().hex, task_id, "real_image", 1, index, str(source), str(target), source.name, target.name, stamp),
+                    )
+                conn.commit()
+                return paths
+            except Exception:
+                for source, target in reversed(renamed):
+                    if target.exists() and not source.exists(): target.rename(source)
+                conn.rollback()
+                raise
+        finally:
+            conn.close()
+
+
+def queue_template_job(task_id: str, *, regenerate: bool = False, retry: bool = False) -> dict[str, object]:
     """Reserve exactly three real videos for one V2 template attempt.
 
     This intentionally stops before invoking Jianying.  The separate runner is
@@ -1445,7 +2833,10 @@ def queue_template_job(task_id: str, *, regenerate: bool = False) -> dict[str, o
             current_status = str(current["status"]) if current else ""
             # 失败/超时是同一次尝试的重新执行，继续使用 R01；只有成功
             # 的模板被用户主动重新生成时，才创建 R02、R03 新版本。
-            version = int(current["version_no"]) if current and regenerate and current_status in {"error", "timeout"} else (int(current["version_no"]) + 1 if current else 1)
+            if current and retry and current_status in {"error", "timeout"}:
+                version = int(current["version_no"])
+            else:
+                version = int(current["version_no"]) + 1 if current else 1
             stamp = now_text(); job_id = uuid.uuid4().hex; stem = template_stem(task)
             attempt_root = Path(str(task["template_path"])) / f"R{version:02d}"
             if current and version == int(current["version_no"]) and current_status in {"error", "timeout"}:
@@ -1540,7 +2931,195 @@ def production_media(file_id: str, *, thumbnail: bool = False) -> Path:
     return candidate
 
 
+def finished_video_media(video_id: str) -> Path:
+    """Return only a verified formal final video owned by the requested task."""
+    conn = connection()
+    try:
+        row = conn.execute(
+            "SELECT v.output_path, t.final_path FROM production_video_tasks v "
+            "JOIN production_tasks t ON t.id=v.task_id WHERE v.id=?",
+            (video_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        raise ValueError("成片视频不存在")
+    candidate = Path(str(row["output_path"] or "")).resolve()
+    final_root = Path(str(row["final_path"] or "")).resolve()
+    if not candidate.is_relative_to(final_root) or not candidate.is_file():
+        raise ValueError("成片视频尚未完成或正式文件不存在")
+    return candidate
+
+
+def finished_video_thumbnail(video_id: str) -> Path:
+    """Create or reuse a first-frame thumbnail for a verified formal final video."""
+    output = finished_video_media(video_id)
+    stat = output.stat()
+    cache_key = hashlib.sha1(
+        f"finished:{output}:{stat.st_size}:{stat.st_mtime_ns}".encode("utf-8")
+    ).hexdigest()
+    _, thumbnail_path = probe_material(output, cache_key)
+    thumbnail = Path(thumbnail_path)
+    if not thumbnail.is_file():
+        raise ValueError("成片预览缩略图暂时无法生成")
+    return thumbnail
+
+
+def request_open_finished_video_draft(video_id: str) -> dict[str, object]:
+    """Open a completed final's draft only while the exporter is manually idle."""
+    from server.executor_management import ExecutorManager
+    from server.v2_exporter.runner import start_manual_draft_open_in_background
+
+    conn = connection()
+    try:
+        state = ExecutorManager(conn).state("video_exporter")
+        if str(state.get("control_state") or "") != "manual_paused" or str(state.get("current_task_id") or ""):
+            raise ValueError("请先将视频导出器设为人工暂停，并等待当前导出任务结束后再打开草稿")
+        row = conn.execute(
+            "SELECT v.draft_path, v.output_path, j.draft_name FROM production_video_tasks v "
+            "LEFT JOIN export_jobs j ON j.id=(SELECT candidate.id FROM export_jobs candidate "
+            "WHERE candidate.subject_type='final' AND candidate.subject_id=v.id ORDER BY candidate.created_at DESC LIMIT 1) "
+            "WHERE v.id=?",
+            (video_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("成片任务不存在")
+        draft_path = Path(str(row["draft_path"] or "")).resolve()
+        if not draft_path.is_dir() or not finished_video_media(video_id).is_file():
+            raise ValueError("当前成片缺少可打开的草稿或已验收视频")
+        draft_name = str(row["draft_name"] or draft_path.name).strip()
+        if not draft_name:
+            raise ValueError("当前成片草稿名称不可用")
+        start_manual_draft_open_in_background(
+            connection, video_id=video_id, draft_name=draft_name, draft_path=draft_path,
+            settings=get_v2_settings(),
+        )
+        return {"accepted": True, "video_id": video_id}
+    finally:
+        conn.close()
+
+def request_open_template_draft(task_id: str) -> dict[str, object]:
+    from server.executor_management import ExecutorManager
+    from server.v2_exporter.runner import start_manual_template_draft_open_in_background
+    conn = connection()
+    try:
+        state = ExecutorManager(conn).state("video_exporter")
+        if str(state.get("control_state") or "") != "manual_paused" or str(state.get("current_task_id") or ""):
+            raise ValueError("请先将视频导出器设为人工暂停，并等待当前导出任务结束后再打开草稿")
+        row = conn.execute("SELECT draft_name, draft_path FROM template_jobs WHERE task_id=? ORDER BY version_no DESC LIMIT 1", (task_id,)).fetchone()
+        if not row or not Path(str(row["draft_path"] or "")).is_dir():
+            raise ValueError("当前剧集缺少可打开的模板草稿")
+        start_manual_template_draft_open_in_background(draft_name=str(row["draft_name"]), settings=get_v2_settings())
+        return {"accepted": True, "task_id": task_id}
+    finally:
+        conn.close()
+
+def template_video_media(task_id: str) -> Path:
+    conn = connection()
+    try: row = conn.execute("SELECT COALESCE((SELECT target_path FROM export_jobs WHERE subject_type='template' AND subject_id=t.id ORDER BY created_at DESC LIMIT 1), t.video_path) AS video_path FROM template_jobs t WHERE t.task_id=? ORDER BY t.version_no DESC LIMIT 1", (task_id,)).fetchone()
+    finally: conn.close()
+    candidate = Path(str(row["video_path"] or "")).resolve() if row else Path("")
+    if not candidate.is_file() or WORKSPACE is None or not candidate.is_relative_to(WORKSPACE.resolve()):
+        raise ValueError("模板视频尚未完成或正式文件不存在")
+    return candidate
+
+
+REVENUE_COLLECTION_START_LOCK = threading.Lock()
+
+
+def start_revenue_collection(
+    start_date: str,
+    end_date: str,
+    *,
+    theater_names: list[str] | None = None,
+    account_ids: list[str] | None = None,
+    trigger_source: str = "manual",
+    scheduled_slots: list[str] | None = None,
+) -> dict[str, object]:
+    """Create one V2 revenue run and execute it in the background.
+
+    Manual requests and automatic schedule checks intentionally share this
+    entry point so they persist the same account-level evidence and results.
+    """
+    if trigger_source not in {"manual", "automatic"}:
+        raise ValueError("收益采集触发来源不正确")
+    if not start_date or not end_date:
+        raise ValueError("请选择收益采集日期")
+    slots = sorted(set(scheduled_slots or []))
+    if not all(re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", slot) for slot in slots):
+        raise ValueError("自动采集时间点格式不正确")
+    with REVENUE_COLLECTION_START_LOCK:
+        conn = connection()
+        try:
+            from server.v2_revenue_service import estimate_collection_units
+            run_id, now = uuid.uuid4().hex, datetime.now().isoformat(timespec="seconds")
+            total_units = estimate_collection_units(conn, start_date, end_date, theater_names, account_ids)
+            conn.execute(
+                """INSERT INTO v2_revenue_collection_runs
+                   (id, status, start_date, end_date, trigger_source, scheduled_slots_json, total_units, created_at, updated_at)
+                   VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?)""",
+                (run_id, start_date, end_date, trigger_source, json.dumps(slots, ensure_ascii=False), total_units, now, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def run_collection() -> None:
+        worker_conn = connection()
+        try:
+            from server.v2_revenue_service import collect_supported_theaters
+            started = datetime.now().isoformat(timespec="seconds")
+            worker_conn.execute("UPDATE v2_revenue_collection_runs SET status='running', started_at=?, updated_at=? WHERE id=?", (started, started, run_id))
+            worker_conn.commit()
+
+            def report(item: dict[str, object]) -> None:
+                status = str(item.get("status") or "failed")
+                if status == "running":
+                    worker_conn.execute("UPDATE v2_revenue_collection_runs SET current_theater=?, current_account=?, updated_at=? WHERE id=?", (str(item.get("theater_name") or ""), str(item.get("account_name") or ""), datetime.now().isoformat(timespec="seconds"), run_id))
+                else:
+                    worker_conn.execute(
+                        """UPDATE v2_revenue_collection_runs SET completed_units=completed_units+1,
+                           success_units=success_units+?, no_data_units=no_data_units+?, failed_units=failed_units+?,
+                           current_theater=?, current_account=?, updated_at=? WHERE id=?""",
+                        (1 if status == "success" else 0, 1 if status == "no_data" else 0, 1 if status == "failed" else 0,
+                         str(item.get("theater_name") or ""), str(item.get("account_name") or ""), datetime.now().isoformat(timespec="seconds"), run_id),
+                    )
+                worker_conn.commit()
+
+            collect_supported_theaters(worker_conn, start_date, end_date, theater_names, account_ids, report)
+            finished = datetime.now().isoformat(timespec="seconds")
+            worker_conn.execute("UPDATE v2_revenue_collection_runs SET status='completed', finished_at=?, updated_at=? WHERE id=?", (finished, finished, run_id))
+            worker_conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            failed = datetime.now().isoformat(timespec="seconds")
+            worker_conn.execute("UPDATE v2_revenue_collection_runs SET status='failed', error_message=?, finished_at=?, updated_at=? WHERE id=?", (str(exc), failed, failed, run_id))
+            worker_conn.commit()
+        finally:
+            worker_conn.close()
+
+    threading.Thread(target=run_collection, name=f"v2-revenue-{run_id[:8]}", daemon=True).start()
+    return {"run_id": run_id, "status": "queued", "total_units": total_units}
+
+
 class Handler(BaseHTTPRequestHandler):
+    def _binary(self, file_path: Path, content_type: str, *, cache_control: str = "public, max-age=86400") -> None:
+        body = file_path.read_bytes()
+        stat = file_path.stat()
+        etag = '"%s-%s"' % (stat.st_mtime_ns, stat.st_size)
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(HTTPStatus.NOT_MODIFIED)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache_control)
+            self.end_headers()
+            return
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", cache_control)
+        self.end_headers()
+        self.wfile.write(body)
+
     def _json(self, status: int, payload: object) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -1551,12 +3130,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
+        match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/cleanup/preview", path)
+        if match:
+            try: self._json(HTTPStatus.OK, cleanup_preview(match.group(1)))
+            except (ValueError, OSError) as exc: self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
         match = re.fullmatch(r"/api/v2/production-files/([a-f0-9]+)/thumbnail", path)
         if match:
             try:
                 file_path = production_media(match.group(1), thumbnail=True)
-                body = file_path.read_bytes()
-                self.send_response(HTTPStatus.OK); self.send_header("Content-Type", "image/jpeg"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+                content_type = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp"}.get(file_path.suffix.lower(), "image/jpeg")
+                self._binary(file_path, content_type)
             except (ValueError, OSError) as exc:
                 self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
             return
@@ -1570,8 +3154,61 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, OSError) as exc:
                 self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
             return
+        match = re.fullmatch(r"/api/v2/production-videos/([a-f0-9]+)/media", path)
+        if match:
+            try:
+                file_path = finished_video_media(match.group(1)); size = file_path.stat().st_size
+                self.send_response(HTTPStatus.OK); self.send_header("Content-Type", "video/mp4"); self.send_header("Accept-Ranges", "bytes"); self.send_header("Content-Length", str(size)); self.end_headers()
+                with file_path.open("rb") as stream:
+                    shutil.copyfileobj(stream, self.wfile)
+            except (ValueError, OSError) as exc:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
+        match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/template-media", path)
+        if match:
+            try:
+                file_path = template_video_media(match.group(1)); size = file_path.stat().st_size
+                self.send_response(HTTPStatus.OK); self.send_header("Content-Type", "video/mp4"); self.send_header("Accept-Ranges", "bytes"); self.send_header("Content-Length", str(size)); self.end_headers()
+                with file_path.open("rb") as stream: shutil.copyfileobj(stream, self.wfile)
+            except (ValueError, OSError) as exc: self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
+        match = re.fullmatch(r"/api/v2/production-videos/([a-f0-9]+)/thumbnail", path)
+        if match:
+            try:
+                self._binary(finished_video_thumbnail(match.group(1)), "image/jpeg")
+            except (ValueError, OSError) as exc:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
+        match = re.fullmatch(r"/api/v2/production-resources/([a-f0-9]+)/thumbnail", path)
+        if match:
+            try:
+                file_path = production_resource_media(match.group(1), thumbnail=True)
+                self._binary(file_path, "image/jpeg")
+            except (ValueError, OSError) as exc:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
+        match = re.fullmatch(r"/api/v2/production-resources/([a-f0-9]+)/media", path)
+        if match:
+            try:
+                file_path = production_resource_media(match.group(1)); size = file_path.stat().st_size
+                content_type = {".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp"}.get(file_path.suffix.lower(), "application/octet-stream")
+                self.send_response(HTTPStatus.OK); self.send_header("Content-Type", content_type); self.send_header("Accept-Ranges", "bytes"); self.send_header("Content-Length", str(size)); self.end_headers()
+                with file_path.open("rb") as stream:
+                    shutil.copyfileobj(stream, self.wfile)
+            except (ValueError, OSError) as exc:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
         if path == "/api/v2/health":
             self._json(HTTPStatus.OK, {"status": "ok", "service": "v2-file-service"})
+            return
+        if path == "/api/v2/change-events":
+            query = parse_qs(urlparse(self.path).query)
+            raw_after = str(query.get("after_id", [""])[0]).strip()
+            try:
+                after_id = int(raw_after) if raw_after else None
+                self._json(HTTPStatus.OK, list_change_events(after_id, int(query.get("limit", ["200"])[0])))
+            except ValueError:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "变化记录游标无效"})
             return
         if path == "/api/v2/theaters":
             self._json(HTTPStatus.OK, list_theaters())
@@ -1579,11 +3216,21 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v2/accounts":
             self._json(HTTPStatus.OK, list_accounts())
             return
+        match = re.fullmatch(r"/api/v2/accounts/([a-f0-9]+)", path)
+        if match:
+            try: self._json(HTTPStatus.OK, get_account(match.group(1)))
+            except ValueError as exc: self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
         if path == "/api/v2/sub-theaters":
             self._json(HTTPStatus.OK, list_sub_theaters())
             return
         if path == "/api/v2/dramas":
             self._json(HTTPStatus.OK, list_dramas())
+            return
+        match = re.fullmatch(r"/api/v2/dramas/([a-f0-9]+)", path)
+        if match:
+            try: self._json(HTTPStatus.OK, get_drama(match.group(1)))
+            except ValueError as exc: self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
             return
         if path == "/api/v2/drama-profiles":
             self._json(HTTPStatus.OK, list_drama_profiles())
@@ -1613,18 +3260,136 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v2/settings":
             self._json(HTTPStatus.OK, get_v2_settings())
             return
+        if path == "/api/v2/local-vision-ai/status":
+            from server.local_vision_ai import status
+            self._json(HTTPStatus.OK, status())
+            return
         if path == "/api/v2/drives":
             self._json(HTTPStatus.OK, {"items": list_windows_drives()})
             return
         if path == "/api/v2/production-tasks":
             self._json(HTTPStatus.OK, list_tasks())
             return
+        if path == "/api/v2/production-task-summaries":
+            self._json(HTTPStatus.OK, list_task_summaries())
+            return
+        match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/details", path)
+        if match:
+            try:
+                self._json(HTTPStatus.OK, get_task_details(match.group(1)))
+            except ValueError as exc:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
+        if path == "/api/v2/release-addresses":
+            self._json(HTTPStatus.OK, list_release_addresses(str(parse_qs(urlparse(self.path).query).get("account_name", [""])[0])))
+            return
+        if path == "/api/v2/revenue/source-data":
+            try:
+                from server.v2_revenue_service import revenue_source_data
+            except ModuleNotFoundError:
+                from v2_revenue_service import revenue_source_data
+            conn = connection()
+            try:
+                self._json(HTTPStatus.OK, revenue_source_data(conn))
+            finally:
+                conn.close()
+            return
+        if path == "/api/v2/revenue/daily-account-summary":
+            try:
+                from server.v2_revenue_service import revenue_daily_account_summary
+            except ModuleNotFoundError:
+                from v2_revenue_service import revenue_daily_account_summary
+            query = parse_qs(urlparse(self.path).query)
+            try:
+                conn = connection()
+                try:
+                    self._json(HTTPStatus.OK, revenue_daily_account_summary(conn, str(query.get("date", [""])[0])))
+                finally:
+                    conn.close()
+            except ValueError as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        if path == "/api/v2/revenue/video-details":
+            try:
+                from server.v2_revenue_service import revenue_video_details
+            except ModuleNotFoundError:
+                from v2_revenue_service import revenue_video_details
+            query = parse_qs(urlparse(self.path).query)
+            start_date = str(query.get("start_date", [""])[0])
+            end_date = str(query.get("end_date", [""])[0])
+            account_id = str(query.get("account_id", [""])[0])
+            try:
+                limit = int(query.get("limit", ["12000"])[0])
+                conn = connection()
+                try:
+                    self._json(HTTPStatus.OK, revenue_video_details(conn, start_date, end_date, account_id, limit))
+                finally:
+                    conn.close()
+            except ValueError as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        if path == "/api/v2/revenue/video-candidates":
+            try:
+                from server.v2_revenue_service import revenue_video_candidates
+            except ModuleNotFoundError:
+                from v2_revenue_service import revenue_video_candidates
+            query = parse_qs(urlparse(self.path).query)
+            conn = connection()
+            try:
+                self._json(HTTPStatus.OK, revenue_video_candidates(conn, str(query.get("account_id", [""])[0]), str(query.get("video_id", [""])[0])))
+            except ValueError as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            finally:
+                conn.close()
+            return
+        if path == "/api/v2/revenue/collection-logs":
+            try:
+                from server.v2_revenue_service import collection_logs
+            except ModuleNotFoundError:
+                from v2_revenue_service import collection_logs
+            limit = int(parse_qs(urlparse(self.path).query).get("limit", ["80"])[0])
+            conn = connection()
+            try:
+                self._json(HTTPStatus.OK, collection_logs(conn, limit))
+            finally:
+                conn.close()
+            return
+        match = re.fullmatch(r"/api/v2/revenue/collection-runs/([a-f0-9]+)", path)
+        if match:
+            conn = connection()
+            try:
+                row = conn.execute("""SELECT id, status, total_units, completed_units, success_units, no_data_units, failed_units,
+                    current_theater, current_account, error_message, created_at, started_at, finished_at
+                    FROM v2_revenue_collection_runs WHERE id=?""", (match.group(1),)).fetchone()
+                if not row:
+                    self._json(HTTPStatus.NOT_FOUND, {"error": "未找到该采集任务"})
+                else:
+                    self._json(HTTPStatus.OK, dict(row))
+            finally:
+                conn.close()
+            return
         if path == "/api/v2/task-center":
             try:
                 from server.task_center_service import task_center_snapshot
             except ModuleNotFoundError:
                 from task_center_service import task_center_snapshot
-            self._json(HTTPStatus.OK, task_center_snapshot())
+            try:
+                self._json(HTTPStatus.OK, task_center_snapshot())
+            except Exception as exc:  # noqa: BLE001
+                import traceback
+                traceback.print_exc()
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"任务中心加载失败：{exc}"})
+            return
+        match = re.fullmatch(r"/api/v2/task-center/production-tasks/([a-f0-9]+)", path)
+        if match:
+            try:
+                from server.task_center_service import task_center_items_for_production_task
+            except ModuleNotFoundError:
+                from task_center_service import task_center_items_for_production_task
+            try:
+                self._json(HTTPStatus.OK, task_center_items_for_production_task(match.group(1)))
+            except Exception as exc:  # noqa: BLE001
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"任务局部加载失败：{exc}"})
             return
         self._json(HTTPStatus.NOT_FOUND, {"error": "V2 接口不存在"})
 
@@ -1636,6 +3401,38 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/v2/production-tasks":
                 self._json(HTTPStatus.CREATED, create_task(payload))
                 return
+            if path == "/api/v2/revenue/collect":
+                start_date = str(payload.get("start_date") or "").strip()
+                end_date = str(payload.get("end_date") or "").strip()
+                theater_names = payload.get("theaters") if isinstance(payload.get("theaters"), list) else None
+                account_ids = payload.get("account_ids") if isinstance(payload.get("account_ids"), list) else None
+                self._json(HTTPStatus.ACCEPTED, start_revenue_collection(start_date, end_date, theater_names=theater_names, account_ids=account_ids))
+                return
+            if path == "/api/v2/revenue/video-links":
+                try:
+                    from server.v2_revenue_service import confirm_revenue_video_link
+                except ModuleNotFoundError:
+                    from v2_revenue_service import confirm_revenue_video_link
+                conn = connection()
+                try:
+                    self._json(HTTPStatus.OK, confirm_revenue_video_link(conn, payload))
+                finally:
+                    conn.close()
+                return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/release", path)
+            if match:
+                self._json(HTTPStatus.OK, register_release(match.group(1), payload))
+                return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/release/revoke", path)
+            if match:
+                self._json(HTTPStatus.OK, revoke_release(match.group(1)))
+                return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/cleanup/preview", path)
+            if match:
+                self._json(HTTPStatus.OK, cleanup_preview(match.group(1))); return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/cleanup", path)
+            if match:
+                self._json(HTTPStatus.OK, execute_cleanup(match.group(1))); return
             if path == "/api/v2/exporter/jobs":
                 self._json(HTTPStatus.CREATED, create_export_job(payload))
                 return
@@ -1678,6 +3475,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, {"opened": True}); return
             if path == "/api/v2/settings":
                 self._json(HTTPStatus.OK, update_v2_settings(payload)); return
+            if path == "/api/v2/local-vision-ai/download":
+                from server.local_vision_ai import start_download
+                self._json(HTTPStatus.ACCEPTED, start_download(str(payload.get("model") or ""))); return
             if path == "/api/v2/select-path":
                 self._json(HTTPStatus.OK, select_v2_path(str(payload.get("kind") or ""))); return
             match = re.fullmatch(r"/api/v2/task-center/tasks/([a-f0-9]+)/retry", path)
@@ -1686,7 +3486,17 @@ class Handler(BaseHTTPRequestHandler):
                     from server.template_engine.runner import request_retry
                 except ModuleNotFoundError:
                     from template_engine.runner import request_retry
-                self._json(HTTPStatus.OK, request_retry(match.group(1))); return
+                task_id = match.group(1)
+                conn = connection()
+                try:
+                    template = conn.execute("SELECT 1 FROM template_jobs WHERE id=?", (task_id,)).fetchone()
+                    export_attempt = conn.execute("SELECT 1 FROM export_attempts WHERE id=?", (task_id,)).fetchone()
+                finally:
+                    conn.close()
+                self._json(HTTPStatus.OK, request_retry(task_id) if template else requeue_export_attempt(task_id) if export_attempt else requeue_finished_video(task_id)); return
+            match = re.fullmatch(r"/api/v2/task-center/tasks/([a-f0-9]+)/re-export", path)
+            if match:
+                self._json(HTTPStatus.ACCEPTED, requeue_export_attempt(match.group(1))); return
             match = re.fullmatch(r"/api/v2/task-center/tasks/([a-f0-9]+)/regenerate", path)
             if match:
                 self._json(HTTPStatus.CREATED, regenerate_template_job(match.group(1))); return
@@ -1700,9 +3510,43 @@ class Handler(BaseHTTPRequestHandler):
             if match:
                 self._json(HTTPStatus.OK, scan_task(match.group(1)))
                 return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/manual-check", path)
+            if match:
+                self._json(HTTPStatus.OK, update_task_manual_check(match.group(1), bool(payload.get("enabled", False))))
+                return
             match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/template", path)
             if match:
                 self._json(HTTPStatus.CREATED, queue_template_job(match.group(1), regenerate=bool(payload.get("regenerate", False))))
+                return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/videos", path)
+            if match:
+                source_material_id = str(payload.get("source_material_id") or "").strip()
+                if not source_material_id:
+                    raise ValueError("缺少素材 ID")
+                self._json(HTTPStatus.CREATED, create_finished_video_task(match.group(1), source_material_id))
+                return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/videos/batch", path)
+            if match:
+                source_material_ids = payload.get("source_material_ids")
+                if not isinstance(source_material_ids, list):
+                    raise ValueError("缺少素材 ID 列表")
+                self._json(HTTPStatus.CREATED, create_finished_video_tasks_batch(match.group(1), source_material_ids))
+                return
+            match = re.fullmatch(r"/api/v2/production-videos/([a-f0-9]+)/generate", path)
+            if match:
+                self._json(HTTPStatus.ACCEPTED, start_finished_video_generation(match.group(1)))
+                return
+            match = re.fullmatch(r"/api/v2/production-videos/([a-f0-9]+)/retry", path)
+            if match:
+                self._json(HTTPStatus.ACCEPTED, start_finished_video_generation(match.group(1)))
+                return
+            match = re.fullmatch(r"/api/v2/production-videos/([a-f0-9]+)/open-draft", path)
+            if match:
+                self._json(HTTPStatus.ACCEPTED, request_open_finished_video_draft(match.group(1)))
+                return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/template/open-draft", path)
+            if match:
+                self._json(HTTPStatus.ACCEPTED, request_open_template_draft(match.group(1)))
                 return
             if path in {"/api/v2/task-center/pause", "/api/v2/task-center/resume"}:
                 try:
@@ -1710,6 +3554,15 @@ class Handler(BaseHTTPRequestHandler):
                 except ModuleNotFoundError:
                     from task_center_service import set_queue_paused, task_center_snapshot
                 set_queue_paused(path.endswith("/pause"))
+                self._json(HTTPStatus.OK, task_center_snapshot())
+                return
+            match = re.fullmatch(r"/api/v2/task-center/executors/([a-z_]+)/(?P<action>pause|resume)", path)
+            if match:
+                try:
+                    from server.task_center_service import set_executor_paused, task_center_snapshot
+                except ModuleNotFoundError:
+                    from task_center_service import set_executor_paused, task_center_snapshot
+                set_executor_paused(match.group(1), match.group("action") == "pause")
                 self._json(HTTPStatus.OK, task_center_snapshot())
                 return
             self._json(HTTPStatus.NOT_FOUND, {"error": "V2 接口不存在"})
@@ -1779,6 +3632,11 @@ def main() -> None:
     except ModuleNotFoundError:
         from task_center_service import start_scheduler
     start_scheduler()
+    try:
+        from server.revenue_auto_scheduler import start_revenue_auto_scheduler
+    except ModuleNotFoundError:
+        from revenue_auto_scheduler import start_revenue_auto_scheduler
+    start_revenue_auto_scheduler()
     state = "V2 文件服务已启动" if WORKSPACE is not None else "V2 文件服务已启动：需要配置数据盘"
     print(f"{state}，http://{HOST}:{PORT}", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

@@ -2,7 +2,7 @@
 
 export type AnalyticsTopTab = 'revenue' | 'accounts' | 'dramas' | 'videos' | 'combinations';
 
-export type TimeRangeFilter = 'yesterday' | '7days' | '30days' | 'this_month' | 'custom';
+export type TimeRangeFilter = 'yesterday' | '7days' | '14days' | '30days' | 'this_month' | 'custom';
 
 export type TheaterFilter = 'all' | 'qingning' | 'jiuzhou' | 'dianzhong' | 'fanqie' | 'huasheng';
 

@@ -43,4 +43,4 @@ export function toBusinessSubTheater(item: V2SubTheaterRecord): SubTheaterBusine
     isUsedInBusiness: item.bound_accounts_count > 0,
   };
 }
-export function toBusinessDrama(item: import('../api/v2Catalog').V2DramaRecord): DramaBusinessItem { return { id: item.id, currentName: item.current_name, historyNames: item.history_names, theaterId: item.theater_id, theaterName: item.theater_name, createdAt: item.created_at, isUsedInBusiness: false }; }
+export function toBusinessDrama(item: import('../api/v2Catalog').V2DramaRecord): DramaBusinessItem { return { id: item.id, currentName: item.current_name, historyNames: item.history_names, theaterId: item.theater_id, theaterName: item.theater_name, createdAt: item.created_at, productionCount: Number(item.production_count) || 0, lastScheduledAt: item.last_scheduled_at || '', activeProductionCount: Number(item.active_production_count) || 0, isUsedInBusiness: false }; }

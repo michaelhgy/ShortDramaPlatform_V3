@@ -64,6 +64,12 @@ export const RevenueModule: React.FC<RevenueModuleProps> = ({
   onOpenCollectionDrawer,
 }) => {
   const [contributionTab, setContributionTab] = useState<'theaters' | 'accounts' | 'dramas'>('theaters');
+  const addDays = (value: string, days: number) => { const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + days); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
+  const rangeStart = trendPoints[0]?.date;
+  const rangeEnd = trendPoints[trendPoints.length - 1]?.date;
+  const rangeText = rangeStart && rangeEnd ? (rangeStart === rangeEnd ? rangeEnd.slice(5) : `${rangeStart.slice(5)} ~ ${rangeEnd.slice(5)}`) : '暂无日期';
+  const referenceSevenDayText = rangeEnd ? `${addDays(rangeEnd, -6).slice(5)} ~ ${rangeEnd.slice(5)}` : '暂无日期';
+  const currentPeriodLabel = timeRange === '7days' ? `近7日结算 (${rangeText})` : timeRange === '14days' ? `近14日结算 (${rangeText})` : timeRange === '30days' ? `近30日结算 (${rangeText})` : timeRange === 'this_month' ? `本月累计 (${rangeText})` : timeRange === 'custom' ? `自定义区间 (${rangeText})` : `昨日结算 (${rangeText})`;
 
   const activeContributions = contributionTab === 'theaters' 
     ? theaterContributions 
@@ -127,7 +133,7 @@ export const RevenueModule: React.FC<RevenueModuleProps> = ({
                 </span>
               </div>
               <div className="text-[10px] text-slate-500">
-                基准参考区间 08-17 ~ 08-23
+                基准参考区间 {referenceSevenDayText}
               </div>
             </div>
 
@@ -181,7 +187,7 @@ export const RevenueModule: React.FC<RevenueModuleProps> = ({
                 </span>
               </div>
               <div className="text-[10px] text-slate-500">
-                {timeRange === '7days' ? '近7日结算 (08-17 ~ 08-23)' : timeRange === '30days' ? '近30日结算' : timeRange === 'this_month' ? '本月累计 (08-01 ~ 08-23)' : '自定义区间'}
+                {currentPeriodLabel}
               </div>
             </div>
 
@@ -322,17 +328,17 @@ export const RevenueModule: React.FC<RevenueModuleProps> = ({
           {contributionTab === 'dramas' && (
             <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 border border-black/[0.06] text-xs">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-[#1A1D2E]">当前可归因收益:</span>
+                <span className="font-bold text-[#1A1D2E]">青柠视频级可归因收益:</span>
                 <span className="font-mono font-black text-emerald-700 text-sm">
                   ¥{dramaAttributionSummary.attributableRevenue.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                 </span>
                 <span className="text-[#64748B] text-[11px]">
-                  (占当前周期总收益 {dramaAttributionSummary.attributableRatioPct}%)
+                  (占青柠视频级明细 {dramaAttributionSummary.attributableRatioPct}%)
                 </span>
               </div>
               <div className="text-[11px] text-[#64748B] flex items-center gap-1">
                 <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>仅计入具备明确剧集ID的平台流水，未归因收益不计入分母</span>
+                <span>仅计入青柠返回明确剧名的平台视频；其他剧场仍只显示账号日收益。</span>
               </div>
             </div>
           )}

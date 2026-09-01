@@ -1,5 +1,6 @@
 import { createV2ProductionTask, scanV2ProductionTask } from '../api/v2Production';
 import type { ProductionUnit, ScannedMaterialClip } from '../productionTypes';
+import { formatElapsedSeconds } from '../utils/duration';
 
 function formatSize(bytes: number): string {
   return `${Math.max(0.1, bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -22,8 +23,8 @@ export async function scanProductionMaterials(unit: ProductionUnit): Promise<{ d
     directory: result.directory,
     discovered: result.discovered,
     materials: result.items.map((item) => ({
-      id: `v2-${item.md5}`, sequenceNumber: item.sequence_no, title: item.name, dramaPrefix: unit.dramaName, durationSec: 0,
-      durationText: '—', fileSizeText: formatSize(item.size_bytes), filePath: item.path,
+      id: `v2-${item.md5}`, sequenceNumber: item.sequence_no, title: item.name, dramaPrefix: unit.dramaName,
+      durationSec: Number(item.duration_seconds || 0), durationText: formatElapsedSeconds(item.duration_seconds, '—'), fileSizeText: formatSize(item.size_bytes), filePath: item.path,
       scannedAt: '刚刚', isValid: true,
     })),
   };

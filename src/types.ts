@@ -17,7 +17,10 @@ export interface DramaItem {
   category?: string;
   theaterId?: string;
   theaterName?: string;
-  usageCount?: number; // 历史生产使用频次
+  productionCount?: number;
+  lastScheduledAt?: string;
+  activeProductionCount?: number;
+  usageCount?: number; // 仅保留给旧示意工作台兼容；V2 安排今日不再使用
 }
 
 export interface DramaPrediction {
@@ -43,6 +46,7 @@ export interface AccountItem {
   name: string;
   avatarSeed?: string;
   yesterdayRevenue: number;
+  yesterdayRevenueState?: 'success' | 'no_data' | 'failed' | 'uncollected';
   monthRevenue: number;
   manualStatus: ManualAccountStatus;
   platform: string; // e.g. "微信视频号"

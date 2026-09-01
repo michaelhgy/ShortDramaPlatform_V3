@@ -56,6 +56,9 @@ export interface DramaBusinessItem {
   theaterId: string;        // 所属剧场 ID
   theaterName: string;      // 所属剧场名称
   createdAt: string;        // 录入时间
+  productionCount?: number;
+  lastScheduledAt?: string;
+  activeProductionCount?: number;
   hasContentProfile?: boolean; // 是否已建立更丰富的剧集资料库档案
   isUsedInBusiness?: boolean; // 是否已有真实生产/发布关系（若有则禁止删除）
   tags?: string[];          // 标签（来自标签库）
@@ -113,7 +116,7 @@ export interface DramaContentProfile {
 
 // ================= 3. 生产资源 (Production Resources) =================
 
-export type ResourceCategory = 'real_video' | 'real_image' | 'bgm';
+export type ResourceCategory = 'real_video' | 'real_image' | 'bgm' | 'lead_video';
 export type ResourceStatus = 'available' | 'used'; // 可用 | 已使用
 
 export interface ProductionResourceItem {
@@ -124,6 +127,7 @@ export interface ProductionResourceItem {
   filePath: string;
   fileSizeMb: number;
   thumbnailUrl?: string;
+  mediaUrl?: string;
   durationSeconds?: number;
   resolution?: string;
   status: ResourceStatus;       // 'available' 可用 | 'used' 已使用

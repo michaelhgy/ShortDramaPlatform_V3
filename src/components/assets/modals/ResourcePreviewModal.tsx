@@ -18,6 +18,7 @@ export interface PreviewResourceData {
   sourceDramaName?: string;
   sourceAccountName?: string;
   thumbnailUrl?: string;
+  mediaUrl?: string;
 }
 
 interface ResourcePreviewModalProps {
@@ -50,8 +51,8 @@ export const ResourcePreviewModal: React.FC<ResourcePreviewModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-black/[0.08] overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150" onClick={onClose}>
+      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-black/[0.08] overflow-hidden flex flex-col max-h-[90vh]" onClick={(event) => event.stopPropagation()}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-black/[0.06] flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-2.5">
@@ -67,9 +68,9 @@ export const ResourcePreviewModal: React.FC<ResourcePreviewModalProps> = ({
             <div>
               <h3 className="font-bold text-sm text-[#1A1D2E] line-clamp-1">{resource.title}</h3>
               <p className="text-xs text-[#64748B] flex items-center gap-2">
-                <span>{resource.categoryName}</span>
-                {resource.resolution && <span>· {resource.resolution}</span>}
-                {resource.durationText && <span>· {resource.durationText}</span>}
+                <span>时长：{resource.durationText || '—'}</span>
+                {resource.fileSizeMb != null && <span>· 大小: {resource.fileSizeMb}MB</span>}
+                <span>· 分辨率: {resource.resolution || '—'}</span>
               </p>
             </div>
           </div>
@@ -86,7 +87,7 @@ export const ResourcePreviewModal: React.FC<ResourcePreviewModalProps> = ({
           {/* Main Visual Display */}
           <div className="relative rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center min-h-[260px] border border-black/[0.08] shadow-inner">
             {resource.type === 'video' ? (
-              <div className="w-full flex flex-col items-center justify-center p-8 text-center text-white">
+                resource.mediaUrl ? <video src={resource.mediaUrl} poster={resource.thumbnailUrl} controls autoPlay muted playsInline className="w-full max-h-[560px] object-contain" /> : <div className="w-full flex flex-col items-center justify-center p-8 text-center text-white">
                 <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-[#DDFD00] shadow-lg mb-3">
                   <Video className="w-8 h-8" />
                 </div>
@@ -98,11 +99,11 @@ export const ResourcePreviewModal: React.FC<ResourcePreviewModalProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span>本地视频媒体流通道已挂载</span>
                 </div>
-              </div>
+                </div>
             ) : resource.type === 'image' ? (
               <div className="w-full h-72 flex items-center justify-center relative overflow-hidden bg-slate-950">
                 <img
-                  src={resource.thumbnailUrl || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&auto=format&fit=crop&q=80'}
+                  src={resource.mediaUrl || resource.thumbnailUrl}
                   alt={resource.title}
                   className="max-h-full max-w-full object-contain"
                 />
