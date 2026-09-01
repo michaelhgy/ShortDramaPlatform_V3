@@ -1,4 +1,6 @@
 import json
+import os
+import sys
 import tempfile
 import time
 import unittest
@@ -29,6 +31,22 @@ class V2ExportRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(V2ExportFailure, "双 ESC") as raised:
             lease.require_active("attempt")
         self.assertEqual("USER_DOUBLE_ESC_ABORT", raised.exception.code)
+
+    def test_runtime_loads_v2_owned_windows_automation_without_a_v1_root(self) -> None:
+        from server.v2_exporter.runtime import _automation_imports
+
+        v1_root = Path("D:/V1-not-present-for-v2-runtime")
+        original_path = sys.path[:]
+        try:
+            sys.path[:] = [entry for entry in sys.path if "ShortDramaPlatform" not in entry or "ShortDramaPlatform_V2" in entry]
+            with patch.dict(os.environ, {"V2_V1_REUSE_ROOT": str(v1_root)}):
+                lease_type, _foreground, runtime_type, _types, upstream_type = _automation_imports()
+        finally:
+            sys.path[:] = original_path
+
+        self.assertEqual("server.windows_automation.jianying_adapter", lease_type.__module__)
+        self.assertEqual("server.windows_automation.jianying_runtime", runtime_type.__module__)
+        self.assertEqual("server.windows_automation.jianying59_exporter.upstream_adapter", upstream_type.__module__)
 
     def test_matching_template_or_final_can_reuse_its_confirmed_export_button(self) -> None:
         from server.v2_exporter.runtime import Jianying59Bridge

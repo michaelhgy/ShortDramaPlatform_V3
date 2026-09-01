@@ -14,7 +14,8 @@ excludes test-only packages such as `pytest`.
   `edgechromium` backend reaches `pythonnet` and Windows WebView2 at runtime.
 - OCR reaches `rapidocr_onnxruntime` and ONNX Runtime; final-engine and draft
   flows reach `pyJianYingDraft`, `uiautomation`, OpenCV, NumPy, and Pillow.
-- The V2 exporter has a separate, existing V1 import boundary. Resolving that
-  boundary is a later task; this lock records the V2-side Python packages only.
+- The V2 exporter uses the V2-owned `server/windows_automation` package for
+  its Windows/Jianying 5.9 low-level runtime. No adjacent V1 repository is a
+  production runtime prerequisite.
 - FFmpeg, Jianying/CapCut, Ollama, and WebView2 are external software or system
   runtime dependencies, not Python packages and not included here.

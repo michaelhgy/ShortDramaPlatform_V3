@@ -1,9 +1,8 @@
 """V2-owned real Jianying export runtime.
 
-This module deliberately keeps V1 at a narrow hardware boundary.  The V2
-runner owns attempts, deadlines, aborts, media acceptance and file finalising;
-V1 is imported only for its proven Windows input lease, process discovery and
-5.9 UIA controller implementation.
+The V2 runner owns attempts, deadlines, aborts, media acceptance and file
+finalising. Its Windows input lease, process discovery and 5.9 UIA controller
+implementation are supplied by V2's internal low-level runtime.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import threading
 import time
 import uuid
@@ -54,23 +52,15 @@ FINAL_EXPORT_ACCEPTANCE_SECONDS = 1.5
 FINAL_EXPORT_CLICK_MAX_ATTEMPTS = 3
 
 
-def _v1_imports() -> tuple[Any, Any, Any, Any, Any]:
-    """Load only stable V1 desktop primitives; never import V1 workers."""
-    configured = os.environ.get("V2_V1_REUSE_ROOT", "").strip()
-    root = Path(configured).expanduser() if configured else Path(__file__).resolve().parents[2].parent / "ShortDramaPlatform"
-    backend, engines = root / "backend", root / "engines"
-    if not backend.is_dir() or not engines.is_dir():
-        raise V2ExportFailure("V1_REUSE_UNAVAILABLE", "未找到可复用的 V1 剪映 5.9 低层组件")
-    for item in (str(backend), str(engines)):
-        if item not in sys.path:
-            sys.path.insert(0, item)
+def _automation_imports() -> tuple[Any, Any, Any, Any, Any]:
+    """Load V2-owned Windows and Jianying low-level automation primitives."""
     try:
-        from v1.jianying_adapter import WindowsInputLeaseAdapter, foreground_jianying_window
-        from v1.jianying_runtime import JianyingRuntimeError, WindowsJianyingRuntime
-        from jianying59_exporter.executor import ExportFailure, ExportRequest, JianyingPage
-        from jianying59_exporter.upstream_adapter import PyJianyingUpstreamAdapter
+        from server.windows_automation.jianying_adapter import WindowsInputLeaseAdapter, foreground_jianying_window
+        from server.windows_automation.jianying_runtime import WindowsJianyingRuntime
+        from server.windows_automation.jianying59_exporter.executor import ExportFailure, ExportRequest, JianyingPage
+        from server.windows_automation.jianying59_exporter.upstream_adapter import PyJianyingUpstreamAdapter
     except ImportError as exc:
-        raise V2ExportFailure("V1_REUSE_UNAVAILABLE", f"V1 剪映低层组件不可导入：{exc}") from exc
+        raise V2ExportFailure("WINDOWS_AUTOMATION_UNAVAILABLE", f"V2 内置剪映低层组件不可导入：{exc}") from exc
     return WindowsInputLeaseAdapter, foreground_jianying_window, WindowsJianyingRuntime, (ExportFailure, ExportRequest, JianyingPage), PyJianyingUpstreamAdapter
 
 
@@ -92,7 +82,7 @@ class WindowsInputLease:
                 if self._attempt_id == attempt_id:
                     return
                 raise V2ExportFailure("INPUT_LEASE_CONFLICT", "已有其他 V2 导出尝试持有键鼠")
-            adapter_type, _foreground, _runtime, _types, _upstream = _v1_imports()
+            adapter_type, _foreground, _runtime, _types, _upstream = _automation_imports()
             self._adapter, self._attempt_id = adapter_type(), attempt_id
             self._abort_requested.clear()
             self._stop_abort_listener = threading.Event()
@@ -143,7 +133,7 @@ class WindowsInputLease:
         if self._abort_requested.is_set():
             self.release(attempt_id)
             raise V2ExportFailure("USER_DOUBLE_ESC_ABORT", "用户双 ESC 紧急终止")
-        # V1's watchdog releases the same input lease when its safety limit
+        # The low-level watchdog releases the same input lease when its safety limit
         # is reached.  That is a timeout, not evidence that the user pressed
         # Esc; check it first so it can never be recorded as double-Esc.
         if time.monotonic() >= self._expires_at:
@@ -186,13 +176,13 @@ class WindowsInputLease:
 
 
 class _V2ForegroundGuard:
-    """Adapter protocol used by V1 UIA code, backed by the V2 lease."""
+    """Adapter protocol used by the low-level UIA code, backed by the V2 lease."""
     def __init__(self, lease: WindowsInputLease, attempt_id: str) -> None:
         self.lease, self.attempt_id = lease, attempt_id
 
     def acquire(self) -> None:
         self.lease.require_active(self.attempt_id)
-        _lease, foreground, _runtime, _types, _upstream = _v1_imports()
+        _lease, foreground, _runtime, _types, _upstream = _automation_imports()
         try:
             foreground(maximize=True)
         except Exception as exc:
@@ -213,14 +203,14 @@ class Submission:
 
 
 class Jianying59Bridge:
-    """V2 facade over proven 5.9 UIA reads/actions; it has no V1 queue state."""
+    """V2 facade over proven 5.9 UIA reads/actions; it has no external queue state."""
     def __init__(self, lease: WindowsInputLease, attempt_id: str, *, executable: str = "", debug_sink: Callable[[dict[str, Any]], None] | None = None) -> None:
         self.lease, self.attempt_id, self.executable, self.debug_sink = lease, attempt_id, executable, debug_sink
         self._adapter: Any | None = None
         self._prepared_draft: tuple[str, Any, Any, Any] | None = None
 
     def ensure_started(self) -> None:
-        _lease, _foreground, runtime_type, types, upstream = _v1_imports()
+        _lease, _foreground, runtime_type, types, upstream = _automation_imports()
         config = SimpleNamespace(jianying_executable=Path(self.executable) if self.executable else None)
         try:
             runtime_type().ensure_started(config)
@@ -253,8 +243,8 @@ class Jianying59Bridge:
             time.sleep(min(0.05, remaining))
 
     def _open_named_draft(self, desktop: Any, draft_name: str) -> tuple[Any, Any, Any]:
-        """Open once and retain V1's confirmed export-button handle for V2."""
-        from jianying59_exporter.upstream_adapter import PassiveUpstreamController
+        """Open once and retain the confirmed export-button handle for V2."""
+        from server.windows_automation.jianying59_exporter.upstream_adapter import PassiveUpstreamController
         from pyJianYingDraft.jianying_controller import ControlFinder
 
         session = PassiveUpstreamController(
@@ -285,14 +275,14 @@ class Jianying59Bridge:
         return prepared[1:]
 
     def recover_and_open(self, draft_name: str) -> None:
-        _lease, _foreground, _runtime, types, _upstream = _v1_imports()
+        _lease, _foreground, _runtime, types, _upstream = _automation_imports()
         _failure, _request, page_type = types
         desktop = self._desktop()
         self._prepared_draft = None
         try:
             page = self._fast_inspect_page(desktop, page_type)
-            # The V1 helper is only the page/draft UIA primitive.  V2 chooses
-            # when it is allowed, and never uses V1's export recovery/session.
+            # The low-level helper is only the page/draft UIA primitive. V2
+            # chooses when it is allowed and owns export recovery/session policy.
             if page == page_type.EDIT:
                 desktop.return_edit_to_home()
             elif page == page_type.PARAMETER_DIALOG:
@@ -339,7 +329,7 @@ class Jianying59Bridge:
 
     @staticmethod
     def _fast_inspect_page(desktop: Any, page_type: Any) -> Any:
-        """Use V1's current direct-window strategy, never a UIA root walk.
+        """Use the internal direct-window strategy, never a UIA root walk.
 
         The old public ``inspect_page`` walks the desktop then a depth-5
         subtree, which can stall for roughly ten seconds while QML is alive.
@@ -352,7 +342,7 @@ class Jianying59Bridge:
         editor = window(searchDepth=1, searchInterval=0, Name="剪映专业版", AutomationId="MainWindow")
         editor_exists = bool(editor is not None and editor.Exists(0))
         if editor_exists:
-            # This is the same V1 fix for the HomeWindow -> MainWindow handoff:
+            # For the HomeWindow -> MainWindow handoff:
             # querying HomeWindow while Jianying is destroying it can block for
             # about ten seconds even though the editor's Export button is
             # already visible.  MainWindow is sufficient once it exists.
@@ -370,18 +360,18 @@ class Jianying59Bridge:
 
     def submit(self, *, draft_name: str, target_path: Path, expected_duration: float, subject_type: str,
                on_baseline: Callable[[Path, dict[str, int | bool]], None] | None = None) -> Submission:
-        _lease, _foreground, _runtime, types, _upstream = _v1_imports()
+        _lease, _foreground, _runtime, types, _upstream = _automation_imports()
         _failure, _request_type, _page = types
         desktop = self._desktop()
         try:
-            # Do not use V1's SingleDraftExporter submission wrapper here: V2
+            # Do not use the low-level SingleDraftExporter submission wrapper here: V2
             # needs its source-file baseline *before* the final click.  These
             # are the same proved 5.9 UIA selectors, split at that safe edge.
-            from jianying59_exporter.upstream_adapter import PassiveUpstreamController, _SubmissionAccepted
+            from server.windows_automation.jianying59_exporter.upstream_adapter import PassiveUpstreamController, _SubmissionAccepted
             from pyJianYingDraft.jianying_controller import ControlFinder
             prepared = self._take_prepared_draft(draft_name)
             if prepared is not None:
-                # V1 opens the draft, confirms this exact control, then
+                # The low-level controller opens the draft, confirms this exact control, then
                 # clicks it in the same UI sequence.  Recreating a controller
                 # here was V2-only duplicate waiting while the button was
                 # already visible on screen.
@@ -392,7 +382,7 @@ class Jianying59Bridge:
                                                     trace_sink=self.debug_sink, operation_sink=self.debug_sink)
                 session._foreground_guard.acquire()
                 controller, export_button = session._controller_type(), None
-            # Match V1's current fast path exactly: click the already-confirmed
+            # Match the current fast path exactly: click the already-confirmed
             # editor button, then use the returned ExportWindow as the root
             # for path and final-button lookup. V2 does not alter export
             # parameters here, so waiting for a resolution field is wrong.
@@ -475,7 +465,7 @@ class Jianying59Bridge:
         for click_number in range(1, FINAL_EXPORT_CLICK_MAX_ATTEMPTS + 1):
             self.lease.require_active(self.attempt_id)
             try:
-                # Do not call the V1 proxy here: it releases its foreground
+                # Do not call the low-level proxy here: it releases its foreground
                 # guard and waits 15 seconds after the first click, which
                 # prevents V2 from recovering a swallowed QML click.
                 raw_button = getattr(final_button, "_raw", final_button)
