@@ -17,6 +17,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from server.runtime_process import no_window_kwargs, worker_command
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
@@ -50,15 +52,14 @@ def download(url: str, output: Path) -> None:
 
 
 def register(record: dict[str, Any], source: Path, args: argparse.Namespace) -> None:
-    command = [
-        sys.executable, str(SCRIPT_DIR / "register_ready_bgm.py"),
+    command = worker_command("server.final_engine.scripts.register_ready_bgm", SCRIPT_DIR / "register_ready_bgm.py", [
         "--source", str(source), "--music-id", str(record["music_id"]),
         "--title", str(record.get("title") or record["music_id"]),
         "--author", str(record.get("author") or "Jianying"),
         "--library-root", str(args.library_root), "--ready-manifest", str(args.ready_manifest),
         "--target-lufs", str(args.target_lufs),
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    ])
+    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
     if result.returncode:
         raise RuntimeError(result.stderr[-1200:] or result.stdout[-1200:] or "BGM registration failed")
 

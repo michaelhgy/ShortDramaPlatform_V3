@@ -8,10 +8,7 @@ import sys
 from pathlib import Path
 
 
-try:
-    from ..jianying59_final.composition import build_plan, probe_media, report_payload, write_native_draft
-except ImportError:  # Direct source-script execution remains supported.
-    from jianying59_final.composition import build_plan, probe_media, report_payload, write_native_draft
+from server.final_engine.jianying59_final.composition import build_plan, probe_media, report_payload, write_native_draft
 
 
 def main() -> int:

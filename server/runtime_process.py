@@ -26,17 +26,16 @@ def no_window_kwargs() -> dict[str, int]:
 
 @contextmanager
 def com_initialized():
-    """Initialize COM for exactly the worker thread that uses UI automation."""
+    """Initialize UI Automation for exactly the worker thread that uses it."""
     if os.name != "nt":
         yield
         return
     try:
-        import pythoncom
+        import uiautomation
     except ImportError:
         yield
         return
-    pythoncom.CoInitialize()
-    try:
+    # uiautomation owns COM objects in this thread.  Its initializer must
+    # bracket every Control/Pattern use and releases them on exception too.
+    with uiautomation.UIAutomationInitializerInThread():
         yield
-    finally:
-        pythoncom.CoUninitialize()
