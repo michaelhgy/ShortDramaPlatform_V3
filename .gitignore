@@ -29,6 +29,10 @@ debug/
 diagnostics/
 tools/tmp_*/
 
+# PyInstaller Portable build output and its reproducible work cache
+packaging/output/
+packaging/work/
+
 # User-owned Jianying drafts and exported production media
 *.mp4
 *.mov

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import threading
 import time
@@ -11,8 +12,13 @@ from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
+if getattr(sys, "frozen", False):
+    # PyInstaller has already loaded application modules.  Its resource root
+    # is used by the service; do not derive a source-checkout path here.
+    PROJECT_ROOT = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from server import v2_file_service as service  # noqa: E402
 
@@ -55,9 +61,28 @@ def start_production_server() -> tuple[object, str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="启动 V2 正式桌面运行环境（不使用 Vite）")
     parser.add_argument("--debug", action="store_true", help="启用 pywebview 调试模式")
+    parser.add_argument("--runtime-probe", action="store_true", help="仅检查冻结运行时依赖，不启动窗口")
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
     args = parser.parse_args()
+    if args.runtime_probe:
+        from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
+        from server.windows_automation.jianying59_exporter.upstream_adapter import PyJianyingUpstreamAdapter  # noqa: F401
+        import cv2  # noqa: F401
+        import numpy  # noqa: F401
+        import onnxruntime  # noqa: F401
+        import pyJianYingDraft  # noqa: F401
+        import rapidocr_onnxruntime  # noqa: F401
+        import tkinter  # noqa: F401
+        import uiautomation  # noqa: F401
+        import webview  # noqa: F401
+        import win32api  # noqa: F401
+        print(json.dumps({
+            "status": "ok",
+            "ffmpeg": str(resolve_ffmpeg()),
+            "ffprobe": str(resolve_ffprobe()),
+        }, ensure_ascii=False), flush=True)
+        return
     if args.width < MIN_WIDTH or args.height < MIN_HEIGHT:
         raise SystemExit(f"窗口尺寸不得小于 {MIN_WIDTH}x{MIN_HEIGHT}。")
 
