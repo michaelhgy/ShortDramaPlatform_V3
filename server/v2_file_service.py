@@ -1835,6 +1835,7 @@ def requeue_export_attempt(attempt_id: str) -> dict[str, object]:
 def start_export_job(job_id: str) -> dict[str, object]:
     """The testable real-entry point: queue exactly one V2 attempt and run it."""
     from server.executor_management import ExecutorManager
+    from server.jianying_preflight import require_jianying_ready
     from server.v2_exporter.core import ExportRepository
     from server.v2_exporter.runner import start_attempt_in_background
     conn = connection()
@@ -1843,6 +1844,7 @@ def start_export_job(job_id: str) -> dict[str, object]:
         if bool(control["is_paused"]):
             raise ValueError("视频导出器已因连续失败暂停，请在任务中心人工重新启动")
         settings = get_v2_settings()
+        require_jianying_ready(settings)
         attempt = ExportRepository(conn).queue_new_attempt(job_id, deadline_minutes=int(settings["video_export_timeout_min"]), debug_enabled=bool(settings["video_export_debug"]))
     finally:
         conn.close()
@@ -2852,6 +2854,8 @@ def queue_template_job(task_id: str, *, regenerate: bool = False, retry: bool = 
     can restore these names without touching a draft.
     """
     with TEMPLATE_JOB_LOCK:
+        from server.jianying_preflight import require_jianying_ready
+        require_jianying_ready(get_v2_settings())
         conn = connection()
         renamed: list[tuple[Path, Path]] = []
         try:
@@ -3012,6 +3016,7 @@ def finished_video_thumbnail(video_id: str) -> Path:
 def request_open_finished_video_draft(video_id: str) -> dict[str, object]:
     """Open a completed final's draft only while the exporter is manually idle."""
     from server.executor_management import ExecutorManager
+    from server.jianying_preflight import require_jianying_ready
     from server.v2_exporter.runner import start_manual_draft_open_in_background
 
     conn = connection()
@@ -3034,9 +3039,11 @@ def request_open_finished_video_draft(video_id: str) -> dict[str, object]:
         draft_name = str(row["draft_name"] or draft_path.name).strip()
         if not draft_name:
             raise ValueError("当前成片草稿名称不可用")
+        settings = get_v2_settings()
+        require_jianying_ready(settings)
         start_manual_draft_open_in_background(
             connection, video_id=video_id, draft_name=draft_name, draft_path=draft_path,
-            settings=get_v2_settings(),
+            settings=settings,
         )
         return {"accepted": True, "video_id": video_id}
     finally:
@@ -3044,6 +3051,7 @@ def request_open_finished_video_draft(video_id: str) -> dict[str, object]:
 
 def request_open_template_draft(task_id: str) -> dict[str, object]:
     from server.executor_management import ExecutorManager
+    from server.jianying_preflight import require_jianying_ready
     from server.v2_exporter.runner import start_manual_template_draft_open_in_background
     conn = connection()
     try:
@@ -3053,7 +3061,9 @@ def request_open_template_draft(task_id: str) -> dict[str, object]:
         row = conn.execute("SELECT draft_name, draft_path FROM template_jobs WHERE task_id=? ORDER BY version_no DESC LIMIT 1", (task_id,)).fetchone()
         if not row or not Path(str(row["draft_path"] or "")).is_dir():
             raise ValueError("当前剧集缺少可打开的模板草稿")
-        start_manual_template_draft_open_in_background(draft_name=str(row["draft_name"]), settings=get_v2_settings())
+        settings = get_v2_settings()
+        require_jianying_ready(settings)
+        start_manual_template_draft_open_in_background(draft_name=str(row["draft_name"]), settings=settings)
         return {"accepted": True, "task_id": task_id}
     finally:
         conn.close()
@@ -3259,6 +3269,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/v2/health":
             self._json(HTTPStatus.OK, {"status": "ok", "service": "v2-file-service"})
+            return
+        if path == "/api/v2/settings/jianying-preflight":
+            from server.jianying_preflight import run_jianying_preflight
+            self._json(HTTPStatus.OK, run_jianying_preflight(get_v2_settings()).to_dict())
             return
         if path == "/api/v2/change-events":
             query = parse_qs(urlparse(self.path).query)

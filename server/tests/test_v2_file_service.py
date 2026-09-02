@@ -212,7 +212,7 @@ class V2FileServiceTests(unittest.TestCase):
         finally:
             conn.close()
 
-        with patch("server.v2_exporter.runner.start_manual_draft_open_in_background") as start_open:
+        with patch("server.jianying_preflight.require_jianying_ready"), patch("server.v2_exporter.runner.start_manual_draft_open_in_background") as start_open:
             result = service.request_open_finished_video_draft(str(video["id"]))
         self.assertTrue(result["accepted"])
         self.assertTrue(start_open.called)

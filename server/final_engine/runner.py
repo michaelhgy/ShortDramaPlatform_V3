@@ -236,6 +236,8 @@ def start_finished_video(video_id: str) -> dict[str, str]:
             raise ValueError("成片生成任务不存在")
         if str(row["status"]) not in {"pending_generation", "generation_failed", "generation_timeout"}:
             raise ValueError("当前成片任务不支持启动或重试")
+        from server.jianying_preflight import require_jianying_ready
+        require_jianying_ready(service.get_v2_settings())
         conn.execute("UPDATE production_video_tasks SET status='generation_queued', error_message='', updated_at=? WHERE id=?", (service.now_text(), video_id)); conn.commit()
     finally: conn.close()
     import threading

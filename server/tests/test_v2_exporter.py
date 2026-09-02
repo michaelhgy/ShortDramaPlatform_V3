@@ -152,7 +152,7 @@ class V2ExporterTests(unittest.TestCase):
                     kwargs["on_baseline"](source, {"exists": False, "size": 0, "mtime_ns": 0})
                     return Submission(source, {"exists": False, "size": 0, "mtime_ns": 0})
             media = MediaInfo(str(source), 3, 10, 1080, 2400, 30, "h264")
-            with patch("server.v2_exporter.runner.WindowsInputLease", Lease), patch("server.v2_exporter.runner.Jianying59Bridge", Bridge), patch("server.v2_exporter.runner.wait_for_stable_new_file"), patch("server.v2_exporter.runner.verify_media", return_value=media):
+            with patch("server.jianying_preflight.require_jianying_ready"), patch("server.v2_exporter.runner.WindowsInputLease", Lease), patch("server.v2_exporter.runner.Jianying59Bridge", Bridge), patch("server.v2_exporter.runner.wait_for_stable_new_file"), patch("server.v2_exporter.runner.verify_media", return_value=media):
                 result = V2ExportRunner(self.connection, settings={}).run(attempt["id"])
             self.assertEqual(AttemptStatus.COMPLETED, result["status"])
             self.assertEqual(0, ExecutorManager(self.connection).state("video_exporter")["consecutive_failures"])
@@ -171,7 +171,7 @@ class V2ExporterTests(unittest.TestCase):
         class Bridge:
             def __init__(self, *_args, **_kwargs): pass
             def ensure_started(self): raise V2ExportFailure("JIANYING_START_FAILED", "测试启动失败")
-        with patch("server.v2_exporter.runner.WindowsInputLease", Lease), patch("server.v2_exporter.runner.Jianying59Bridge", Bridge):
+        with patch("server.jianying_preflight.require_jianying_ready"), patch("server.v2_exporter.runner.WindowsInputLease", Lease), patch("server.v2_exporter.runner.Jianying59Bridge", Bridge):
             result = V2ExportRunner(self.connection, settings={}).run(attempt["id"])
         self.assertEqual(AttemptStatus.FAILED, result["status"])
         self.assertEqual("JIANYING_START_FAILED", result["error_code"])

@@ -21,6 +21,8 @@ _MANUAL_DRAFT_OPEN_LOCK = threading.Lock()
 def start_manual_draft_open_in_background(connection_factory, *, video_id: str, draft_name: str, draft_path: Path,
                                           settings: dict[str, object]) -> threading.Thread:
     """Open one final draft for editing without entering the export workflow."""
+    from server.jianying_preflight import require_jianying_ready
+    require_jianying_ready(settings)
     if not _MANUAL_DRAFT_OPEN_LOCK.acquire(blocking=False):
         raise ValueError("已有草稿正在打开，请等待当前操作完成")
 
@@ -43,6 +45,8 @@ def start_manual_draft_open_in_background(connection_factory, *, video_id: str, 
     return thread
 
 def start_manual_template_draft_open_in_background(*, draft_name: str, settings: dict[str, object]) -> threading.Thread:
+    from server.jianying_preflight import require_jianying_ready
+    require_jianying_ready(settings)
     if not _MANUAL_DRAFT_OPEN_LOCK.acquire(blocking=False):
         raise ValueError("已有草稿正在打开，请等待当前操作完成")
     def target() -> None:
@@ -70,6 +74,8 @@ class V2ExportRunner:
         # The serial queue may keep a task waiting behind earlier exports.
         # Start its configured timeout only when this worker really receives
         # the task, not when the user placed it in the queue.
+        from server.jianying_preflight import require_jianying_ready
+        require_jianying_ready(self.settings)
         attempt = self.repository.activate_attempt_deadline(attempt_id)
         job = self.repository.job_for_attempt(attempt_id)
         deadline = _deadline_timestamp(str(attempt["deadline_at"]))

@@ -75,6 +75,12 @@ def run_template_job(job_id: str) -> None:
         if not row or str(row["status"]) not in {"queued", "dispatching"}:
             return
 
+        from server.jianying_preflight import require_jianying_ready
+        try:
+            require_jianying_ready(service.get_v2_settings())
+        except Exception as exc:
+            _fail(job_id, row, str(exc))
+            return
         _set_job(job_id, status="running", started_at=service.now_text())
         attempt_root = Path(str(row["template_path"])) / f"R{int(row['version_no']):02d}"
         photos = attempt_root / "模板剧照缓存"
