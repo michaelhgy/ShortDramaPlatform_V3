@@ -14,6 +14,7 @@ import {
   CheckCircle2, 
   AlertCircle 
 } from 'lucide-react';
+import { svgPointAnchor, ViewportFloatingLayer } from './common/ViewportFloatingLayer';
 
 interface AdvancedRevenueTrendChartProps {
   trendPoints: DailyRevenueDataPoint[];
@@ -36,7 +37,7 @@ export const AdvancedRevenueTrendChart: React.FC<AdvancedRevenueTrendChartProps>
 }) => {
   const [viewMode, setTrendViewMode] = useState<'total' | 'theaters' | 'views'>('total');
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   // SVG Chart Geometry Constants
   const svgWidth = 800;
@@ -331,11 +332,9 @@ export const AdvancedRevenueTrendChart: React.FC<AdvancedRevenueTrendChartProps>
       </div>
 
       {/* 2. THE SVG TREND CANVAS CONTAINER */}
-      <div 
-        ref={containerRef}
-        className="relative w-full overflow-hidden select-none bg-radial from-slate-50/60 to-white rounded-xl border border-black/[0.04]"
-      >
+      <div className="relative w-full overflow-hidden select-none bg-radial from-slate-50/60 to-white rounded-xl border border-black/[0.04]">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
           className="w-full h-auto max-h-[260px] cursor-crosshair overflow-visible"
           onMouseMove={handleMouseMove}
@@ -632,18 +631,13 @@ export const AdvancedRevenueTrendChart: React.FC<AdvancedRevenueTrendChartProps>
           })}
         </svg>
 
-        {/* 3. SLEEK FLOATING TOOLTIP ON HOVER - Dynamically aligned with hover crosshair */}
+        {/* 3. Viewport-level tooltip, free of chart-container clipping */}
         {activeHoverPoint && hoverIndex !== null && mainPointsCoords[hoverIndex] && (
-          <div 
-            className="absolute top-3 pointer-events-none bg-[#1A1D2E]/95 backdrop-blur-xs text-white p-3 rounded-xl shadow-xl text-xs space-y-1.5 border border-white/10 transition-all duration-75 min-w-[210px] z-20"
-            style={{
-              left: `${(mainPointsCoords[hoverIndex].x / svgWidth) * 100}%`,
-              transform: (mainPointsCoords[hoverIndex].x / svgWidth) > 0.52
-                ? 'translateX(calc(-100% - 12px))'
-                : 'translateX(12px)',
-            }}
+          <ViewportFloatingLayer
+            getAnchorRect={() => svgPointAnchor(svgRef.current, mainPointsCoords[hoverIndex].x, mainPointsCoords[hoverIndex].y, svgWidth, svgHeight)}
           >
-            <div className="flex items-center justify-between border-b border-white/10 pb-1 text-[#DDFD00]">
+            <div className="bg-[#1A1D2E]/95 backdrop-blur-xs text-white p-3 rounded-xl shadow-xl text-xs space-y-1.5 border border-white/10 transition-all duration-75 min-w-[210px] max-w-[calc(100vw-1rem)]">
+              <div className="flex items-center justify-between border-b border-white/10 pb-1 text-[#DDFD00]">
               <span className="font-mono font-bold">📅 {activeHoverPoint.date}</span>
               <span className="font-mono text-sm font-black">
                 ¥{activeHoverPoint.totalRevenue.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
@@ -704,7 +698,8 @@ export const AdvancedRevenueTrendChart: React.FC<AdvancedRevenueTrendChartProps>
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          </ViewportFloatingLayer>
         )}
       </div>
 

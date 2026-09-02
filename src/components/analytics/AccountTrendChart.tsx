@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { TimeRangeFilter } from '../../analyticsTypes';
 import { Sparkles, TrendingUp, Calendar, AlertCircle } from 'lucide-react';
+import { svgPointAnchor, ViewportFloatingLayer } from './common/ViewportFloatingLayer';
 
 export interface AccountTrendPoint {
   date: string;
@@ -24,7 +25,7 @@ export const AccountTrendChart: React.FC<AccountTrendChartProps> = ({
   hasVideoViews = false,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   // SVG Geometry Constants (Carefully bounded to prevent overflow)
   const svgWidth = 720;
@@ -261,11 +262,9 @@ export const AccountTrendChart: React.FC<AccountTrendChartProps> = ({
       </div>
 
       {/* SVG Chart Container */}
-      <div
-        ref={containerRef}
-        className="relative w-full bg-slate-50/80 rounded-xl p-2 sm:p-3 border border-black/[0.04] select-none overflow-hidden"
-      >
+      <div className="relative w-full bg-slate-50/80 rounded-xl p-2 sm:p-3 border border-black/[0.04] select-none overflow-hidden">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
           className="w-full h-auto overflow-hidden block cursor-crosshair"
           style={{ maxHeight: '190px' }}
@@ -490,18 +489,14 @@ export const AccountTrendChart: React.FC<AccountTrendChartProps> = ({
           )}
         </svg>
 
-        {/* 9. Floating Tooltip Overlay (Strictly bounded inside container) */}
+        {/* 9. Viewport-level tooltip, free of chart-container clipping */}
         {activePoint && (
-          <div
-            className="absolute z-30 pointer-events-none bg-[#1A1D2E] text-white p-2 rounded-lg shadow-xl text-xs space-y-1 transform -translate-y-full mb-2 transition-all duration-75 border border-white/10"
-            style={{
-              left: `${Math.max(12, Math.min(88, (activePoint.x / svgWidth) * 100))}%`,
-              top: `${Math.max(30, (activePoint.y / svgHeight) * 100)}%`,
-              transform: `translate(-50%, -105%)`,
-            }}
+          <ViewportFloatingLayer
+            getAnchorRect={() => svgPointAnchor(svgRef.current, activePoint.x, activePoint.y, svgWidth, svgHeight)}
           >
-            {/* Header: Date + IsYesterday */}
-            <div className="flex items-center justify-between gap-3 text-[10px] pb-1 border-b border-white/10 font-mono">
+            <div className="bg-[#1A1D2E] text-white p-2 rounded-lg shadow-xl text-xs space-y-1 transition-all duration-75 border border-white/10">
+              {/* Header: Date + IsYesterday */}
+              <div className="flex items-center justify-between gap-3 text-[10px] pb-1 border-b border-white/10 font-mono">
               <span className="text-slate-300">{activePoint.data.date}</span>
               {activePoint.data.isYesterday && (
                 <span className="px-1.5 py-0.2 rounded bg-[#DDFD00] text-[#1A1D2E] font-bold text-[9px]">
@@ -537,7 +532,8 @@ export const AccountTrendChart: React.FC<AccountTrendChartProps> = ({
                 </span>
               </div>
             )}
-          </div>
+            </div>
+          </ViewportFloatingLayer>
         )}
       </div>
     </div>
