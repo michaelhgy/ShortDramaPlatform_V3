@@ -1,6 +1,7 @@
 import sqlite3
 import unittest
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -132,6 +133,16 @@ class V2ExporterTests(unittest.TestCase):
 
     def test_runner_reports_success_to_global_executor_manager(self) -> None:
         from server.v2_exporter.runner import V2ExportRunner
+        lifecycle = []
+
+        @contextmanager
+        def ui_automation_context():
+            lifecycle.append("initialized")
+            try:
+                yield
+            finally:
+                lifecycle.append("released")
+
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); draft = root / "draft"; draft.mkdir()
             (draft / "draft_content.json").write_text('{"duration":10000000,"canvas_config":{"width":1080,"height":2400}}', encoding="utf-8")
@@ -152,15 +163,26 @@ class V2ExporterTests(unittest.TestCase):
                     kwargs["on_baseline"](source, {"exists": False, "size": 0, "mtime_ns": 0})
                     return Submission(source, {"exists": False, "size": 0, "mtime_ns": 0})
             media = MediaInfo(str(source), 3, 10, 1080, 2400, 30, "h264")
-            with patch("server.jianying_preflight.require_jianying_ready"), patch("server.v2_exporter.runner.WindowsInputLease", Lease), patch("server.v2_exporter.runner.Jianying59Bridge", Bridge), patch("server.v2_exporter.runner.wait_for_stable_new_file"), patch("server.v2_exporter.runner.verify_media", return_value=media):
+            with patch("server.jianying_preflight.require_jianying_ready"), patch("server.v2_exporter.runner.com_initialized", side_effect=ui_automation_context), patch("server.v2_exporter.runner.WindowsInputLease", Lease), patch("server.v2_exporter.runner.Jianying59Bridge", Bridge), patch("server.v2_exporter.runner.wait_for_stable_new_file"), patch("server.v2_exporter.runner.verify_media", return_value=media):
                 result = V2ExportRunner(self.connection, settings={}).run(attempt["id"])
             self.assertEqual(AttemptStatus.COMPLETED, result["status"])
             self.assertEqual(0, ExecutorManager(self.connection).state("video_exporter")["consecutive_failures"])
             self.assertTrue(target.is_file())
+            self.assertEqual(["initialized", "released"], lifecycle)
 
     def test_runner_reports_failure_to_global_executor_manager(self) -> None:
         from server.v2_exporter.runner import V2ExportRunner
         from server.v2_exporter.runtime import V2ExportFailure
+        lifecycle = []
+
+        @contextmanager
+        def ui_automation_context():
+            lifecycle.append("initialized")
+            try:
+                yield
+            finally:
+                lifecycle.append("released")
+
         job = self.repo.create_job(production_task_id="task-1", subject_type="template", subject_id="t", draft_name="草稿", draft_path="D:/draft", target_path="D:/target.mp4", manual_check_required=False)
         attempt = self.repo.queue_new_attempt(job["id"], deadline_minutes=20, debug_enabled=False)
         class Lease:
@@ -171,11 +193,12 @@ class V2ExporterTests(unittest.TestCase):
         class Bridge:
             def __init__(self, *_args, **_kwargs): pass
             def ensure_started(self): raise V2ExportFailure("JIANYING_START_FAILED", "测试启动失败")
-        with patch("server.jianying_preflight.require_jianying_ready"), patch("server.v2_exporter.runner.WindowsInputLease", Lease), patch("server.v2_exporter.runner.Jianying59Bridge", Bridge):
+        with patch("server.jianying_preflight.require_jianying_ready"), patch("server.v2_exporter.runner.com_initialized", side_effect=ui_automation_context), patch("server.v2_exporter.runner.WindowsInputLease", Lease), patch("server.v2_exporter.runner.Jianying59Bridge", Bridge):
             result = V2ExportRunner(self.connection, settings={}).run(attempt["id"])
         self.assertEqual(AttemptStatus.FAILED, result["status"])
         self.assertEqual("JIANYING_START_FAILED", result["error_code"])
         self.assertEqual(1, ExecutorManager(self.connection).state("video_exporter")["consecutive_failures"])
+        self.assertEqual(["initialized", "released"], lifecycle)
 
     def test_restart_recovery_finishes_persisted_passive_observation(self) -> None:
         from server.v2_exporter.runner import V2ExportRunner

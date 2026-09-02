@@ -74,6 +74,16 @@ class V2ExportRunner:
         self.repository = ExportRepository(connection)
 
     def run(self, attempt_id: str, *, wait_for_enter: callable | None = None) -> dict[str, Any]:
+        """Run one active export inside the UIA-owning thread context.
+
+        ``run`` is also used directly by recovery and integration callers, so
+        the COM/UIAutomation boundary belongs here rather than only in one
+        background-dispatch helper.
+        """
+        with com_initialized():
+            return self._run_with_uia(attempt_id, wait_for_enter=wait_for_enter)
+
+    def _run_with_uia(self, attempt_id: str, *, wait_for_enter: callable | None = None) -> dict[str, Any]:
         # The serial queue may keep a task waiting behind earlier exports.
         # Start its configured timeout only when this worker really receives
         # the task, not when the user placed it in the queue.
@@ -284,12 +294,11 @@ def _deadline_monotonic(deadline_timestamp: float) -> float:
 
 def start_attempt_in_background(connection_factory, *, attempt_id: str, settings: dict[str, object]) -> threading.Thread:
     def target() -> None:
-        with com_initialized():
-            connection = connection_factory()
-            try:
-                V2ExportRunner(connection, settings=settings).run(attempt_id)
-            finally:
-                connection.close()
+        connection = connection_factory()
+        try:
+            V2ExportRunner(connection, settings=settings).run(attempt_id)
+        finally:
+            connection.close()
     thread = threading.Thread(target=target, name=f"v2-video-export-{attempt_id[:8]}", daemon=True)
     thread.start()
     return thread
