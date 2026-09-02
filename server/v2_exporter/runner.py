@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from server.executor_management import ExecutorManager
+from server.runtime_process import com_initialized
 from server.v2_exporter.core import AttemptCoordinator, AttemptStatus, ExportRepository, MemoryInputLease
 from server.v2_exporter.runtime import (Jianying59Bridge, V2ExportFailure, WindowsInputLease, draft_duration_seconds,
                                         safe_move_verified_output, verify_media, wait_for_stable_new_file)
@@ -28,17 +29,18 @@ def start_manual_draft_open_in_background(connection_factory, *, video_id: str, 
 
     def target() -> None:
         operation_id = f"manual-open-{video_id}"
-        lease = WindowsInputLease(maximum_seconds=90)
-        try:
-            lease.acquire(operation_id)
-            bridge = Jianying59Bridge(lease, operation_id, executable=str(settings.get("jianying_executable") or ""))
-            bridge.ensure_started()
-            bridge.recover_and_open(draft_name)
-        finally:
+        with com_initialized():
+            lease = WindowsInputLease(maximum_seconds=90)
             try:
-                lease.release(operation_id)
+                lease.acquire(operation_id)
+                bridge = Jianying59Bridge(lease, operation_id, executable=str(settings.get("jianying_executable") or ""))
+                bridge.ensure_started()
+                bridge.recover_and_open(draft_name)
             finally:
-                _MANUAL_DRAFT_OPEN_LOCK.release()
+                try:
+                    lease.release(operation_id)
+                finally:
+                    _MANUAL_DRAFT_OPEN_LOCK.release()
 
     thread = threading.Thread(target=target, name=f"v2-manual-draft-open-{video_id[:8]}", daemon=True)
     thread.start()
@@ -51,15 +53,16 @@ def start_manual_template_draft_open_in_background(*, draft_name: str, settings:
         raise ValueError("已有草稿正在打开，请等待当前操作完成")
     def target() -> None:
         operation_id = f"manual-open-template-{int(time.time() * 1000)}"
-        lease = WindowsInputLease(maximum_seconds=90)
-        try:
-            lease.acquire(operation_id)
-            bridge = Jianying59Bridge(lease, operation_id, executable=str(settings.get("jianying_executable") or ""))
-            bridge.ensure_started()
-            bridge.recover_and_open(draft_name)
-        finally:
-            try: lease.release(operation_id)
-            finally: _MANUAL_DRAFT_OPEN_LOCK.release()
+        with com_initialized():
+            lease = WindowsInputLease(maximum_seconds=90)
+            try:
+                lease.acquire(operation_id)
+                bridge = Jianying59Bridge(lease, operation_id, executable=str(settings.get("jianying_executable") or ""))
+                bridge.ensure_started()
+                bridge.recover_and_open(draft_name)
+            finally:
+                try: lease.release(operation_id)
+                finally: _MANUAL_DRAFT_OPEN_LOCK.release()
     thread = threading.Thread(target=target, name="v2-manual-template-draft-open", daemon=True)
     thread.start()
     return thread
@@ -281,11 +284,12 @@ def _deadline_monotonic(deadline_timestamp: float) -> float:
 
 def start_attempt_in_background(connection_factory, *, attempt_id: str, settings: dict[str, object]) -> threading.Thread:
     def target() -> None:
-        connection = connection_factory()
-        try:
-            V2ExportRunner(connection, settings=settings).run(attempt_id)
-        finally:
-            connection.close()
+        with com_initialized():
+            connection = connection_factory()
+            try:
+                V2ExportRunner(connection, settings=settings).run(attempt_id)
+            finally:
+                connection.close()
     thread = threading.Thread(target=target, name=f"v2-video-export-{attempt_id[:8]}", daemon=True)
     thread.start()
     return thread
@@ -293,11 +297,12 @@ def start_attempt_in_background(connection_factory, *, attempt_id: str, settings
 
 def resume_passive_observation_in_background(connection_factory, *, attempt_id: str, settings: dict[str, object]) -> threading.Thread:
     def target() -> None:
-        connection = connection_factory()
-        try:
-            V2ExportRunner(connection, settings=settings).recover_passive_observation(attempt_id)
-        finally:
-            connection.close()
+        with com_initialized():
+            connection = connection_factory()
+            try:
+                V2ExportRunner(connection, settings=settings).recover_passive_observation(attempt_id)
+            finally:
+                connection.close()
     thread = threading.Thread(target=target, name=f"v2-export-recovery-{attempt_id[:8]}", daemon=True)
     thread.start()
     return thread

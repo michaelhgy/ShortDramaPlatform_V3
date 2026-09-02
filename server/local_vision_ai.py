@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import threading
+from server.runtime_process import no_window_kwargs
 from dataclasses import dataclass, asdict
 from typing import Any
 
@@ -35,7 +36,7 @@ def _executable() -> str | None:
 
 
 def _installed_models(executable: str) -> list[str]:
-    completed = subprocess.run([executable, "list"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15, check=False)
+    completed = subprocess.run([executable, "list"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15, check=False, **no_window_kwargs())
     if completed.returncode:
         raise RuntimeError((completed.stderr or completed.stdout or "无法读取 Ollama 模型列表").strip()[:400])
     return [line.split()[0] for line in completed.stdout.splitlines()[1:] if line.split()]
@@ -76,7 +77,7 @@ def _download(executable: str, model: str) -> None:
         with _LOCK:
             _DOWNLOAD.status, _DOWNLOAD.progress = "downloading", "正在连接 Ollama…"
         process = subprocess.Popen([executable, "pull", model], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   text=True, encoding="utf-8", errors="replace")
+                                   text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
         assert process.stdout is not None
         for line in process.stdout:
             text = line.strip()

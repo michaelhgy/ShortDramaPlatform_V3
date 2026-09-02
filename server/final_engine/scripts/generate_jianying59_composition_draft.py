@@ -8,12 +8,10 @@ import sys
 from pathlib import Path
 
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-ENGINE_ROOT = SCRIPT_DIR.parent
-if str(ENGINE_ROOT) not in sys.path:
-    sys.path.insert(0, str(ENGINE_ROOT))
-
-from jianying59_final.composition import build_plan, probe_media, report_payload, write_native_draft
+try:
+    from ..jianying59_final.composition import build_plan, probe_media, report_payload, write_native_draft
+except ImportError:  # Direct source-script execution remains supported.
+    from jianying59_final.composition import build_plan, probe_media, report_payload, write_native_draft
 
 
 def main() -> int:

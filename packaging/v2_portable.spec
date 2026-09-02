@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from server.worker_registry import PRODUCTION_WORKERS
 
 
 PROJECT_ROOT = Path(SPECPATH).parent
@@ -41,6 +42,7 @@ for package in ("uiautomation", "pyJianYingDraft", "rapidocr_onnxruntime"):
 # desktop launcher's import graph.
 for package in ("server.template_engine", "server.final_engine", "server.v2_exporter", "server.windows_automation"):
     hiddenimports += collect_submodules(package)
+hiddenimports += list(PRODUCTION_WORKERS)
 
 a = Analysis(
     [str(PROJECT_ROOT / "tools" / "run_v2_desktop.py")],

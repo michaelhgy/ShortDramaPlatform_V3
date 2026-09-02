@@ -20,12 +20,12 @@ from pathlib import Path
 from typing import Any
 
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-TEMPLATE_SCRIPTS = SCRIPT_DIR.parents[2] / "template_factory" / "scripts"
-sys.path.insert(0, str(TEMPLATE_SCRIPTS))
-
-from export_template_video import PROFILE  # noqa: E402
-from jianying_export_queue import READY, enqueue_job  # noqa: E402
+try:
+    from .export_template_video import PROFILE
+    from .jianying_export_queue import READY, enqueue_job
+except ImportError:  # Direct source-script execution remains supported.
+    from export_template_video import PROFILE  # type: ignore[no-redef]
+    from jianying_export_queue import READY, enqueue_job  # type: ignore[no-redef]
 
 
 JOB_NAME = "成片导出任务.json"

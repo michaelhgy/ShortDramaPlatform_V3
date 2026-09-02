@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from server.tool_resolver import ToolResolutionError, resolve_ffprobe
+from server.runtime_process import no_window_kwargs
 
 
 class ExportState(str, enum.Enum):
@@ -350,7 +351,7 @@ class SingleDraftExporter:
     def _verify_media(self, path: Path, request: ExportRequest) -> MediaVerification:
         command = [str(self.ffprobe_path), "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate", "-of", "json", str(path)]
         try:
-            completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+            completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, **no_window_kwargs())
             payload = json.loads(completed.stdout or "{}")
         except (OSError, ValueError) as exc:
             raise ExportFailure("FFPROBE_FAILED", f"ffprobe 无法读取输出 MP4：{exc}") from exc

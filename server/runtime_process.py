@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Sequence
 
@@ -22,3 +23,20 @@ def no_window_kwargs() -> dict[str, int]:
         return {}
     return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
 
+
+@contextmanager
+def com_initialized():
+    """Initialize COM for exactly the worker thread that uses UI automation."""
+    if os.name != "nt":
+        yield
+        return
+    try:
+        import pythoncom
+    except ImportError:
+        yield
+        return
+    pythoncom.CoInitialize()
+    try:
+        yield
+    finally:
+        pythoncom.CoUninitialize()

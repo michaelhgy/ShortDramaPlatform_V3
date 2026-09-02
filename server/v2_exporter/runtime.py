@@ -21,6 +21,7 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 from server.tool_resolver import ToolResolutionError, resolve_ffprobe
+from server.runtime_process import no_window_kwargs
 
 
 class V2ExportFailure(RuntimeError):
@@ -545,7 +546,7 @@ def verify_media(path: Path, *, expected_duration: float, width: int = 1080, hei
         raise V2ExportFailure("FFPROBE_MISSING", f"ffprobe 不可用：{exc}") from exc
     command = [str(executable), "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate", "-of", "json", str(path)]
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+        completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, **no_window_kwargs())
         payload = json.loads(completed.stdout or "{}")
     except OSError as exc:
         raise V2ExportFailure("FFPROBE_MISSING", f"ffprobe 不可用：{exc}") from exc
