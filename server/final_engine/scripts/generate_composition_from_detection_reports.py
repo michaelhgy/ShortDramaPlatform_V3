@@ -13,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from server.runtime_process import no_window_kwargs, worker_command
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -23,7 +24,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def run(command: list[str]) -> None:
-    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
     if result.returncode:
         detail = result.stderr[-2500:] or result.stdout[-2500:]
         raise RuntimeError(detail.strip() or f"Command failed: {command[0]}")
@@ -72,8 +73,7 @@ def main() -> int:
     if args.clean_proxy.exists() and not args.overwrite_clean_proxy:
         raise SystemExit(f"Refusing to overwrite existing clean proxy: {args.clean_proxy}")
 
-    clean_command = [
-        sys.executable, str(SCRIPT_DIR / "prepare_clean_viral_proxy.py"),
+    clean_command = worker_command("server.final_engine.scripts.prepare_clean_viral_proxy", SCRIPT_DIR / "prepare_clean_viral_proxy.py", [
         "--source", str(args.viral_source),
         "--cover-report", str(args.cover_report),
         "--tail-report", str(args.tail_report),
@@ -81,14 +81,13 @@ def main() -> int:
         "--black-bar-report", str(args.black_bar_report),
         "--output", str(args.clean_proxy),
         "--report", str(args.clean_proxy_report),
-    ]
+    ])
     if args.overwrite_clean_proxy:
         clean_command.append("--overwrite")
     run(clean_command)
 
     base_report = args.report.with_suffix(args.report.suffix + ".native59.json")
-    compose_command = [
-        sys.executable, str(SCRIPT_DIR / "generate_jianying59_composition_draft.py"),
+    compose_command = worker_command("server.final_engine.scripts.generate_jianying59_composition_draft", SCRIPT_DIR / "generate_jianying59_composition_draft.py", [
         "--viral", str(args.clean_proxy),
         "--template-video", str(args.template_video),
         "--pairing", str(args.pairing),
@@ -99,7 +98,7 @@ def main() -> int:
         "--draft-name", args.draft_name,
         "--account-id", args.account_id,
         "--report", str(base_report),
-    ]
+    ])
     if args.bgm:
         compose_command.extend(["--bgm", str(args.bgm), "--bgm-id", args.bgm_id, "--bgm-title", args.bgm_title])
     if args.midroll:

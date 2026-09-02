@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from server import v2_file_service as service
+from server.runtime_process import no_window_kwargs, worker_command
 
 # Keep V2's runtime self-contained, but use the same verified processing
 # order as V1: detect source head/tail/overlays -> create a clean proxy ->
@@ -85,8 +86,7 @@ def _processed_composition_command(*, source: Path, template_video: Path, pairin
                                    bgm: Path, work_dir: Path, real_photo_files: list[Path] | None = None,
                                    local_vision_ai_mode: str = "compatibility") -> list[str]:
     """Build the V1-equivalent single-source processing command for V2."""
-    return [
-        sys.executable, str(FINAL_SCRIPT),
+    return worker_command("server.final_engine.scripts.run_jianying_composition_batch", FINAL_SCRIPT, [
         "--source-file", str(source),
         "--template-video", str(template_video), "--pairing", str(pairing),
         "--draft-root", str(draft_root), "--user-data-root", str(user_data_root),
@@ -97,7 +97,7 @@ def _processed_composition_command(*, source: Path, template_video: Path, pairin
         "--work-dir", str(work_dir), "--bgm", str(bgm),
         "--no-bgm-auto-replenish",
         "--local-vision-ai-mode", local_vision_ai_mode,
-    ]
+    ])
 
 
 def _final_work_dir(*, task_root: Path, video_id: str) -> Path:
@@ -128,7 +128,7 @@ def run_finished_video(video_id: str) -> None:
     try:
         if not template or not Path(str(template["video_path"] or "")).is_file() or not Path(str(template["pairing_path"] or "")).is_file():
             raise RuntimeError("对应模板视频或同源配对参数尚未准备好")
-        if not FINAL_SCRIPT.is_file():
+        if not getattr(sys, "frozen", False) and not FINAL_SCRIPT.is_file():
             raise RuntimeError(f"成片生成引擎不存在：{FINAL_SCRIPT}")
         workspace, _ = service.require_configured_paths()
         promotion = workspace / "生成资源" / "引流视频"
@@ -168,7 +168,8 @@ def run_finished_video(video_id: str) -> None:
             return
         process = subprocess.Popen(command, cwd=str(work_dir.parent), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, encoding="utf-8", errors="replace", env=env,
-                                   creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+                                   creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                                                  | no_window_kwargs().get("creationflags", 0)))
         with _PROCESS_LOCK:
             _ACTIVE_PROCESSES[video_id] = process
         try:

@@ -18,6 +18,7 @@ try:
     from server import v2_file_service as service
 except ModuleNotFoundError:  # 支持直接执行 server/v2_file_service.py 的开发入口
     import v2_file_service as service  # type: ignore[no-redef]
+from server.runtime_process import no_window_kwargs, worker_command
 
 
 RUN_LOCK = threading.Lock()
@@ -97,13 +98,12 @@ def run_template_job(job_id: str) -> None:
             _fail(job_id, row, "模板生成所领取的真人视频不存在，任务已释放")
             return
 
-        command = [
-            sys.executable, str(Path(__file__).with_name("generate_v2_template.py")),
+        command = worker_command("server.template_engine.generate_v2_template", Path(__file__).with_name("generate_v2_template.py"), [
             "--stage", "final", "--seed", str(row["seed"]), "--draft-root", str(draft_root),
             "--name", str(row["draft_name"]), "--video", str(videos[0]), "--video-2", str(videos[1]),
             "--video-3", str(videos[2]), "--viral-account-day-dir", str(row["material_path"]),
             "--photo-prep-output-dir", str(photos), "--photo-cache-root", str(photo_cache),
-        ]
+        ])
         env = dict(os.environ)
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONPATH"] = os.pathsep.join((str(Path(__file__).parents[1]), str(Path(__file__).parents[2]), env.get("PYTHONPATH", "")))
@@ -111,7 +111,8 @@ def run_template_job(job_id: str) -> None:
         process: subprocess.Popen[str] | None = None
         try:
             process = subprocess.Popen(command, cwd=str(Path(__file__).parent), stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env)
+                                       stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env,
+                                       **no_window_kwargs())
             with PROCESS_LOCK:
                 RUNNING_PROCESSES[job_id] = process
             try:

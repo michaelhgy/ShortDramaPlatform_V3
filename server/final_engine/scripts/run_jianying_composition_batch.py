@@ -11,6 +11,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from server.runtime_process import no_window_kwargs, worker_command
 from typing import Any
 
 from server.tool_resolver import resolve_ffprobe
@@ -34,7 +35,7 @@ def read_json(path: Path) -> dict[str, Any]:
 def probe_duration(path: Path) -> float:
     result = subprocess.run(
         [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs(),
     )
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or f"Cannot probe duration: {path}")
@@ -116,16 +117,15 @@ def replenish_ready_bgm(args: argparse.Namespace) -> dict[str, Any] | None:
     if not catalogue.is_file():
         raise RuntimeError(f"BGM_CATALOGUE_MISSING: {catalogue}")
     report = args.bgm_replenish_report or (args.work_dir / "BGM补库结果.json")
-    command = [
-        sys.executable, str(SCRIPT_DIR / "replenish_jianying_bgm.py"),
+    command = worker_command("server.final_engine.scripts.replenish_jianying_bgm", SCRIPT_DIR / "replenish_jianying_bgm.py", [
         "--catalogue", str(catalogue),
         "--library-root", str(args.bgm_ready_manifest.parent.parent),
         "--ready-manifest", str(args.bgm_ready_manifest),
         "--target-count", str(args.bgm_target_ready),
         "--attempt-limit", str(args.bgm_replenish_attempt_limit),
         "--report", str(report),
-    ]
-    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    ])
+    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
     after = len(ready_bgm_items(args.bgm_ready_manifest))
     status = "READY" if after >= args.bgm_target_ready else "SHORTFALL"
     # A partial pool is still usable and should not stop a composition batch.
@@ -140,7 +140,7 @@ def replenish_ready_bgm(args: argparse.Namespace) -> dict[str, Any] | None:
 
 
 def run(command: list[str]) -> None:
-    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
     if result.returncode:
         detail = result.stderr[-3000:] or result.stdout[-3000:]
         raise RuntimeError(detail.strip() or f"Command failed: {command[1]}")
@@ -339,7 +339,7 @@ def main() -> int:
                     args.bgm_ready_manifest, args.bgm_usage_log,
                     seed=args.bgm_seed, task_key=f"{args.draft_prefix}:{ordinal}",
                 )
-            opening_command = [sys.executable, str(SCRIPT_DIR / "detect_opening_cover.py"), "--video", str(source), "--report", str(cover_report), "--evidence-dir", str(evidence / "片头")]
+            opening_command = worker_command("server.final_engine.scripts.detect_opening_cover", SCRIPT_DIR / "detect_opening_cover.py", ["--video", str(source), "--report", str(cover_report), "--evidence-dir", str(evidence / "片头")])
             if vision_model:
                 opening_command.extend(["--model", vision_model])
             else:
@@ -347,25 +347,22 @@ def main() -> int:
             run(opening_command)
             start = opening_start(cover_report)
             capped_end = min(probe_duration(source), start + source_budget)
-            run([
-                sys.executable, str(SCRIPT_DIR / "detect_tail_guidance.py"), "--video", str(source), "--report", str(tail_report),
+            run(worker_command("server.final_engine.scripts.detect_tail_guidance", SCRIPT_DIR / "detect_tail_guidance.py", ["--video", str(source), "--report", str(tail_report),
                 "--evidence-dir", str(evidence / "片尾"), "--source-start", f"{start:.6f}", "--source-end", f"{capped_end:.6f}",
-            ])
+            ]))
             end = tail_end(tail_report, capped_end)
-            run([sys.executable, str(SCRIPT_DIR / "detect_black_bars.py"), "--video", str(source), "--report", str(black_bar_report)])
+            run(worker_command("server.final_engine.scripts.detect_black_bars", SCRIPT_DIR / "detect_black_bars.py", ["--video", str(source), "--report", str(black_bar_report)]))
             active_picture = active_picture_from_black_bar_report(black_bar_report, source)
-            title_command = [
-                sys.executable, str(SCRIPT_DIR / "detect_drama_title_region.py"), "--video", str(source), "--report", str(title_report),
+            title_command = worker_command("server.final_engine.scripts.detect_drama_title_region", SCRIPT_DIR / "detect_drama_title_region.py", ["--video", str(source), "--report", str(title_report),
                 "--evidence-dir", str(evidence / "剧名"), "--source-start", f"{start:.6f}", "--source-end", f"{end:.6f}",
                 "--active-picture", f"{active_picture['left']:.9f}", f"{active_picture['top']:.9f}", f"{active_picture['right']:.9f}", f"{active_picture['bottom']:.9f}",
-            ]
+            ])
             if vision_model:
                 title_command.extend(["--model", vision_model])
             else:
                 title_command.append("--disable-vlm")
             run(title_command)
-            command = [
-                sys.executable, str(SCRIPT_DIR / "generate_composition_from_detection_reports.py"),
+            command = worker_command("server.final_engine.scripts.generate_composition_from_detection_reports", SCRIPT_DIR / "generate_composition_from_detection_reports.py", [
                 "--viral-source", str(source), "--cover-report", str(cover_report), "--tail-report", str(tail_report), "--title-report", str(title_report), "--black-bar-report", str(black_bar_report),
                 "--clean-proxy", str(proxy), "--clean-proxy-report", str(proxy_report),
                 "--template-video", str(args.template_video), "--pairing", str(args.pairing),
@@ -374,7 +371,7 @@ def main() -> int:
                 "--real-photo-dir", str(args.real_photo_dir),
                 "--real-photo-files", args.real_photo_files,
                 "--midroll", str(args.midroll), "--endroll", str(args.endroll), "--report", str(draft_report),
-            ]
+            ])
             if args.bgm:
                 command.extend(["--bgm", str(args.bgm), "--bgm-id", args.bgm_id, "--bgm-title", args.bgm_title])
             elif selected_bgm:
@@ -387,12 +384,11 @@ def main() -> int:
             if args.export_queue and args.finished_output_dir:
                 output = args.finished_output_dir / finished_output_name(source)
                 export_task = item_dir / "导出任务"
-                run([
-                    sys.executable, str(SCRIPT_DIR / "prepare_finished_video_export.py"),
+                run(worker_command("server.final_engine.scripts.prepare_finished_video_export", SCRIPT_DIR / "prepare_finished_video_export.py", [
                     "--composition-report", str(draft_report), "--task-root", str(export_task),
                     "--output", str(output), "--queue", str(args.export_queue),
                     "--queue-job-id", f"finished-{hashlib.sha256(str(output).encode('utf-8')).hexdigest()[:20]}",
-                ])
+                ]))
                 export_job = str(export_task / "成片导出任务.json")
             if selected_bgm:
                 record_bgm_usage(args.bgm_usage_log, selected_bgm)

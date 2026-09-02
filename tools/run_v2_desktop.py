@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import runpy
 import sys
 import threading
 import time
@@ -111,5 +112,18 @@ def main() -> None:
             server.server_close()
 
 
+def _run_worker_if_requested() -> bool:
+    if "--v2-worker" not in sys.argv:
+        return False
+    index = sys.argv.index("--v2-worker")
+    if index + 1 >= len(sys.argv):
+        raise SystemExit("缺少 V2 worker 模块名")
+    module = sys.argv[index + 1]
+    sys.argv[:] = [module, *sys.argv[index + 2:]]
+    runpy.run_module(module, run_name="__main__")
+    return True
+
+
 if __name__ == "__main__":
-    main()
+    if not _run_worker_if_requested():
+        main()
