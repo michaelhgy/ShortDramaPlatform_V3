@@ -67,6 +67,7 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
     args = parser.parse_args()
     if args.runtime_probe:
+        from server.final_engine.jianying59_final.visual_layers import GLOBAL_EFFECT_POOL, REAL_PHOTO_EFFECT_POOL
         from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
         from server.windows_automation.jianying59_exporter.upstream_adapter import PyJianyingUpstreamAdapter  # noqa: F401
         import cv2  # noqa: F401
@@ -78,10 +79,14 @@ def main() -> None:
         import uiautomation  # noqa: F401
         import webview  # noqa: F401
         import win32api  # noqa: F401
+        resources = (GLOBAL_EFFECT_POOL, REAL_PHOTO_EFFECT_POOL)
+        for resource in resources:
+            json.loads(resource.read_text(encoding="utf-8"))
         print(json.dumps({
             "status": "ok",
             "ffmpeg": str(resolve_ffmpeg()),
             "ffprobe": str(resolve_ffprobe()),
+            "runtime_resources": [str(resource) for resource in resources],
         }, ensure_ascii=False), flush=True)
         return
     if args.width < MIN_WIDTH or args.height < MIN_HEIGHT:

@@ -16,12 +16,8 @@ from typing import Any
 
 from server.tool_resolver import resolve_ffprobe
 
-try:
-    from .ollama_local import ensure_local_ollama
-    from .detect_black_bars import probe_video as probe_black_bar_video, source_identity as black_bar_source_identity
-except ImportError:  # Direct execution keeps the script directory on sys.path.
-    from ollama_local import ensure_local_ollama
-    from detect_black_bars import probe_video as probe_black_bar_video, source_identity as black_bar_source_identity
+from server.final_engine.scripts.ollama_local import ensure_local_ollama
+from server.final_engine.scripts.detect_black_bars import probe_video as probe_black_bar_video, source_identity as black_bar_source_identity
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent

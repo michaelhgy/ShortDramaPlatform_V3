@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from server.tool_resolver import resolve_ffprobe
+from server.runtime_process import no_window_kwargs
 
 from .visual_layers import append_visual_layers, plan_global_layers, plan_visual_layers
 
@@ -65,6 +66,7 @@ def probe_media(path: Path, *, audio_only: bool = False) -> Media:
         errors="replace",
         check=False,
         timeout=20,
+        **no_window_kwargs(),
     )
     if result.returncode:
         raise ValueError(result.stderr.strip() or f"ffprobe无法读取媒体：{path}")

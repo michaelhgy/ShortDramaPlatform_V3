@@ -11,13 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
-
-try:
-    from .detect_black_bars import probe_video as probe_black_bar_video
-    from .detect_black_bars import source_identity as black_bar_source_identity
-except ImportError:  # Direct script execution from the batch runner.
-    from detect_black_bars import probe_video as probe_black_bar_video
-    from detect_black_bars import source_identity as black_bar_source_identity
+from server.runtime_process import no_window_kwargs
+from server.final_engine.scripts.detect_black_bars import probe_video as probe_black_bar_video
+from server.final_engine.scripts.detect_black_bars import source_identity as black_bar_source_identity
 
 
 DELOGO_EDGE_PIXELS = 2
@@ -32,7 +28,7 @@ def read_json(path: Path) -> dict[str, Any]:
 def probe_duration(path: Path) -> float:
     result = subprocess.run(
         [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs(),
     )
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or f"Cannot probe {path}")
@@ -45,7 +41,7 @@ def probe_geometry(path: Path) -> tuple[int, int]:
             str(resolve_ffprobe()), "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path),
         ],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs(),
     )
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or f"Cannot probe video geometry: {path}")
@@ -200,10 +196,10 @@ def run_ffmpeg(source: Path, output: Path, start: float, end: float, regions: li
     ]
     # RTX machines use NVENC; fall back to a portable CPU encode on another PC.
     nvenc = common[:-1] + ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "20", "-b:v", "0"] + common[-1:]
-    result = subprocess.run(nvenc, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    result = subprocess.run(nvenc, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
     if result.returncode:
         cpu = common[:-1] + ["-c:v", "libx264", "-preset", "medium", "-crf", "18"] + common[-1:]
-        result = subprocess.run(cpu, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        result = subprocess.run(cpu, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
     if result.returncode:
         raise RuntimeError(result.stderr[-2000:])
     if not partial.is_file() or probe_duration(partial) <= 0:

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
+from server.runtime_process import no_window_kwargs
 
 
 PHOTO_COUNT = 10
@@ -157,7 +158,7 @@ def account_day_video_sources(*, account_day_dir: Path) -> tuple[DramaPhotoSourc
 def _probe_duration(path: Path) -> float:
     result = subprocess.run(
         [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=20,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=20, **no_window_kwargs(),
     )
     if result.returncode != 0:
         return 0.0
@@ -189,7 +190,7 @@ def locate_source_time(*, sources: Iterable[VideoSource], global_time: float) ->
 def _extract_frame(*, source: VideoSource, time_seconds: float, target: Path) -> None:
     result = subprocess.run(
         [str(resolve_ffmpeg()), "-hide_banner", "-loglevel", "error", "-ss", f"{time_seconds:.3f}", "-i", str(source.path), "-frames:v", "1", "-q:v", "2", "-y", str(target)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=40,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=40, **no_window_kwargs(),
     )
     if result.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
         raise RuntimeError(result.stderr.strip() or f"无法读取剧照帧：{source.path.name}@{time_seconds:.3f}s")

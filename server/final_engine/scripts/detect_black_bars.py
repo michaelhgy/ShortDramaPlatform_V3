@@ -21,6 +21,7 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 from server.tool_resolver import resolve_ffprobe
+from server.runtime_process import no_window_kwargs
 
 
 SAMPLE_PERCENTS = (5, 13, 21, 29, 37, 45, 55, 63, 71, 79, 87, 95)
@@ -43,7 +44,7 @@ def probe_video(path: Path) -> tuple[float, int, int]:
         str(resolve_ffprobe()), "-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=width,height:format=duration", "-of", "json", str(path),
     ]
-    data = json.loads(subprocess.check_output(command, text=True, encoding="utf-8"))
+    data = json.loads(subprocess.check_output(command, text=True, encoding="utf-8", **no_window_kwargs()))
     stream = data["streams"][0]
     duration, width, height = float(data["format"]["duration"]), int(stream["width"]), int(stream["height"])
     if duration <= 0 or width <= 0 or height <= 0:

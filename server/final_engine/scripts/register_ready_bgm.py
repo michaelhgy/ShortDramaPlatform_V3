@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
+from server.runtime_process import no_window_kwargs
 from typing import Any
 
 
@@ -25,7 +26,7 @@ def duration_seconds(path: Path) -> float:
     output = subprocess.check_output(
         [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
         text=True,
-        encoding="utf-8",
+        encoding="utf-8", **no_window_kwargs(),
     )
     return float(json.loads(output)["format"]["duration"])
 
@@ -60,7 +61,7 @@ def main() -> None:
         "-af", f"loudnorm=I={args.target_lufs}:TP=-2.0:LRA=7.0",
         "-c:a", "aac", "-b:a", "128k", str(output),
     ]
-    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
     if completed.returncode != 0:
         raise RuntimeError(f"BGM 归一化失败：{completed.stderr[-1200:]}")
     record = {

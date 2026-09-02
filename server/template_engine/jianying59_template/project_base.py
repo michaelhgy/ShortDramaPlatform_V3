@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable
 
 from server.tool_resolver import resolve_ffprobe
+from server.runtime_process import no_window_kwargs
 
 
 CANVAS_WIDTH = 1080
@@ -58,7 +59,7 @@ def probe_video(path: Path, *, ffprobe_bin: str | None = None) -> VideoProbe:
         "-of", "json",
         str(path),
     ]
-    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=20)
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=20, **no_window_kwargs())
     if result.returncode != 0:
         raise ValueError(f"ffprobe无法读取视频 {path.name}: {result.stderr.strip()}")
     try:

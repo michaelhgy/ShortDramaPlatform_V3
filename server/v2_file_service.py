@@ -25,6 +25,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from server.tool_resolver import ToolResolutionError, resolve_ffmpeg, resolve_ffprobe
+from server.runtime_process import no_window_kwargs
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
@@ -677,7 +678,7 @@ def probe_material(path: Path, cache_key: str) -> tuple[float, str]:
         try:
             result = subprocess.run(
                 [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False, **no_window_kwargs(),
             )
             duration = max(0.0, float((result.stdout or "").strip() or 0))
         except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -693,7 +694,7 @@ def probe_material(path: Path, cache_key: str) -> tuple[float, str]:
             thumbnail.parent.mkdir(parents=True, exist_ok=True)
             subprocess.run(
                 [ffmpeg, "-y", "-i", str(path), "-frames:v", "1", str(thumbnail)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False, **no_window_kwargs(),
             )
         except (OSError, subprocess.TimeoutExpired):
             thumbnail.unlink(missing_ok=True)
@@ -711,7 +712,7 @@ def probe_resource_metadata(path: Path, cache_key: str) -> tuple[float, str, str
         try:
             result = subprocess.run(
                 [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", str(path)],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False, **no_window_kwargs(),
             )
             value = (result.stdout or "").strip()
             if re.fullmatch(r"\d+x\d+", value):
@@ -726,7 +727,7 @@ def media_resolution(path: Path) -> str:
     except ToolResolutionError:
         return ""
     try:
-        result = subprocess.run([ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False)
+        result = subprocess.run([ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False, **no_window_kwargs())
         value = (result.stdout or "").strip()
         return value if re.fullmatch(r"\d+x\d+", value) else ""
     except (OSError, subprocess.TimeoutExpired): return ""

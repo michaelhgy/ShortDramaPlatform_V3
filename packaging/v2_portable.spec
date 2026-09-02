@@ -16,6 +16,8 @@ APPLICATION_ICON = PROJECT_ROOT / "packaging" / "assets" / "v2-application-icon.
 
 datas = [
     (str(PROJECT_ROOT / "dist"), "dist"),
+    (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "track07_08_effect_pool_5_9.json"), "server/template_engine/jianying59_template/resources"),
+    (str(PROJECT_ROOT / "server" / "final_engine" / "jianying59_final" / "resources" / "real_photo_effect_pool_5_9.json"), "server/final_engine/jianying59_final/resources"),
     (str(FFMPEG_ROOT / "bin" / "ffmpeg.exe"), "tools/ffmpeg/bin"),
     (str(FFMPEG_ROOT / "bin" / "ffprobe.exe"), "tools/ffmpeg/bin"),
     (str(FFMPEG_ROOT / "LICENSE"), "tools/ffmpeg"),

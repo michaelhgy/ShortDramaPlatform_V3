@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
+from server.application_resources import application_resource_path
 
 
 CANVAS_WIDTH = 1080
@@ -21,8 +22,8 @@ REAL_PHOTO_RULE_VERSION = "cell-cover-local-mask-v2"
 # Leave a small cover margin so rounding at a cell boundary cannot expose a
 # one-pixel transparent seam in Jianying 5.9.
 COVER_SAFETY_MARGIN = 1.005
-GLOBAL_EFFECT_POOL = Path(__file__).resolve().parents[2] / "template_engine" / "jianying59_template" / "resources" / "track07_08_effect_pool_5_9.json"
-REAL_PHOTO_EFFECT_POOL = Path(__file__).with_name("resources") / "real_photo_effect_pool_5_9.json"
+GLOBAL_EFFECT_POOL = application_resource_path("server", "template_engine", "jianying59_template", "resources", "track07_08_effect_pool_5_9.json")
+REAL_PHOTO_EFFECT_POOL = application_resource_path("server", "final_engine", "jianying59_final", "resources", "real_photo_effect_pool_5_9.json")
 ADJUST_PARAMETERS = (
     ("色温", "temperature", "v3"), ("色调", "tone", "v3"), ("饱和度", "saturation", "v1"),
     ("自然饱和度", "natural_saturation", "v1"), ("亮度", "brightness", "v2"),
