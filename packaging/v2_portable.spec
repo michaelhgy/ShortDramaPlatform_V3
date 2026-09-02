@@ -11,6 +11,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 
 PROJECT_ROOT = Path(SPECPATH).parent
 FFMPEG_ROOT = Path(os.environ["V2_FFMPEG_EXPANDED_ROOT"])
+APPLICATION_ICON = PROJECT_ROOT / "packaging" / "assets" / "v2-application-icon.ico"
 
 datas = [
     (str(PROJECT_ROOT / "dist"), "dist"),
@@ -63,6 +64,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
+    icon=str(APPLICATION_ICON),
     # Release builds are windowed; diagnostics may opt in without changing
     # the packaged application code or its default output.
     console=bool(os.environ.get("V2_PORTABLE_CONSOLE")),
