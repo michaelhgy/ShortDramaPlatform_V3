@@ -5,26 +5,15 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-try:
-    from .jianying59_template.project_base import build_t00_plan, probe_video
-    from .jianying59_template.track01 import create_track01_draft
-    from .jianying59_template.track02_03 import create_track03_draft
-    from .jianying59_template.track04 import create_track04_only_draft
-    from .jianying59_template.track05 import create_track05_draft
-    from .jianying59_template.final_contract import create_final_template_draft
-    from .jianying59_template.flower_style_library import default_flower_style_catalog_path
-    from .jianying59_template.sticker_skin_library import default_sticker_skin_catalog_path
-    from .jianying59_template.text_visual import create_text_visual_draft
-except ImportError:
-    from jianying59_template.project_base import build_t00_plan, probe_video
-    from jianying59_template.track01 import create_track01_draft
-    from jianying59_template.track02_03 import create_track03_draft
-    from jianying59_template.track04 import create_track04_only_draft
-    from jianying59_template.track05 import create_track05_draft
-    from jianying59_template.final_contract import create_final_template_draft
-    from jianying59_template.flower_style_library import default_flower_style_catalog_path
-    from jianying59_template.sticker_skin_library import default_sticker_skin_catalog_path
-    from jianying59_template.text_visual import create_text_visual_draft
+from server.template_engine.jianying59_template.project_base import build_t00_plan, probe_video
+from server.template_engine.jianying59_template.track01 import create_track01_draft
+from server.template_engine.jianying59_template.track02_03 import create_track03_draft
+from server.template_engine.jianying59_template.track04 import create_track04_only_draft
+from server.template_engine.jianying59_template.track05 import create_track05_draft
+from server.template_engine.jianying59_template.final_contract import create_final_template_draft
+from server.template_engine.jianying59_template.flower_style_library import default_flower_style_catalog_path
+from server.template_engine.jianying59_template.sticker_skin_library import default_sticker_skin_catalog_path
+from server.template_engine.jianying59_template.text_visual import create_text_visual_draft
 
 
 def main() -> int:
@@ -75,7 +64,7 @@ def main() -> int:
     if args.viral_account_day_dir:
         if not args.photo_prep_output_dir:
             parser.error("使用 --viral-account-day-dir 还需要 --photo-prep-output-dir（必须是一个尚不存在的新目录）")
-        from jianying59_template.photo_prep import prepare_drama_photos
+        from server.template_engine.jianying59_template.photo_prep import prepare_drama_photos
         prepared = prepare_drama_photos(
             account_day_dir=args.viral_account_day_dir,
             output_dir=args.photo_prep_output_dir,
