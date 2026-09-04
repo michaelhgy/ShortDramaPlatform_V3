@@ -28,7 +28,7 @@ import { TaskDetailDrawer } from './TaskDetailDrawer';
 import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, refreshSharedTaskCenterProductionTask, storeSharedTaskCenterSnapshot } from '../../services/taskCenterService';
 import { cleanupV2OrphanTask, regenerateV2Template, retryV2Template, reExportV2Task, setV2ExecutorPaused, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
 import { dataSource } from '../../services/dataSource';
-import { changeAffects, eventDetail } from '../../services/dataChangeEvents';
+import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
 
 interface TaskCenterModalProps {
   isOpen: boolean;
@@ -94,30 +94,18 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
       // failure must not make the entire task center appear empty.
     });
     refresh();
-    let timer: number | undefined;
-    const schedule = () => {
-      if (timer) window.clearTimeout(timer);
-      const delay = document.hidden ? 60000 : (tasksRef.current.some((task) => task.status === 'running') ? 30000 : 60000);
-      timer = window.setTimeout(() => { refresh(); schedule(); }, delay);
-    };
-    schedule();
-    const onVisibilityChange = () => { if (!document.hidden) refresh(); schedule(); };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    const onDataChanged = (event: Event) => {
-      const detail = eventDetail(event);
-      if (!changeAffects(detail, 'task_center')) return;
-      if (detail.productionTaskId) {
-        void refreshSharedTaskCenterProductionTask(detail.productionTaskId).then((changed) => {
+    const refreshForChange = async (detail?: import('../../services/dataChangeEvents').V2DataChangeDetail) => {
+      if (detail?.productionTaskId) {
+        await refreshSharedTaskCenterProductionTask(detail.productionTaskId).then((changed) => {
           if (!active) return;
           setTasks((previous) => [...previous.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed]);
           tasksRef.current = [...tasksRef.current.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed];
           setLastRefreshAt(new Date());
-        }).catch(() => undefined);
-      } else { refresh(); }
-      schedule();
+        });
+      } else { await refresh(); }
     };
-    window.addEventListener('v2-data-changed', onDataChanged);
-    return () => { active = false; if (timer) window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisibilityChange); window.removeEventListener('v2-data-changed', onDataChanged); };
+    const unsubscribe = subscribeV2DataRefresh('task_center', ({ detail }) => refreshForChange(detail).catch(() => undefined));
+    return () => { active = false; unsubscribe(); };
   }, [isOpen]);
 
   if (!isOpen) return null;

@@ -47,7 +47,9 @@ export const DramaRenameModal: React.FC<DramaRenameModalProps> = ({
       setHistoryNamesList([]);
       setManualHistoryInput('');
     }
-  }, [drama, theaters, isOpen, lockedTheaterName]);
+  // The initial theater is chosen once when this dialog opens. Later list
+  // refreshes must not discard a name the user is editing.
+  }, [drama?.id, isOpen]);
 
   if (!isOpen) return null;
 

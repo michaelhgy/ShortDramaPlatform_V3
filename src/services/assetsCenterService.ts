@@ -42,7 +42,12 @@ function persistAssetsSeed(seed: AssetsCenterSeed): void {
   try { localStorage.setItem(ASSETS_CACHE_KEY, JSON.stringify(seed)); localStorage.setItem(ASSETS_CACHE_UPDATED_KEY, new Date().toISOString()); } catch { /* optional */ }
 }
 
-export async function refreshCachedAssetsItem(change: { accountId?: string; dramaId?: string; method?: string }): Promise<Partial<AssetsCenterSeed> | null> {
+export async function refreshCachedAssetsItem(change: {
+  accountId?: string;
+  dramaId?: string;
+  changeType?: string;
+  method?: string;
+}): Promise<Partial<AssetsCenterSeed> | null> {
   const current = getCachedAssetsCenterSeed();
   if (!current) return null;
   if (change.accountId) {
@@ -64,6 +69,28 @@ export async function refreshCachedAssetsItem(change: { accountId?: string; dram
     const dramas = [...current.dramas.filter((item) => item.id !== drama.id), drama];
     persistAssetsSeed({ ...current, dramas });
     return { dramas };
+  }
+  // Theater, sub-theater and profile endpoints currently return list records.
+  // Refresh only that reference collection rather than the whole assets seed
+  // (which also reads production resources).
+  if (change.changeType === 'theater_changed') {
+    const theaters = (await getV2Theaters()).items.map(toBusinessTheater);
+    persistAssetsSeed({ ...current, theaters });
+    return { theaters };
+  }
+  if (change.changeType === 'sub_theater_changed') {
+    const subTheaters = (await getV2SubTheaters()).items.map(toBusinessSubTheater);
+    persistAssetsSeed({ ...current, subTheaters });
+    return { subTheaters };
+  }
+  if (change.changeType === 'profile_changed') {
+    const profiles = await getV2DramaProfiles();
+    const profileItems = profiles.items.map((profile) => {
+      const drama = current.dramas.find((item) => item.id === profile.drama_id);
+      return drama ? { id: `profile-${profile.drama_id}`, dramaId: profile.drama_id, dramaCurrentName: drama.currentName, theaterName: drama.theaterName, category: '', tags: [], totalEpisodes: 0, cover: { filePath: profile.cover_path, mainCoverUrl: profile.cover_path ? `/api/v2/dramas/${profile.drama_id}/cover` : '' }, masterVideoPackage: { folderPath: profile.master_path, totalFiles: 0, totalSizeGb: 0, resolution: '', status: '待导入' as const, files: [] }, associatedViralAssetsCount: 0, updatedAt: profile.updated_at } : null;
+    }).filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
+    persistAssetsSeed({ ...current, profiles: profileItems });
+    return { profiles: profileItems };
   }
   return null;
 }

@@ -461,11 +461,15 @@ def connection() -> sqlite3.Connection:
             drama_id TEXT NOT NULL DEFAULT '',
             video_id TEXT NOT NULL DEFAULT '',
             material_id TEXT NOT NULL DEFAULT '',
+            entity_id TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL
         );
         """
     )
     task_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_tasks)")}
+    change_event_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(v2_change_events)")}
+    if "entity_id" not in change_event_columns:
+        conn.execute("ALTER TABLE v2_change_events ADD COLUMN entity_id TEXT NOT NULL DEFAULT ''")
     if "planned_publish_at" not in task_columns:
         conn.execute("ALTER TABLE production_tasks ADD COLUMN planned_publish_at TEXT NOT NULL DEFAULT ''")
     if "release_status" not in task_columns:
@@ -567,11 +571,50 @@ def connection() -> sqlite3.Connection:
         CREATE TRIGGER IF NOT EXISTS v2_evt_account_insert AFTER INSERT ON accounts BEGIN
           INSERT INTO v2_change_events(change_type,account_id,updated_at) VALUES ('account_changed',NEW.id,NEW.updated_at);
         END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_account_delete AFTER DELETE ON accounts BEGIN
+          INSERT INTO v2_change_events(change_type,account_id,updated_at) VALUES ('account_changed',OLD.id,OLD.updated_at);
+        END;
         CREATE TRIGGER IF NOT EXISTS v2_evt_drama_update AFTER UPDATE ON dramas BEGIN
           INSERT INTO v2_change_events(change_type,drama_id,updated_at) VALUES ('drama_changed',NEW.id,NEW.updated_at);
         END;
         CREATE TRIGGER IF NOT EXISTS v2_evt_drama_insert AFTER INSERT ON dramas BEGIN
           INSERT INTO v2_change_events(change_type,drama_id,updated_at) VALUES ('drama_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_drama_delete AFTER DELETE ON dramas BEGIN
+          INSERT INTO v2_change_events(change_type,drama_id,updated_at) VALUES ('drama_changed',OLD.id,OLD.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_theater_update AFTER UPDATE ON theaters BEGIN
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('theater_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_theater_insert AFTER INSERT ON theaters BEGIN
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('theater_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_theater_delete AFTER DELETE ON theaters BEGIN
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('theater_changed',OLD.id,OLD.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_sub_theater_update AFTER UPDATE ON sub_theaters BEGIN
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('sub_theater_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_sub_theater_insert AFTER INSERT ON sub_theaters BEGIN
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('sub_theater_changed',NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_sub_theater_delete AFTER DELETE ON sub_theaters BEGIN
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('sub_theater_changed',OLD.id,OLD.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_drama_profile_update AFTER UPDATE ON drama_profiles BEGIN
+          INSERT INTO v2_change_events(change_type,drama_id,entity_id,updated_at) VALUES ('profile_changed',NEW.drama_id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_drama_profile_insert AFTER INSERT ON drama_profiles BEGIN
+          INSERT INTO v2_change_events(change_type,drama_id,entity_id,updated_at) VALUES ('profile_changed',NEW.drama_id,NEW.id,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_drama_profile_delete AFTER DELETE ON drama_profiles BEGIN
+          INSERT INTO v2_change_events(change_type,drama_id,entity_id,updated_at) VALUES ('profile_changed',OLD.drama_id,OLD.id,OLD.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_settings_update AFTER UPDATE ON v2_settings BEGIN
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('settings_changed',NEW.key,NEW.updated_at);
+        END;
+        CREATE TRIGGER IF NOT EXISTS v2_evt_settings_insert AFTER INSERT ON v2_settings BEGIN
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('settings_changed',NEW.key,NEW.updated_at);
         END;
         CREATE TRIGGER IF NOT EXISTS v2_evt_resource_insert AFTER INSERT ON resource_index BEGIN
           INSERT INTO v2_change_events(change_type,updated_at) VALUES ('resource_changed',NEW.last_seen_at);
@@ -605,7 +648,7 @@ def list_change_events(after_id: int | None, limit: int = 200) -> dict[str, obje
         if after_id is None:
             return {"items": [], "latest_id": latest}
         rows = conn.execute(
-            "SELECT id,change_type,production_task_id,task_id,account_id,drama_id,video_id,material_id,updated_at "
+            "SELECT id,change_type,production_task_id,task_id,account_id,drama_id,video_id,material_id,entity_id,updated_at "
             "FROM v2_change_events WHERE id>? ORDER BY id LIMIT ?", (after_id, max(1, min(limit, 500))),
         ).fetchall()
         return {"items": [dict(row) for row in rows], "latest_id": latest}

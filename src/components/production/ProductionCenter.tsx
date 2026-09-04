@@ -14,7 +14,7 @@ import { formatElapsedSeconds } from '../../utils/duration';
 import { areaList } from '@vant/area-data';
 import { calculateResourceMetrics } from '../../utils/resourceMetrics';
 import { getCachedProductionSummary, loadProductionSummary } from '../../services/productionService';
-import { changeAffects, eventDetail } from '../../services/dataChangeEvents';
+import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
 import { 
   Layers, 
   Scan, 
@@ -206,10 +206,10 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
       }
     }
     let refreshing = false;
-    const refresh = () => {
-      if (refreshing) return;
+    const refresh = (): Promise<void> => {
+      if (refreshing) return Promise.resolve();
       refreshing = true;
-      void loadProductionSummary(true).then((summaryUnits) => {
+      const summaryRequest = loadProductionSummary(true).then((summaryUnits) => {
         if (!active) return;
         const realUnits = summaryUnits;
         // 摘要接口只包含统计与模板/导出状态，素材和成片明细有意留空。
@@ -258,15 +258,17 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
           cachedSelectedProductionTaskId = next;
           return next;
         });
-      }).catch(() => undefined).finally(() => { refreshing = false; });
+      }).catch(() => undefined);
       // 任务中心只负责顶部执行器状态，不能阻塞生产任务卡首屏显示。
-      void loadV2TaskCenter().then((center) => {
+      const executorRequest = loadV2TaskCenter().then((center) => {
         if (active) setVideoExporter(center.executors.find((executor) => executor.id === 'video_exporter') || null);
       }).catch(() => undefined);
+      return Promise.all([summaryRequest, executorRequest]).then(() => undefined).finally(() => { refreshing = false; });
     };
     refresh();
-    const refreshOne = (taskId: string) => {
-      if (!taskId || detailRequests.current[taskId]) return;
+    const refreshOne = (taskId: string): Promise<void> => {
+      if (!taskId) return Promise.resolve();
+      if (detailRequests.current[taskId]) return detailRequests.current[taskId];
       const request = getV2ProductionTaskDetails(taskId).then((task) => {
         if (!active) return;
         const updated = toProductionUnit(task);
@@ -280,22 +282,12 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
         setLastRefreshAt(new Date());
       }).catch(() => undefined).finally(() => { delete detailRequests.current[taskId]; });
       detailRequests.current[taskId] = request;
+      return request;
     };
-    const onDataChanged = (event: Event) => {
-      const detail = eventDetail(event);
-      if (!changeAffects(detail, 'production')) return;
-      if (detail.productionTaskId) refreshOne(detail.productionTaskId);
-      else refresh();
-    };
-    window.addEventListener('v2-data-changed', onDataChanged);
+    const unsubscribe = subscribeV2DataRefresh('production', ({ detail }) => detail?.productionTaskId ? refreshOne(detail.productionTaskId) : refresh());
     void getV2ProductionResources().then((resources) => { if (active) setSupportableDramas(calculateResourceMetrics(resources.items).supportableDramas); }).catch(() => undefined);
-    let timer: number | undefined;
-    // The change feed handles normal live updates. This is deliberately a
-    // slow recovery check for missed notifications or a restarted service.
-    const schedule = () => { if (timer) window.clearInterval(timer); timer = window.setInterval(refresh, document.hidden ? 60000 : (videoExporter?.currentTaskId ? 30000 : 60000)); };
-    schedule(); document.addEventListener('visibilitychange', schedule);
-    return () => { active = false; if (timer) window.clearInterval(timer); document.removeEventListener('visibilitychange', schedule); window.removeEventListener('v2-data-changed', onDataChanged); };
-  }, [videoExporter?.currentTaskId]);
+    return () => { active = false; unsubscribe(); };
+  }, []);
 
   const loadProductionDetails = (taskId: string, force = false) => {
     if (!taskId || (!force && cachedProductionDetails[taskId]) || detailRequests.current[taskId]) return;

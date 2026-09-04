@@ -1,3 +1,5 @@
+import { publishV2DataChange, type V2DataChangeType } from '../services/dataChangeEvents';
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -14,7 +16,7 @@ export interface ApiClientOptions {
   timeoutMs?: number;
 }
 
-function changeTypeForPath(path: string): string {
+function changeTypeForPath(path: string): V2DataChangeType {
   if (path.includes('/revenue/')) return 'revenue_changed';
   if (path.includes('/release')) return 'release_changed';
   if (path.includes('/production-videos/')) return path.includes('/export') ? 'video_export_changed' : 'video_changed';
@@ -25,6 +27,10 @@ function changeTypeForPath(path: string): string {
   }
   if (path.includes('/task-center')) return path.includes('/re-export') ? 'video_export_changed' : 'task_changed';
   if (path.includes('/production-resources')) return 'resource_changed';
+  if (path.includes('/sub-theaters')) return 'sub_theater_changed';
+  if (path.includes('/theaters')) return 'theater_changed';
+  if (path.includes('/drama-profiles') || path.includes('/cover')) return 'profile_changed';
+  if (path.includes('/settings')) return 'settings_changed';
   if (path.includes('/accounts')) return 'account_changed';
   if (path.includes('/dramas')) return 'drama_changed';
   return 'unknown';
@@ -106,9 +112,14 @@ export class ApiClient {
           taskId: ['task_changed', 'video_export_changed'].includes(changeType) ? (returnedId || idFromPath(path, 'tasks')) : idFromPath(path, 'tasks'),
           videoId: typeof body.video_id === 'string' ? body.video_id : idFromPath(path, 'production-videos'),
           materialId: typeof body.material_id === 'string' ? body.material_id : undefined,
+          entityId: ['theater_changed', 'sub_theater_changed'].includes(changeType)
+            ? (returnedId || idFromPath(path, changeType === 'theater_changed' ? 'theaters' : 'sub-theaters'))
+            : changeType === 'profile_changed' || changeType === 'settings_changed'
+              ? (typeof body.drama_id === 'string' ? body.drama_id : undefined)
+              : undefined,
           updatedAt: typeof body.updated_at === 'string' ? body.updated_at : new Date().toISOString(),
         };
-        window.dispatchEvent(new CustomEvent('v2-data-changed', { detail }));
+        publishV2DataChange({ ...detail, origin: 'client' });
       }
       return payload as T;
     } catch (error) {

@@ -31,6 +31,7 @@ import { createBusinessDrama, loadAssetsCenterSeed } from './services/assetsCent
 import { getV2Accounts, getV2Settings, type V2AccountRecord } from './api/v2Catalog';
 import { loadV2DailyAccountRevenueSummary, type V2DailyAccountRevenueSummary } from './api/v2Revenue';
 import { startV2DataChangeFeed } from './services/dataChangeFeed';
+import { startV2DataRefreshCoordinator } from './services/dataRefreshCoordinator';
 import { eventDetail } from './services/dataChangeEvents';
 
 function yesterdayDateValue(): string {
@@ -73,7 +74,11 @@ export default function App() {
     setAccounts(response.items.filter((account) => account.status === '正常').map((account) => toScheduleAccount(account, byAccountId.get(account.id))));
   };
 
-  useEffect(() => startV2DataChangeFeed(), []);
+  useEffect(() => {
+    const stopChangeFeed = startV2DataChangeFeed();
+    const stopRefreshCoordinator = startV2DataRefreshCoordinator();
+    return () => { stopRefreshCoordinator(); stopChangeFeed(); };
+  }, []);
 
   // Modal / Interaction states
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AssetsCenterTab,
   AccountBusinessItem,
@@ -17,7 +17,7 @@ import { ProductionResourcesTab } from './ProductionResourcesTab';
 import { ViralAssetsTab } from './ViralAssetsTab';
 import { openV2Folder } from '../../api/v2Catalog';
 import { getV2ProductionResources } from '../../api/v2Catalog';
-import { changeAffects, eventDetail } from '../../services/dataChangeEvents';
+import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
 import {
   Building2,
   Film,
@@ -55,11 +55,14 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Newer requests own the screen. A late full-seed response must never
+  // overwrite a targeted update that arrived after it was started.
+  const refreshGeneration = useRef(0);
 
   useEffect(() => {
     let active = true;
-    const applySeed = (seed: Awaited<ReturnType<typeof loadAssetsCenterSeed>>) => {
-      if (!active) return;
+    const applySeed = (seed: Awaited<ReturnType<typeof loadAssetsCenterSeed>>, generation: number) => {
+      if (!active || generation !== refreshGeneration.current) return;
       setAccounts(seed.accounts);
       setTheaters(seed.theaters);
       setSubTheaters(seed.subTheaters);
@@ -69,34 +72,35 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
       setViralAssets(seed.viralAssets);
       setLastRefreshAt(new Date());
     };
-    const refresh = () => loadAssetsCenterSeed(true).then(applySeed).catch(() => {
+    const refresh = () => {
+      const generation = ++refreshGeneration.current;
+      return loadAssetsCenterSeed(true).then((seed) => applySeed(seed, generation)).catch(() => {
       if (active) setToastMessage('资料数据更新失败，已保留上次数据。');
-    });
+      });
+    };
     void refresh();
-    const onVisibilityChange = () => { if (!document.hidden) void refresh(); };
-    const onDataChanged = (event: Event) => {
-      const detail = eventDetail(event);
-      if (!changeAffects(detail, 'assets')) return;
-      if (detail.accountId || detail.dramaId) {
-        void refreshCachedAssetsItem(detail).then((changed) => {
-          if (!active || !changed) return;
+    const refreshForChange = async (detail?: import('../../services/dataChangeEvents').V2DataChangeDetail) => {
+      if (!detail) { await refresh(); return; }
+      if (detail.accountId || detail.dramaId || ['theater_changed', 'sub_theater_changed', 'profile_changed'].includes(detail.changeType || '')) {
+        const generation = ++refreshGeneration.current;
+        await refreshCachedAssetsItem(detail).then((changed) => {
+          if (!active || generation !== refreshGeneration.current || !changed) return;
           if (changed.accounts) setAccounts(changed.accounts);
+          if (changed.theaters) setTheaters(changed.theaters);
+          if (changed.subTheaters) setSubTheaters(changed.subTheaters);
           if (changed.dramas) setDramas(changed.dramas);
+          if (changed.profiles) setProfiles(changed.profiles);
           setLastRefreshAt(new Date());
-        }).catch(() => undefined);
+        });
       } else if (detail.changeType === 'resource_changed') {
-        void getV2ProductionResources().then((response) => {
+        await getV2ProductionResources().then((response) => {
           if (!active) return;
           setProductionResources(response.items); setLastRefreshAt(new Date());
-        }).catch(() => undefined);
-      } else { void refresh(); }
+        });
+      } else { await refresh(); }
     };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('v2-data-changed', onDataChanged);
-    // Change events refresh the affected catalog area immediately.  This is
-    // only a recovery check when a local event was missed.
-    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 60000);
-    return () => { active = false; document.removeEventListener('visibilitychange', onVisibilityChange); window.removeEventListener('v2-data-changed', onDataChanged); window.clearInterval(timer); };
+    const unsubscribe = subscribeV2DataRefresh('assets', ({ detail }) => refreshForChange(detail).catch(() => undefined));
+    return () => { active = false; unsubscribe(); };
   }, []);
 
   const showToast = (msg: string) => {

@@ -52,7 +52,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setRegisteredDate(new Date().toISOString().slice(0, 10));
       setNotes('');
     }
-  }, [account, theaters, isOpen]);
+  // A background catalog refresh replaces `theaters` with a new array. It is
+  // reference data, not a request to reset a form the user is currently typing.
+  }, [account?.id, isOpen]);
 
   // Filter subtheaters belonging to chosen theater
   const filteredSubTheaters = subTheaters.filter(s => s.theaterName === theaterName);

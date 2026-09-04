@@ -44,7 +44,8 @@ export const SubTheaterModal: React.FC<SubTheaterModalProps> = ({
       setCustomCommissionRate(selectedTheater?.defaultCommissionRate || 70);
       setStatus('启用');
     }
-  }, [subTheater, defaultTheaterId, theaters, isOpen]);
+  // Do not treat a refreshed theater list as a new editing session.
+  }, [subTheater?.id, defaultTheaterId, isOpen]);
 
   if (!isOpen) return null;
 

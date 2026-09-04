@@ -16,6 +16,7 @@ import { regenerateV2Template, reExportV2Task, retryV2Template, setV2ExecutorPau
 import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, refreshSharedTaskCenterProductionTask, storeSharedTaskCenterSnapshot } from '../services/taskCenterService';
 import { getTaskCenterActions } from './taskcenter/taskCenterActionPolicy';
 import { changeAffects, eventDetail } from '../services/dataChangeEvents';
+import { subscribeV2DataRefresh } from '../services/dataRefreshCoordinator';
 import { dataSource } from '../services/dataSource';
 import { getV2Accounts, getV2ProductionResources } from '../api/v2Catalog';
 import { listV2ProductionTaskSummaries } from '../api/v2Production';
@@ -119,29 +120,17 @@ export const Header: React.FC<HeaderProps> = ({
       // every second while the local service is restarting.
     });
     refresh();
-    let timer: number | undefined;
-    const schedule = () => {
-      if (timer) window.clearTimeout(timer);
-      const delay = document.hidden ? 60000 : (tasksRef.current.some((task) => task.status === 'running') ? 30000 : 60000);
-      timer = window.setTimeout(() => { refresh(); schedule(); }, delay);
-    };
-    schedule();
-    const onVisibilityChange = () => { if (!document.hidden) refresh(); schedule(); };
-    const onDataChanged = (event: Event) => {
-      const detail = eventDetail(event);
-      if (!changeAffects(detail, 'task_center')) return;
-      if (detail.productionTaskId) {
-        void refreshSharedTaskCenterProductionTask(detail.productionTaskId).then((changed) => {
+    const refreshForChange = async (detail?: import('../services/dataChangeEvents').V2DataChangeDetail) => {
+      if (detail?.productionTaskId) {
+        await refreshSharedTaskCenterProductionTask(detail.productionTaskId).then((changed) => {
           if (!active) return;
           setTasks((previous) => [...previous.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed]);
           tasksRef.current = [...tasksRef.current.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed];
-        }).catch(() => undefined);
-      } else { refresh(); }
-      schedule();
+        });
+      } else { await refresh(); }
     };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('v2-data-changed', onDataChanged);
-    return () => { active = false; if (timer) window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisibilityChange); window.removeEventListener('v2-data-changed', onDataChanged); };
+    const unsubscribe = subscribeV2DataRefresh('task_center', ({ detail }) => refreshForChange(detail).catch(() => undefined));
+    return () => { active = false; unsubscribe(); };
   }, []);
 
   // Counts come from the backend snapshot. The header never turns a task into

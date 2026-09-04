@@ -137,6 +137,22 @@ class V2FileServiceTests(unittest.TestCase):
         self.assertTrue(all(str(event["production_task_id"]) == str(task["id"]) for event in events))
         self.assertTrue(any(event["change_type"] == "material_changed" for event in events))
 
+    def test_change_feed_reports_catalog_reference_changes_without_full_seed_guessing(self) -> None:
+        initial = service.list_change_events(None)
+        theater = service.create_theater({
+            "name": "刷新测试剧场", "default_commission_rate": 70,
+            "default_tax_rate": 0, "status": "启用",
+        })
+        sub_theater = service.create_sub_theater({
+            "theater_id": theater["id"], "name": "刷新测试子剧场",
+            "commission_rate": 70, "is_commission_overridden": False, "status": "启用",
+        })
+        events = service.list_change_events(int(initial["latest_id"]))["items"]
+        theater_events = [event for event in events if event["change_type"] == "theater_changed"]
+        sub_theater_events = [event for event in events if event["change_type"] == "sub_theater_changed"]
+        self.assertEqual(str(theater["id"]), theater_events[-1]["entity_id"])
+        self.assertEqual(str(sub_theater["id"]), sub_theater_events[-1]["entity_id"])
+
     def test_finished_export_name_is_separate_from_its_draft_name(self) -> None:
         task = service.create_task({
             "source_id": "final-output-name", "account_name": "账号", "drama_name": "剧集", "planned_publish_at": "2026-08-28T08:00",

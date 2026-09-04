@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AccountItem, DramaItem, ScheduleTask } from '../types';
 import { DramaCover } from './DramaCover';
 import { DramaRenameModal } from './assets/modals/DramaRenameModal';
@@ -106,6 +106,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   const [newDramaCategory, setNewDramaCategory] = useState('都市逆袭');
   const [newDramaEpisodes, setNewDramaEpisodes] = useState(80);
   const [addDramaToast, setAddDramaToast] = useState<string | null>(null);
+  const initializedSession = useRef<string | null>(null);
 
   // Sync prop dramas
   useEffect(() => {
@@ -121,7 +122,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
   // Initialize or reset selections when modal opens
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) {
+      initializedSession.current = null;
+      return;
+    }
+    const sessionKey = `${initialAccountId || ''}:${initialDramaId || ''}`;
+    if (initializedSession.current !== sessionKey) {
+      initializedSession.current = sessionKey;
       if (initialAccountId) {
         setSelectedAccountIds([initialAccountId]);
         const matchedAcc = accounts.find(a => a.id === initialAccountId);

@@ -16,7 +16,7 @@ import { VideoModule } from './VideoModule';
 import { DramaModule } from './DramaModule';
 import { CombinationModule } from './CombinationModule';
 import { RevenueCollectionDrawer } from './RevenueCollectionDrawer';
-import { changeAffects, eventDetail } from '../../services/dataChangeEvents';
+import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
 
 interface DataAnalyticsViewProps {
   onScheduleToday: (dramaId?: string, accountId?: string) => void;
@@ -68,11 +68,14 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
         .catch((error: unknown) => { if (active) setRevenueError(error instanceof Error ? error.message : '收益数据加载失败'); })
         .finally(() => { if (active) setIsRevenueRefreshing(false); });
     };
-    const refreshVisibleData = () => {
-      if (needsDetailedData) void refresh(true);
+    const refreshVisibleData = (): Promise<void> => {
+      if (needsDetailedData) return refresh(true);
       else {
         setIsRevenueRefreshing(true);
-        void loadRevenueOverviewData(input, true).then((data) => { if (active) applyRevenuePageData(data); }).finally(() => { if (active) setIsRevenueRefreshing(false); });
+        return loadRevenueOverviewData(input, true)
+          .then((data) => { if (active) applyRevenuePageData(data); })
+          .catch((error: unknown) => { if (active) setRevenueError(error instanceof Error ? error.message : '收益数据加载失败'); })
+          .finally(() => { if (active) setIsRevenueRefreshing(false); });
       }
     };
     const cached = getCachedRevenuePageData(input);
@@ -89,14 +92,8 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
         .catch(() => { if (active) setRevenueError('收益数据加载失败'); })
         .finally(() => { if (active) setIsRevenueRefreshing(false); });
     }
-    const onDataChanged = (event: Event) => { if (changeAffects(eventDetail(event), 'analytics')) refreshVisibleData(); };
-    const onVisibilityChange = () => { if (!document.hidden) refreshVisibleData(); };
-    // Collection changes arrive through the common event feed; this remains a
-    // slow reconciliation check rather than a repeated full-data poll.
-    const timer = window.setInterval(() => { if (!document.hidden) refreshVisibleData(); }, 60000);
-    window.addEventListener('v2-data-changed', onDataChanged);
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => { active = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisibilityChange); window.removeEventListener('v2-data-changed', onDataChanged); };
+    const unsubscribe = subscribeV2DataRefresh('analytics', () => refreshVisibleData());
+    return () => { active = false; unsubscribe(); };
   }, [activeTab, timeRange, selectedTheater, customStartDate, customEndDate]);
 
   const handleTriggerCollect = async (scope: string, mode: 'immediate' | 'backfill', startDate: string, endDate: string, targets?: { theaters?: string[]; accountIds?: string[] }, onProgress?: (progress: RevenueCollectionProgress) => void) => {
