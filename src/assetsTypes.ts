@@ -130,6 +130,8 @@ export interface ProductionResourceItem {
   mediaUrl?: string;
   durationSeconds?: number;
   resolution?: string;
+  probeStatus?: 'pending' | 'ready' | 'failed';
+  probeError?: string;
   status: ResourceStatus;       // 'available' 可用 | 'used' 已使用
   usedInDramaName?: string;     // 若已使用，记录所用剧名
   addedAt: string;

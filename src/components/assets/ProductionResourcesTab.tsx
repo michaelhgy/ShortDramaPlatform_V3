@@ -421,6 +421,12 @@ export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
                   <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                     {res.fileSizeMb} MB {res.resolution ? `· ${res.resolution}` : ''}
                   </p>
+                  {res.probeStatus === 'pending' && (
+                    <p className="text-[11px] text-indigo-600 mt-0.5">正在识别视频信息…</p>
+                  )}
+                  {res.probeStatus === 'failed' && (
+                    <p className="text-[11px] text-amber-700 mt-0.5" title={res.probeError}>视频信息识别失败，不影响其他资料。</p>
+                  )}
                 </div>
 
                 {/* Tags */}

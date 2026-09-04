@@ -71,6 +71,9 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
       setProductionResources(seed.productionResources);
       setViralAssets(seed.viralAssets);
       setLastRefreshAt(new Date());
+      if (seed.warnings.length) {
+        setToastMessage(`部分资料暂未更新：${seed.warnings.join('、')}。其他资料仍可正常使用。`);
+      }
     };
     const refresh = () => {
       const generation = ++refreshGeneration.current;

@@ -15,6 +15,7 @@ import sys
 import uuid
 import base64
 import ctypes
+import queue
 import threading
 import shutil
 import subprocess
@@ -100,6 +101,10 @@ TEMPLATE_JOB_LOCK = threading.Lock()
 RESOURCE_RESERVATION_LOCK = threading.Lock()
 SCAN_LOCK = threading.Lock()
 RESOURCE_PROBE_CACHE: dict[str, tuple[int, int, float, str, str]] = {}
+RESOURCE_PROBE_QUEUE: queue.Queue[tuple[str, Path, str, int, int]] = queue.Queue()
+RESOURCE_PROBE_PENDING: set[str] = set()
+RESOURCE_PROBE_LOCK = threading.Lock()
+RESOURCE_PROBE_THREAD: threading.Thread | None = None
 
 
 def application_resource_root() -> Path:
@@ -209,9 +214,12 @@ def connection() -> sqlite3.Connection:
             file_path TEXT NOT NULL UNIQUE,
             file_size_bytes INTEGER NOT NULL,
             file_mtime_ns INTEGER NOT NULL,
+            file_identity TEXT NOT NULL DEFAULT '',
             duration_seconds REAL,
             resolution TEXT NOT NULL DEFAULT '',
             thumbnail_path TEXT NOT NULL DEFAULT '',
+            probe_status TEXT NOT NULL DEFAULT 'pending',
+            probe_error TEXT NOT NULL DEFAULT '',
             last_seen_at TEXT NOT NULL,
             source_present INTEGER NOT NULL DEFAULT 1
         );
@@ -490,6 +498,7 @@ def connection() -> sqlite3.Connection:
     if "final_video_manual_check" not in task_columns:
         conn.execute("ALTER TABLE production_tasks ADD COLUMN final_video_manual_check INTEGER NOT NULL DEFAULT 0")
     file_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_files)")}
+    resource_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(resource_index)")}
     revenue_attempt_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(v2_revenue_collection_attempts)")}
     for column, definition in (("data_kind", "TEXT NOT NULL DEFAULT 'account_daily_total'"), ("period_end", "TEXT NOT NULL DEFAULT ''"), ("period_type", "TEXT NOT NULL DEFAULT 'date_range'")):
         if column not in revenue_attempt_columns:
@@ -506,6 +515,13 @@ def connection() -> sqlite3.Connection:
         conn.execute("ALTER TABLE production_files ADD COLUMN missing_scan_count INTEGER NOT NULL DEFAULT 0")
     if "resolution" not in file_columns:
         conn.execute("ALTER TABLE production_files ADD COLUMN resolution TEXT NOT NULL DEFAULT ''")
+    if "file_identity" not in resource_columns:
+        conn.execute("ALTER TABLE resource_index ADD COLUMN file_identity TEXT NOT NULL DEFAULT ''")
+    if "probe_status" not in resource_columns:
+        conn.execute("ALTER TABLE resource_index ADD COLUMN probe_status TEXT NOT NULL DEFAULT 'pending'")
+        conn.execute("UPDATE resource_index SET probe_status=CASE WHEN category IN ('real_video', 'lead_video') AND thumbnail_path<>'' THEN 'ready' ELSE 'pending' END")
+    if "probe_error" not in resource_columns:
+        conn.execute("ALTER TABLE resource_index ADD COLUMN probe_error TEXT NOT NULL DEFAULT ''")
     video_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_video_tasks)")}
     for column, definition in (("error_message", "TEXT NOT NULL DEFAULT ''"), ("started_at", "TEXT NOT NULL DEFAULT ''"), ("finished_at", "TEXT NOT NULL DEFAULT ''")):
         if column not in video_columns:
@@ -524,6 +540,7 @@ def connection() -> sqlite3.Connection:
         "CREATE INDEX IF NOT EXISTS idx_production_tasks_account_drama_dates ON production_tasks(account_name, drama_name, planned_publish_at, actual_release_time);"
         "CREATE INDEX IF NOT EXISTS idx_v2_revenue_video_links_video ON v2_revenue_video_links(account_id, source_video_id);"
         "CREATE INDEX IF NOT EXISTS idx_v2_change_events_id ON v2_change_events(id);"
+        "CREATE INDEX IF NOT EXISTS idx_resource_index_identity ON resource_index(file_identity);"
     )
     # SQLite triggers make background executors participate in the same
     # change stream as button-driven API operations.  They carry ownership
@@ -776,34 +793,68 @@ def media_resolution(path: Path) -> str:
     except (OSError, subprocess.TimeoutExpired): return ""
 
 
-def _resource_index_row(resource_id: str) -> sqlite3.Row | None:
-    conn = connection()
+def _file_identity(stat: os.stat_result) -> str:
+    """Use the filesystem identity for a rename/move when Windows exposes it."""
+    inode = int(getattr(stat, "st_ino", 0) or 0)
+    return f"{int(getattr(stat, 'st_dev', 0) or 0)}:{inode}" if inode else ""
+
+
+def _new_resource_id(path: Path, file_identity: str) -> str:
+    stable_key = f"identity:{file_identity}" if file_identity else f"path:{path.resolve()}"
+    return hashlib.sha1(stable_key.encode("utf-8")).hexdigest()[:24]
+
+
+def _resource_index_row(resource_id: str, conn: sqlite3.Connection | None = None) -> sqlite3.Row | None:
+    owns_connection = conn is None
+    conn = conn or connection()
     try:
         return conn.execute("SELECT * FROM resource_index WHERE resource_id=?", (resource_id,)).fetchone()
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
+
+
+def _find_resource_index_row(conn: sqlite3.Connection, path: Path, file_identity: str) -> sqlite3.Row | None:
+    """Find by current path first, then preserve the record across a rename/move."""
+    row = conn.execute("SELECT * FROM resource_index WHERE file_path=?", (str(path),)).fetchone()
+    if row is not None:
+        return row
+    if file_identity:
+        row = conn.execute(
+            "SELECT * FROM resource_index WHERE file_identity=? ORDER BY source_present DESC, last_seen_at DESC LIMIT 1",
+            (file_identity,),
+        ).fetchone()
+        if row is not None:
+            return row
+    return None
 
 
 def _upsert_resource_index(*, resource_id: str, category: str, category_name: str, path: Path,
-                           stat: os.stat_result, duration: float | None, resolution: str,
-                           thumbnail_path: str, source_present: bool = True) -> None:
-    conn = connection()
+                           stat: os.stat_result, file_identity: str, duration: float | None,
+                           resolution: str, thumbnail_path: str, probe_status: str,
+                           probe_error: str = "", source_present: bool = True,
+                           conn: sqlite3.Connection | None = None) -> None:
+    owns_connection = conn is None
+    conn = conn or connection()
     try:
         conn.execute(
-            "INSERT INTO resource_index(resource_id,category,category_name,file_path,file_size_bytes,file_mtime_ns,duration_seconds,resolution,thumbnail_path,last_seen_at,source_present) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(resource_id) DO UPDATE SET category=excluded.category,category_name=excluded.category_name,file_path=excluded.file_path,file_size_bytes=excluded.file_size_bytes,file_mtime_ns=excluded.file_mtime_ns,duration_seconds=excluded.duration_seconds,resolution=excluded.resolution,thumbnail_path=excluded.thumbnail_path,last_seen_at=excluded.last_seen_at,source_present=excluded.source_present",
-            (resource_id, category, category_name, str(path), stat.st_size, stat.st_mtime_ns, duration, resolution, thumbnail_path, now_text(), 1 if source_present else 0),
+            "INSERT INTO resource_index(resource_id,category,category_name,file_path,file_size_bytes,file_mtime_ns,file_identity,duration_seconds,resolution,thumbnail_path,probe_status,probe_error,last_seen_at,source_present) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(resource_id) DO UPDATE SET category=excluded.category,category_name=excluded.category_name,file_path=excluded.file_path,file_size_bytes=excluded.file_size_bytes,file_mtime_ns=excluded.file_mtime_ns,file_identity=excluded.file_identity,duration_seconds=excluded.duration_seconds,resolution=excluded.resolution,thumbnail_path=excluded.thumbnail_path,probe_status=excluded.probe_status,probe_error=excluded.probe_error,last_seen_at=excluded.last_seen_at,source_present=excluded.source_present",
+            (resource_id, category, category_name, str(path), stat.st_size, stat.st_mtime_ns, file_identity, duration, resolution, thumbnail_path, probe_status, probe_error, now_text(), 1 if source_present else 0),
         )
-        conn.commit()
+        if owns_connection:
+            conn.commit()
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
 
 
-def _cleanup_missing_resource_index(active_ids: set[str]) -> None:
+def _cleanup_missing_resource_index(active_ids: set[str], conn: sqlite3.Connection | None = None) -> None:
     """Remove short-lived thumbnails; retain reusable lead-video/BGM cache rows."""
-    conn = connection()
+    owns_connection = conn is None
+    conn = conn or connection()
     try:
-        rows = conn.execute("SELECT resource_id, category, thumbnail_path FROM resource_index").fetchall()
+        rows = conn.execute("SELECT resource_id, category, thumbnail_path, source_present FROM resource_index").fetchall()
         for row in rows:
             resource_id = str(row["resource_id"])
             if resource_id in active_ids:
@@ -813,11 +864,66 @@ def _cleanup_missing_resource_index(active_ids: set[str]) -> None:
             if category not in {"lead_video", "bgm"} and thumbnail.is_file():
                 thumbnail.unlink(missing_ok=True)
                 conn.execute("DELETE FROM resource_index WHERE resource_id=?", (resource_id,))
-            else:
+            elif int(row["source_present"]):
                 conn.execute("UPDATE resource_index SET source_present=0,last_seen_at=? WHERE resource_id=?", (now_text(), resource_id))
-        conn.commit()
+        if owns_connection:
+            conn.commit()
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
+
+
+def _process_resource_probe(resource_id: str, path: Path, file_identity: str, size_bytes: int, mtime_ns: int) -> None:
+    """Run slow media inspection outside the HTTP request that lists resources."""
+    try:
+        duration, resolution, thumbnail_path = probe_resource_metadata(path, resource_id)
+        status, error = "ready", ""
+    except Exception as exc:  # One damaged file must never break the resource list.
+        duration, resolution, thumbnail_path = None, "", ""
+        status, error = "failed", str(exc)
+    try:
+        conn = connection()
+        try:
+            row = _resource_index_row(resource_id, conn)
+            if row is None:
+                return
+            # Do not attach an old probe result after a file was replaced.
+            if (str(row["file_identity"] or "") != file_identity
+                    or int(row["file_size_bytes"]) != size_bytes
+                    or int(row["file_mtime_ns"]) != mtime_ns):
+                return
+            conn.execute(
+                "UPDATE resource_index SET duration_seconds=?, resolution=?, thumbnail_path=?, probe_status=?, probe_error=?, last_seen_at=? WHERE resource_id=?",
+                (duration, resolution, thumbnail_path, status, error, now_text(), resource_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    finally:
+        with RESOURCE_PROBE_LOCK:
+            RESOURCE_PROBE_PENDING.discard(resource_id)
+
+
+def _resource_probe_loop() -> None:
+    while True:
+        resource_id, path, file_identity, size_bytes, mtime_ns = RESOURCE_PROBE_QUEUE.get()
+        try:
+            _process_resource_probe(resource_id, path, file_identity, size_bytes, mtime_ns)
+        finally:
+            RESOURCE_PROBE_QUEUE.task_done()
+
+
+def queue_resource_probe(resource_id: str, path: Path, file_identity: str, stat: os.stat_result) -> None:
+    """Queue at most one low-priority probe per resource; never block the page request."""
+    global RESOURCE_PROBE_THREAD
+    with RESOURCE_PROBE_LOCK:
+        if resource_id in RESOURCE_PROBE_PENDING:
+            return
+        RESOURCE_PROBE_PENDING.add(resource_id)
+        if RESOURCE_PROBE_THREAD is None or not RESOURCE_PROBE_THREAD.is_alive():
+            RESOURCE_PROBE_THREAD = threading.Thread(target=_resource_probe_loop, name="V2ResourceProbe", daemon=True)
+            RESOURCE_PROBE_THREAD.start()
+        RESOURCE_PROBE_QUEUE.put((resource_id, path, file_identity, int(stat.st_size), int(stat.st_mtime_ns)))
 
 
 def format_media_duration(seconds: float) -> str:
@@ -1082,31 +1188,60 @@ def list_production_resources() -> dict[str, object]:
     roots = (("真人视频", "real_video", "真人视频", VIDEO_EXTENSIONS), ("真人图片", "real_image", "真人图片", IMAGE_EXTENSIONS), ("BGM", "bgm", "BGM", BGM_EXTENSIONS), ("引流视频", "lead_video", "引流视频", VIDEO_EXTENSIONS))
     items: list[dict[str, object]] = []
     active_ids: set[str] = set()
-    for folder, category, category_name, extensions in roots:
-        root = WORKSPACE / "生成资源" / folder
-        root.mkdir(parents=True, exist_ok=True)
-        for path in sorted(root.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in extensions:
-                continue
-            stat = path.stat()
-            resource_id = hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:24]
-            active_ids.add(resource_id)
-            duration_seconds, thumbnail_path, resolution = (None, "", "")
-            indexed = _resource_index_row(resource_id)
-            unchanged = indexed and int(indexed["file_size_bytes"]) == stat.st_size and int(indexed["file_mtime_ns"]) == stat.st_mtime_ns
-            if unchanged:
-                duration_seconds, resolution, thumbnail_path = indexed["duration_seconds"], str(indexed["resolution"] or ""), str(indexed["thumbnail_path"] or "")
-            elif path.suffix.lower() in VIDEO_EXTENSIONS:
-                duration_seconds, resolution, thumbnail_path = probe_resource_metadata(path, resource_id)
-                RESOURCE_PROBE_CACHE[str(path.resolve())] = (stat.st_size, stat.st_mtime_ns, duration_seconds, thumbnail_path, resolution)
-            elif path.suffix.lower() in IMAGE_EXTENSIONS:
-                # 图片本身就是可直接展示的缩略图，不能留空而让界面退回占位图。
-                thumbnail_path = str(path.resolve())
-            if path.suffix.lower() in IMAGE_EXTENSIONS:
-                thumbnail_path = str(path.resolve())
-            _upsert_resource_index(resource_id=resource_id, category=category, category_name=category_name, path=path, stat=stat, duration=duration_seconds, resolution=resolution, thumbnail_path=thumbnail_path)
-            items.append({"id": resource_id, "name": path.name, "category": category, "categoryName": category_name, "filePath": str(path), "fileSizeMb": round(stat.st_size / 1024 / 1024, 2), "status": "used" if category != "lead_video" and path.name.startswith("已使用") else "available", "addedAt": date.fromtimestamp(stat.st_mtime).isoformat(), "tags": [], "durationSeconds": duration_seconds, "resolution": resolution, "thumbnailUrl": f"/api/v2/production-resources/{resource_id}/thumbnail" if thumbnail_path else "", "mediaUrl": f"/api/v2/production-resources/{resource_id}/media" if path.suffix.lower() in VIDEO_EXTENSIONS or path.suffix.lower() in IMAGE_EXTENSIONS else ""})
-    _cleanup_missing_resource_index(active_ids)
+    probes_to_queue: list[tuple[str, Path, str, os.stat_result]] = []
+    # This request only records filesystem changes. FFmpeg/FFprobe work happens
+    # later in one background thread, so a large video import cannot hold the UI.
+    with SCAN_LOCK:
+        conn = connection()
+        try:
+            for folder, category, category_name, extensions in roots:
+                root = WORKSPACE / "生成资源" / folder
+                root.mkdir(parents=True, exist_ok=True)
+                for path in sorted(root.rglob("*")):
+                    if not path.is_file() or path.suffix.lower() not in extensions:
+                        continue
+                    stat = path.stat()
+                    file_identity = _file_identity(stat)
+                    indexed = _find_resource_index_row(conn, path, file_identity)
+                    resource_id = str(indexed["resource_id"]) if indexed is not None else _new_resource_id(path, file_identity)
+                    active_ids.add(resource_id)
+                    unchanged = indexed is not None and int(indexed["file_size_bytes"]) == stat.st_size and int(indexed["file_mtime_ns"]) == stat.st_mtime_ns
+                    duration_seconds = indexed["duration_seconds"] if unchanged and indexed is not None else None
+                    resolution = str(indexed["resolution"] or "") if unchanged and indexed is not None else ""
+                    thumbnail_path = str(indexed["thumbnail_path"] or "") if unchanged and indexed is not None else ""
+                    probe_status = str(indexed["probe_status"] or "pending") if unchanged and indexed is not None else "pending"
+                    probe_error = str(indexed["probe_error"] or "") if unchanged and indexed is not None else ""
+
+                    if path.suffix.lower() in IMAGE_EXTENSIONS:
+                        thumbnail_path, probe_status, probe_error = str(path.resolve()), "ready", ""
+                    elif path.suffix.lower() not in VIDEO_EXTENSIONS:
+                        probe_status, probe_error = "ready", ""
+                    elif not unchanged or probe_status == "pending":
+                        # A file is immediately visible with its name/size; details arrive later.
+                        duration_seconds, resolution, thumbnail_path = None, "", ""
+                        probe_status, probe_error = "pending", ""
+                        probes_to_queue.append((resource_id, path, file_identity, stat))
+
+                    changed = (indexed is None or not unchanged
+                               or str(indexed["file_path"]) != str(path)
+                               or str(indexed["category"]) != category
+                               or str(indexed["file_identity"] or "") != file_identity
+                               or not int(indexed["source_present"])
+                               or probe_status != str(indexed["probe_status"] or "")
+                               or thumbnail_path != str(indexed["thumbnail_path"] or ""))
+                    if changed:
+                        _upsert_resource_index(
+                            resource_id=resource_id, category=category, category_name=category_name, path=path,
+                            stat=stat, file_identity=file_identity, duration=duration_seconds, resolution=resolution,
+                            thumbnail_path=thumbnail_path, probe_status=probe_status, probe_error=probe_error, conn=conn,
+                        )
+                    items.append({"id": resource_id, "name": path.name, "category": category, "categoryName": category_name, "filePath": str(path), "fileSizeMb": round(stat.st_size / 1024 / 1024, 2), "status": "used" if category != "lead_video" and path.name.startswith("已使用") else "available", "addedAt": date.fromtimestamp(stat.st_mtime).isoformat(), "tags": [], "durationSeconds": duration_seconds, "resolution": resolution, "thumbnailUrl": f"/api/v2/production-resources/{resource_id}/thumbnail" if thumbnail_path else "", "mediaUrl": f"/api/v2/production-resources/{resource_id}/media" if path.suffix.lower() in VIDEO_EXTENSIONS or path.suffix.lower() in IMAGE_EXTENSIONS else "", "probeStatus": probe_status, "probeError": probe_error})
+            _cleanup_missing_resource_index(active_ids, conn)
+            conn.commit()
+        finally:
+            conn.close()
+    for resource_id, path, file_identity, stat in probes_to_queue:
+        queue_resource_probe(resource_id, path, file_identity, stat)
     return {"items": items}
 
 
@@ -1139,7 +1274,7 @@ def production_resource_media(resource_id: str, *, thumbnail: bool = False) -> P
                     thumbnail_path = str(current["thumbnail_path"] or "")
                 else:
                     duration, resolution, thumbnail_path = probe_resource_metadata(path, resource_id)
-                    _upsert_resource_index(resource_id=resource_id, category=str(current["category"] if current else "lead_video"), category_name=str(current["category_name"] if current else "引流视频"), path=path, stat=stat, duration=duration, resolution=resolution, thumbnail_path=thumbnail_path)
+                    _upsert_resource_index(resource_id=resource_id, category=str(current["category"] if current else "lead_video"), category_name=str(current["category_name"] if current else "引流视频"), path=path, stat=stat, file_identity=_file_identity(stat), duration=duration, resolution=resolution, thumbnail_path=thumbnail_path, probe_status="ready")
                 candidate = Path(thumbnail_path) if thumbnail_path else Path()
                 if candidate.is_file():
                     return candidate.resolve()

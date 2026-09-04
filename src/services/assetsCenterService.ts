@@ -21,6 +21,7 @@ type AssetsCenterSeed = {
   profiles: any[];
   productionResources: ProductionResourceItem[];
   viralAssets: ViralAssetItem[];
+  warnings: string[];
 };
 let cachedAssetsSeed: AssetsCenterSeed | null = null;
 let assetsSeedPromise: Promise<AssetsCenterSeed> | null = null;
@@ -110,21 +111,36 @@ export async function loadAssetsCenterSeed(force = false) {
       profiles: MOCK_DRAMA_CONTENT_PROFILES,
       productionResources: MOCK_PRODUCTION_RESOURCES,
       viralAssets: MOCK_VIRAL_ASSETS,
+      warnings: [],
     };
   }
   if (cachedAssetsSeed && !force) return cachedAssetsSeed;
   if (assetsSeedPromise) return assetsSeedPromise;
   assetsSeedPromise = (async () => {
-  const [accounts, theaters, subTheaters, dramas, profiles, productionResources] = await Promise.all([getV2Accounts(), getV2Theaters(), getV2SubTheaters(), getV2Dramas(), getV2DramaProfiles(), getV2ProductionResources()]);
-  const dramaItems = dramas.items.map(toBusinessDrama);
-  const profileItems = profiles.items.map((profile) => {
+  // A slow media scan must not blank the account/catalog sections. Each
+  // collection keeps its last good value while the failed collection retries.
+  const [accountsResult, theatersResult, subTheatersResult, dramasResult, profilesResult, resourcesResult] = await Promise.allSettled([
+    getV2Accounts(), getV2Theaters(), getV2SubTheaters(), getV2Dramas(), getV2DramaProfiles(), getV2ProductionResources(),
+  ]);
+  const warnings: string[] = [];
+  const accounts = accountsResult.status === 'fulfilled' ? accountsResult.value.items.map(toBusinessAccount) : (cachedAssetsSeed?.accounts ?? []);
+  const theaters = theatersResult.status === 'fulfilled' ? theatersResult.value.items.map(toBusinessTheater) : (cachedAssetsSeed?.theaters ?? []);
+  const subTheaters = subTheatersResult.status === 'fulfilled' ? subTheatersResult.value.items.map(toBusinessSubTheater) : (cachedAssetsSeed?.subTheaters ?? []);
+  const dramaItems = dramasResult.status === 'fulfilled' ? dramasResult.value.items.map(toBusinessDrama) : (cachedAssetsSeed?.dramas ?? []);
+  const profiles = profilesResult.status === 'fulfilled' ? profilesResult.value : null;
+  const productionResources = resourcesResult.status === 'fulfilled' ? resourcesResult.value.items as ProductionResourceItem[] : (cachedAssetsSeed?.productionResources ?? []);
+  if (accountsResult.status === 'rejected') warnings.push('账号资料');
+  if (theatersResult.status === 'rejected') warnings.push('剧场资料');
+  if (subTheatersResult.status === 'rejected') warnings.push('子剧场资料');
+  if (dramasResult.status === 'rejected') warnings.push('短剧资料');
+  if (profilesResult.status === 'rejected') warnings.push('内容档案');
+  if (resourcesResult.status === 'rejected') warnings.push('生产资源');
+  const profileItems = (profiles?.items ?? []).map((profile) => {
     const drama = dramaItems.find((item) => item.id === profile.drama_id);
     return drama ? { id: `profile-${profile.drama_id}`, dramaId: profile.drama_id, dramaCurrentName: drama.currentName, theaterName: drama.theaterName, category: '', tags: [], totalEpisodes: 0, cover: { filePath: profile.cover_path, mainCoverUrl: profile.cover_path ? `/api/v2/dramas/${profile.drama_id}/cover` : '' }, masterVideoPackage: { folderPath: profile.master_path, totalFiles: 0, totalSizeGb: 0, resolution: '', status: '待导入' as const, files: [] }, associatedViralAssetsCount: 0, updatedAt: profile.updated_at } : null;
   }).filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
   const seed = {
-    accounts: accounts.items.map(toBusinessAccount),
-    theaters: theaters.items.map(toBusinessTheater),
-    subTheaters: subTheaters.items.map(toBusinessSubTheater), dramas: dramaItems, profiles: profileItems, productionResources: productionResources.items as ProductionResourceItem[], viralAssets: [],
+    accounts, theaters, subTheaters, dramas: dramaItems, profiles: profileItems, productionResources, viralAssets: [], warnings,
   };
   persistAssetsSeed(seed);
   assetsSeedPromise = null;

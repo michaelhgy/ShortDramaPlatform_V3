@@ -19,28 +19,62 @@ class V2FileServiceTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def test_resource_index_reuses_metadata_until_file_changes(self) -> None:
+    def test_resource_list_queues_new_video_without_waiting_for_probe(self) -> None:
         root = service.WORKSPACE / "生成资源" / "引流视频"
         root.mkdir(parents=True, exist_ok=True)
         source = root / "lead.mp4"
         source.write_bytes(b"video")
-        calls = []
 
         def fake_probe(path, key):
-            calls.append(str(path))
             thumbnail = service.DATA_ROOT / "cache" / "material-thumbnails" / f"{key}.jpg"
             thumbnail.parent.mkdir(parents=True, exist_ok=True)
             thumbnail.write_bytes(b"jpg")
             return 12.5, "1080x1920", str(thumbnail)
 
-        with patch.object(service, "probe_resource_metadata", side_effect=fake_probe):
+        with patch.object(service, "queue_resource_probe") as queue_probe, patch.object(service, "probe_resource_metadata", side_effect=fake_probe) as probe:
             first = service.list_production_resources()
+            self.assertEqual("pending", first["items"][0]["probeStatus"])
+            self.assertEqual(0, probe.call_count)
+            self.assertEqual(1, queue_probe.call_count)
+            resource = first["items"][0]
+            stat = source.stat()
+            service._process_resource_probe(resource["id"], source, service._file_identity(stat), stat.st_size, stat.st_mtime_ns)
             second = service.list_production_resources()
-            self.assertEqual(1, len(calls))
-            self.assertEqual(first["items"][0]["durationSeconds"], second["items"][0]["durationSeconds"])
-            source.write_bytes(b"changed-video")
-            service.list_production_resources()
-            self.assertEqual(2, len(calls))
+            self.assertEqual(1, queue_probe.call_count)
+            self.assertEqual(1, probe.call_count)
+            self.assertEqual("ready", second["items"][0]["probeStatus"])
+            self.assertIsNone(first["items"][0]["durationSeconds"])
+            self.assertEqual(12.5, second["items"][0]["durationSeconds"])
+
+    def test_resource_rename_keeps_the_same_index_identity(self) -> None:
+        root = service.WORKSPACE / "生成资源" / "真人图片"
+        root.mkdir(parents=True, exist_ok=True)
+        source = root / "before.png"
+        source.write_bytes(b"image")
+        first = service.list_production_resources()
+        source.rename(root / "after.png")
+        second = service.list_production_resources()
+        self.assertEqual(first["items"][0]["id"], second["items"][0]["id"])
+        self.assertEqual("after.png", second["items"][0]["name"])
+        conn = service.connection()
+        try:
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM resource_index").fetchone()[0])
+        finally:
+            conn.close()
+
+    def test_one_resource_probe_failure_does_not_fail_the_resource_list(self) -> None:
+        root = service.WORKSPACE / "生成资源" / "真人视频"
+        root.mkdir(parents=True, exist_ok=True)
+        source = root / "damaged.mp4"
+        source.write_bytes(b"not-a-real-video")
+        with patch.object(service, "queue_resource_probe"), patch.object(service, "probe_resource_metadata", side_effect=RuntimeError("damaged media")):
+            first = service.list_production_resources()
+            resource = first["items"][0]
+            stat = source.stat()
+            service._process_resource_probe(resource["id"], source, service._file_identity(stat), stat.st_size, stat.st_mtime_ns)
+            second = service.list_production_resources()
+        self.assertEqual("failed", second["items"][0]["probeStatus"])
+        self.assertEqual("damaged media", second["items"][0]["probeError"])
 
     def test_missing_short_term_cache_is_removed_but_lead_video_cache_is_retained(self) -> None:
         root = service.WORKSPACE / "生成资源"
@@ -50,7 +84,7 @@ class V2FileServiceTests(unittest.TestCase):
         real.parent.mkdir(parents=True, exist_ok=True)
         lead.write_bytes(b"lead")
         real.write_bytes(b"real")
-        with patch.object(service, "probe_resource_metadata", return_value=(1.0, "1080x1920", str(service.DATA_ROOT / "cache" / "placeholder.jpg"))):
+        with patch.object(service, "queue_resource_probe"), patch.object(service, "probe_resource_metadata", return_value=(1.0, "1080x1920", str(service.DATA_ROOT / "cache" / "placeholder.jpg"))):
             # Use distinct cache files for the two rows.
             service.list_production_resources()
         conn = service.connection()
