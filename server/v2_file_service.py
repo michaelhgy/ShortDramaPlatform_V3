@@ -105,6 +105,7 @@ RESOURCE_PROBE_QUEUE: queue.Queue[tuple[str, Path, str, int, int]] = queue.Queue
 RESOURCE_PROBE_PENDING: set[str] = set()
 RESOURCE_PROBE_LOCK = threading.Lock()
 RESOURCE_PROBE_THREAD: threading.Thread | None = None
+EXECUTOR_TRACE_LIMIT = 80
 
 
 def application_resource_root() -> Path:
@@ -382,6 +383,20 @@ def connection() -> sqlite3.Connection:
             created_at TEXT NOT NULL,
             UNIQUE(attempt_id, sequence_no)
         );
+        CREATE TABLE IF NOT EXISTS executor_trace_events (
+            id TEXT PRIMARY KEY,
+            executor_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            production_task_id TEXT NOT NULL,
+            sequence_no INTEGER NOT NULL,
+            phase TEXT NOT NULL,
+            message TEXT NOT NULL,
+            detail_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            UNIQUE(run_id, sequence_no)
+        );
+        CREATE INDEX IF NOT EXISTS idx_executor_trace_task
+            ON executor_trace_events(production_task_id, created_at);
         CREATE TABLE IF NOT EXISTS executor_controls (
             executor_id TEXT PRIMARY KEY,
             consecutive_failures INTEGER NOT NULL DEFAULT 0,
@@ -653,6 +668,61 @@ def connection() -> sqlite3.Connection:
             REVENUE_RUNS_RECOVERED = True
     conn.commit()
     return conn
+
+
+def clear_executor_trace(run_id: str) -> None:
+    """Replace the previous diagnostic trail when one logical job is retried."""
+    conn = connection()
+    try:
+        conn.execute("DELETE FROM executor_trace_events WHERE run_id=?", (run_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_executor_trace(*, executor_id: str, run_id: str, production_task_id: str,
+                          phase: str, message: str, detail: dict[str, object] | None = None) -> None:
+    """Persist a compact, user-readable progress trail for one executor run.
+
+    The fixed per-run limit is deliberate: diagnostics must help a failed task
+    without becoming a second unbounded log store.
+    """
+    conn = connection()
+    try:
+        conn.execute(
+            "INSERT INTO executor_trace_events(id,executor_id,run_id,production_task_id,sequence_no,phase,message,detail_json,created_at) "
+            "SELECT ?,?,?,?,?,?,?,?,?", (
+                uuid.uuid4().hex, executor_id, run_id, production_task_id,
+                int(conn.execute("SELECT COALESCE(MAX(sequence_no), 0) FROM executor_trace_events WHERE run_id=?", (run_id,)).fetchone()[0]) + 1,
+                phase, message, json.dumps(detail or {}, ensure_ascii=False, sort_keys=True), now_text(),
+            ),
+        )
+        conn.execute(
+            "DELETE FROM executor_trace_events WHERE id IN ("
+            "SELECT id FROM executor_trace_events WHERE run_id=? ORDER BY sequence_no DESC LIMIT -1 OFFSET ?)",
+            (run_id, EXECUTOR_TRACE_LIMIT),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def executor_trace_excerpt(run_id: str, *, limit: int = EXECUTOR_TRACE_LIMIT) -> str:
+    """Return the bounded trace as plain text for the existing task drawer."""
+    conn = connection()
+    try:
+        rows = conn.execute(
+            "SELECT created_at, phase, message FROM executor_trace_events WHERE run_id=? "
+            "ORDER BY sequence_no ASC LIMIT ?", (run_id, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+    return "\n".join(f"[{row['created_at']}] {row['phase']}：{row['message']}" for row in rows)
+
+
+def purge_executor_traces_for_task(conn: sqlite3.Connection, task_id: str) -> None:
+    """Use the production task's existing cleanup lifecycle for diagnostics too."""
+    conn.execute("DELETE FROM executor_trace_events WHERE production_task_id=?", (task_id,))
 
 
 def list_change_events(after_id: int | None, limit: int = 200) -> dict[str, object]:
@@ -2649,12 +2719,14 @@ def execute_cleanup(task_id: str) -> dict[str, object]:
             conn.execute("INSERT INTO cleanup_records VALUES (?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex, task_id, "immediate", status, json.dumps(deleted, ensure_ascii=False), json.dumps(preview["itemsToRetain"], ensure_ascii=False), "\n".join(errors), stamp, stamp))
             if not errors:
                 conn.execute("UPDATE production_files SET thumbnail_path='', updated_at=? WHERE task_id=?", (stamp, task_id))
+                purge_executor_traces_for_task(conn, task_id)
             # process_cleanup_at is the release-time deadline snapshot.  The
             # actual completion time belongs in cleaned_at / cleanup_records.
             conn.execute("UPDATE production_tasks SET cleanup_status=?, cleaned_at=?, updated_at=? WHERE id=?", ("process_cleaned" if not errors else "partial", stamp, stamp, task_id))
         elif not errors:
             # “删除剧集”是完全删除：不留下孤立的任务清理记录。
             conn.execute("DELETE FROM cleanup_records WHERE task_id=?", (task_id,))
+            purge_executor_traces_for_task(conn, task_id)
             conn.execute("DELETE FROM production_tasks WHERE id=?", (task_id,))
         conn.commit()
         return {"status": status, "deleted": deleted, "errors": errors}
@@ -2681,6 +2753,7 @@ def run_due_cleanup() -> dict[str, int]:
                 conn.execute("UPDATE production_resource_reservations SET status=?, released_at=? WHERE task_id=? AND status='reserved'", ("missing" if errors else "released", stamp, str(task["id"])))
                 if not errors:
                     conn.execute("UPDATE production_files SET thumbnail_path='', updated_at=? WHERE task_id=?", (stamp, str(task["id"])))
+                    purge_executor_traces_for_task(conn, str(task["id"]))
                 process_count += 1
             current = conn.execute("SELECT cleanup_status FROM production_tasks WHERE id=?", (str(task["id"]),)).fetchone()
             # A partial process cleanup must be retried first.  Never destroy

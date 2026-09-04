@@ -25,6 +25,41 @@ BGM_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
 _PROCESS_LOCK = threading.Lock()
 _ACTIVE_PROCESSES: dict[str, subprocess.Popen[str]] = {}
 _RUN_TOKENS: dict[str, object] = {}
+_LOG_TAIL_LIMIT = 64 * 1024
+
+
+def _write_log_tail(path: Path, stdout: str | None, stderr: str | None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = (stdout or "") + ("\n" + stderr if stderr else "")
+    path.write_text(text[-_LOG_TAIL_LIMIT:], encoding="utf-8")
+
+
+def _latest_worker_trace(path: Path) -> tuple[str, str] | None:
+    try:
+        for line in reversed(path.read_text(encoding="utf-8")[-4096:].splitlines()):
+            payload = json.loads(line)
+            if payload.get("phase") and payload.get("message"):
+                return str(payload["phase"]), str(payload["message"])
+    except (OSError, json.JSONDecodeError):
+        pass
+    return None
+
+
+def _start_heartbeat(*, video_id: str, task_id: str, stop: threading.Event, worker_trace: Path) -> threading.Thread:
+    def heartbeat() -> None:
+        while not stop.wait(10):
+            latest = _latest_worker_trace(worker_trace)
+            if latest:
+                phase, message = latest
+                service.record_executor_trace(executor_id="final_generator", run_id=video_id,
+                                              production_task_id=task_id, phase=phase, message=message)
+                continue
+            service.record_executor_trace(executor_id="final_generator", run_id=video_id,
+                                          production_task_id=task_id, phase="等待成片草稿生成",
+                                          message="成片生成子程序仍在运行，等待草稿写入完成")
+    thread = threading.Thread(target=heartbeat, name=f"v2-final-trace-{video_id[:8]}", daemon=True)
+    thread.start()
+    return thread
 
 
 def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
@@ -122,6 +157,10 @@ def run_finished_video(video_id: str) -> None:
         conn.close()
     if not row or str(row["status"]) not in {"pending_generation", "generation_queued", "generation_failed", "generation_timeout"}:
         return
+    task_id = str(row["task_id"])
+    service.clear_executor_trace(video_id)
+    service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
+                                  phase="开始", message="已领取成片任务，正在检查模板、素材和生成资源")
     token = object()
     with _PROCESS_LOCK:
         _RUN_TOKENS[video_id] = token
@@ -162,6 +201,9 @@ def run_finished_video(video_id: str) -> None:
             endroll=endroll, bgm=random.choice(music), work_dir=work_dir,
             local_vision_ai_mode=str(settings.get("local_vision_ai_mode") or "compatibility"),
         )
+        worker_trace = work_dir / "执行过程.jsonl"
+        worker_trace.unlink(missing_ok=True)
+        command.extend(["--trace-path", str(worker_trace)])
         env = dict(os.environ); env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONPATH"] = os.pathsep.join((str(Path(__file__).parents[2]), env.get("PYTHONPATH", "")))
         if not _run_is_current(video_id, token):
@@ -172,6 +214,10 @@ def run_finished_video(video_id: str) -> None:
                                                   | no_window_kwargs().get("creationflags", 0)))
         with _PROCESS_LOCK:
             _ACTIVE_PROCESSES[video_id] = process
+        service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
+                                      phase="成片生成中", message="成片生成子程序已启动", detail={"pid": process.pid})
+        heartbeat_stop = threading.Event()
+        _start_heartbeat(video_id=video_id, task_id=task_id, stop=heartbeat_stop, worker_trace=worker_trace)
         try:
             remaining = max(0.1, deadline - time.monotonic())
             stdout, stderr = process.communicate(timeout=remaining)
@@ -181,14 +227,17 @@ def run_finished_video(video_id: str) -> None:
                 stdout, stderr = process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 stdout, stderr = "", ""
+            _write_log_tail(work_dir / "成片生成日志.txt", stdout, stderr)
+            service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
+                                          phase="超时", message="成片生成子程序超过限定时间仍未结束", detail={"pid": process.pid})
             raise subprocess.TimeoutExpired(command, timeout_seconds, output=stdout, stderr=stderr)
         finally:
+            heartbeat_stop.set()
             with _PROCESS_LOCK:
                 if _ACTIVE_PROCESSES.get(video_id) is process:
                     _ACTIVE_PROCESSES.pop(video_id, None)
         result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
-        (work_dir / "成片生成日志.txt").parent.mkdir(parents=True, exist_ok=True)
-        (work_dir / "成片生成日志.txt").write_text((result.stdout or "") + "\n" + (result.stderr or ""), encoding="utf-8")
+        _write_log_tail(work_dir / "成片生成日志.txt", result.stdout, result.stderr)
         if result.returncode:
             raise RuntimeError((result.stderr or result.stdout or "成片生成器退出失败").strip()[-2000:])
         summary_path = work_dir / "批量结果.json"
@@ -206,6 +255,8 @@ def run_finished_video(video_id: str) -> None:
             return
         _set_video(video_id, "draft_ready", draft_path=str(draft_path), output_path="", finished_at=service.now_text())
         service.ensure_export_job_for_finished_video(row, draft_name=draft_name, draft_path=draft_path)
+        service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
+                                      phase="完成", message="成片草稿已生成并进入后续导出队列")
         outcome = "completed"
     except subprocess.TimeoutExpired:
         if _run_is_current(video_id, token):
@@ -213,6 +264,8 @@ def run_finished_video(video_id: str) -> None:
         outcome = "timed_out"
     except Exception as exc:
         if _run_is_current(video_id, token):
+            service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
+                                          phase="失败", message=str(exc))
             _set_video(video_id, "generation_failed", error_message=str(exc), finished_at=service.now_text())
     finally:
         stale_run = not _run_is_current(video_id, token)

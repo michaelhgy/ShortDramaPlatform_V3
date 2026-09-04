@@ -392,6 +392,7 @@ class V2FileServiceTests(unittest.TestCase):
             conn.commit()
         finally:
             conn.close()
+
         service.update_v2_settings({"short_term_cleanup_hours": 168, "raw_material_retention_days": 90})
         first = service.run_due_cleanup()
         self.assertEqual(1, first["process"])
@@ -418,6 +419,24 @@ class V2FileServiceTests(unittest.TestCase):
             self.assertEqual("", file_row["thumbnail_path"])
         finally:
             conn.close()
+
+    def test_executor_trace_is_bounded_replaced_on_retry_and_removed_with_task(self) -> None:
+        task = service.create_task({
+            "source_id": "executor-trace-lifecycle", "account_name": "账号", "drama_name": "剧集", "planned_publish_at": "2026-08-28T08:00",
+        })
+        for number in range(service.EXECUTOR_TRACE_LIMIT + 3):
+            service.record_executor_trace(executor_id="template_generator", run_id="trace-run", production_task_id=str(task["id"]),
+                                          phase="测试", message=f"第 {number} 条")
+        excerpt = service.executor_trace_excerpt("trace-run")
+        self.assertEqual(service.EXECUTOR_TRACE_LIMIT, len(excerpt.splitlines()))
+        self.assertNotIn("第 0 条", excerpt)
+        service.clear_executor_trace("trace-run")
+        self.assertEqual("", service.executor_trace_excerpt("trace-run"))
+        service.record_executor_trace(executor_id="template_generator", run_id="trace-run", production_task_id=str(task["id"]),
+                                      phase="重试", message="仅保留本次重试记录")
+        result = service.execute_cleanup(str(task["id"]))
+        self.assertEqual([], result["errors"])
+        self.assertEqual("", service.executor_trace_excerpt("trace-run"))
 
     def test_delete_unreleased_task_removes_owned_external_files_and_leaves_no_cleanup_history(self) -> None:
         task = service.create_task({

@@ -28,6 +28,14 @@ def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+def write_trace(path: Path | None, phase: str, message: str) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"phase": phase, "message": message}, ensure_ascii=False) + "\n")
+
+
 def probe_duration(path: Path) -> float:
     result = subprocess.run(
         [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
@@ -251,6 +259,7 @@ def main() -> int:
     parser.add_argument("--midroll", required=True, type=Path)
     parser.add_argument("--endroll", required=True, type=Path)
     parser.add_argument("--work-dir", required=True, type=Path)
+    parser.add_argument("--trace-path", type=Path, help="仅供上层任务诊断读取的过程记录")
     parser.add_argument("--local-vision-ai-mode", choices=("compatibility", "quality", "disabled"), default="compatibility")
     parser.add_argument("--count", type=int, default=5)
     parser.add_argument("--start-index", type=int, default=1, help="Natural clip number to begin from, inclusive")
@@ -269,6 +278,7 @@ def main() -> int:
     parser.add_argument("--finished-output-dir", type=Path, help="Required with --export-queue; final directory for this drama")
     parser.set_defaults(bgm_auto_replenish=True)
     args = parser.parse_args()
+    write_trace(args.trace_path, "检查成片条件", "正在检查成片草稿所需的素材和路径")
     if args.count < 1:
         raise SystemExit("--count must be at least 1")
     if args.start_index < 1:
@@ -308,7 +318,9 @@ def main() -> int:
     # the V1 worker being the only caller that starts Ollama.
     vision_model = {"compatibility": "qwen2.5vl:3b", "quality": "qwen2.5vl:7b"}.get(args.local_vision_ai_mode)
     if vision_model:
+        write_trace(args.trace_path, "启动本地视觉服务", "正在确认本地视觉分析服务可用")
         ensure_local_ollama(vision_model)
+    write_trace(args.trace_path, "准备背景音乐", "正在准备本次成片草稿需要的背景音乐")
     bgm_pool = replenish_ready_bgm(args)
     results: list[dict[str, Any]] = []
     for source in sources:
@@ -329,6 +341,7 @@ def main() -> int:
         proxy_report = reports / "清理代理.json"
         draft_report = reports / "剪映成片草稿.json"
         try:
+            write_trace(args.trace_path, "分析片头", f"正在分析素材 {source.name} 的片头")
             selected_bgm = None
             if args.bgm_ready_manifest:
                 selected_bgm = select_ready_bgm(
@@ -343,10 +356,12 @@ def main() -> int:
             run(opening_command)
             start = opening_start(cover_report)
             capped_end = min(probe_duration(source), start + source_budget)
+            write_trace(args.trace_path, "分析片尾", f"正在分析素材 {source.name} 的片尾")
             run(worker_command("server.final_engine.scripts.detect_tail_guidance", SCRIPT_DIR / "detect_tail_guidance.py", ["--video", str(source), "--report", str(tail_report),
                 "--evidence-dir", str(evidence / "片尾"), "--source-start", f"{start:.6f}", "--source-end", f"{capped_end:.6f}",
             ]))
             end = tail_end(tail_report, capped_end)
+            write_trace(args.trace_path, "检测画面边缘", f"正在检查素材 {source.name} 的黑边")
             run(worker_command("server.final_engine.scripts.detect_black_bars", SCRIPT_DIR / "detect_black_bars.py", ["--video", str(source), "--report", str(black_bar_report)]))
             active_picture = active_picture_from_black_bar_report(black_bar_report, source)
             title_command = worker_command("server.final_engine.scripts.detect_drama_title_region", SCRIPT_DIR / "detect_drama_title_region.py", ["--video", str(source), "--report", str(title_report),
@@ -357,6 +372,7 @@ def main() -> int:
                 title_command.extend(["--model", vision_model])
             else:
                 title_command.append("--disable-vlm")
+            write_trace(args.trace_path, "识别剧名区域", f"正在识别素材 {source.name} 的剧名区域")
             run(title_command)
             command = worker_command("server.final_engine.scripts.generate_composition_from_detection_reports", SCRIPT_DIR / "generate_composition_from_detection_reports.py", [
                 "--viral-source", str(source), "--cover-report", str(cover_report), "--tail-report", str(tail_report), "--title-report", str(title_report), "--black-bar-report", str(black_bar_report),
@@ -375,6 +391,7 @@ def main() -> int:
                     "--bgm", str(selected_bgm["path"]), "--bgm-id", str(selected_bgm["music_id"]),
                     "--bgm-title", str(selected_bgm.get("title", selected_bgm["music_id"])),
                 ])
+            write_trace(args.trace_path, "写入成片草稿", f"正在生成素材 {source.name} 的剪映成片草稿")
             run(command)
             export_job = None
             if args.export_queue and args.finished_output_dir:
@@ -394,7 +411,9 @@ def main() -> int:
                 "export_job": export_job,
                 "bgm": ({"music_id": selected_bgm["music_id"], "title": selected_bgm.get("title"), "pool_size": selected_bgm["pool_size"], "reused_due_to_pool_size": selected_bgm["reused_due_to_pool_size"]} if selected_bgm else None),
             })
+            write_trace(args.trace_path, "成片草稿完成", f"素材 {source.name} 的剪映成片草稿已完成")
         except Exception as exc:
+            write_trace(args.trace_path, "成片草稿失败", f"素材 {source.name}：{exc}")
             results.append({"source": str(source), "status": "FAILED", "error": str(exc)})
     summary = {
         "schema": "jianying_composition_batch_v1", "requested_count": len(sources),

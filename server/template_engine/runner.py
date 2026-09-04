@@ -24,6 +24,42 @@ from server.runtime_process import no_window_kwargs, worker_command
 RUN_LOCK = threading.Lock()
 PROCESS_LOCK = threading.Lock()
 RUNNING_PROCESSES: dict[str, subprocess.Popen[str]] = {}
+_LOG_TAIL_LIMIT = 64 * 1024
+
+
+def _write_log_tail(path: Path, stdout: str | None, stderr: str | None) -> None:
+    """Keep diagnostics useful without allowing one worker to create an unlimited log."""
+    text = (stdout or "") + ("\n" + stderr if stderr else "")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text[-_LOG_TAIL_LIMIT:], encoding="utf-8")
+
+
+def _latest_worker_trace(path: Path) -> tuple[str, str] | None:
+    try:
+        for line in reversed(path.read_text(encoding="utf-8")[-4096:].splitlines()):
+            payload = json.loads(line)
+            if payload.get("phase") and payload.get("message"):
+                return str(payload["phase"]), str(payload["message"])
+    except (OSError, json.JSONDecodeError):
+        pass
+    return None
+
+
+def _start_heartbeat(*, job_id: str, task_id: str, stop: threading.Event, worker_trace: Path) -> threading.Thread:
+    def heartbeat() -> None:
+        while not stop.wait(10):
+            latest = _latest_worker_trace(worker_trace)
+            if latest:
+                phase, message = latest
+                service.record_executor_trace(executor_id="template_generator", run_id=job_id,
+                                              production_task_id=task_id, phase=phase, message=message)
+                continue
+            service.record_executor_trace(executor_id="template_generator", run_id=job_id,
+                                          production_task_id=task_id, phase="等待模板草稿生成",
+                                          message="子程序仍在运行，等待模板草稿写入完成")
+    thread = threading.Thread(target=heartbeat, name=f"v2-template-trace-{job_id[:8]}", daemon=True)
+    thread.start()
+    return thread
 
 
 def _set_job(job_id: str, *, status: str, **fields: str) -> None:
@@ -76,12 +112,21 @@ def run_template_job(job_id: str) -> None:
         if not row or str(row["status"]) not in {"queued", "dispatching"}:
             return
 
+        task_id = str(row["task_id"])
+        service.clear_executor_trace(job_id)
+        service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
+                                      phase="开始", message="已领取模板任务，正在检查剪映和素材条件")
+
         from server.jianying_preflight import require_jianying_ready
         try:
             require_jianying_ready(service.get_v2_settings())
         except Exception as exc:
+            service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
+                                          phase="剪映检查失败", message=str(exc))
             _fail(job_id, row, str(exc))
             return
+        service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
+                                      phase="剪映检查完成", message="剪映环境和草稿目录检查通过")
         _set_job(job_id, status="running", started_at=service.now_text())
         attempt_root = Path(str(row["template_path"])) / f"R{int(row['version_no']):02d}"
         photos = attempt_root / "模板剧照缓存"
@@ -95,6 +140,8 @@ def run_template_job(job_id: str) -> None:
         reserved = json.loads(str(row["reserved_videos_json"] or "[]"))
         videos = [Path(str(item.get("reserved_path") or "")) for item in reserved]
         if len(videos) != 3 or any(not path.is_file() for path in videos):
+            service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
+                                          phase="素材检查失败", message="已领取的真人视频不完整")
             _fail(job_id, row, "模板生成所领取的真人视频不存在，任务已释放")
             return
 
@@ -104,29 +151,37 @@ def run_template_job(job_id: str) -> None:
             "--video-3", str(videos[2]), "--viral-account-day-dir", str(row["material_path"]),
             "--photo-prep-output-dir", str(photos), "--photo-cache-root", str(photo_cache),
         ])
+        worker_trace = attempt_root / "执行过程.jsonl"
+        worker_trace.unlink(missing_ok=True)
+        command.extend(["--trace-path", str(worker_trace)])
         env = dict(os.environ)
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONPATH"] = os.pathsep.join((str(Path(__file__).parents[1]), str(Path(__file__).parents[2]), env.get("PYTHONPATH", "")))
         timeout = int(service.get_v2_settings().get("template_timeout_min", 15)) * 60
         process: subprocess.Popen[str] | None = None
+        heartbeat_stop = threading.Event()
         try:
             process = subprocess.Popen(command, cwd=str(Path(__file__).parent), stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env,
                                        **no_window_kwargs())
             with PROCESS_LOCK:
                 RUNNING_PROCESSES[job_id] = process
+            service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
+                                          phase="模板生成中", message="模板生成子程序已启动", detail={"pid": process.pid})
+            _start_heartbeat(job_id=job_id, task_id=task_id, stop=heartbeat_stop, worker_trace=worker_trace)
             try:
                 stdout, stderr = process.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
                 process.kill()
                 stdout, stderr = process.communicate()
+                _write_log_tail(Path(str(row["log_path"])), stdout, stderr)
+                service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
+                                              phase="超时", message="模板生成子程序超过限定时间仍未结束", detail={"pid": process.pid})
                 raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr)
             with PROCESS_LOCK:
                 RUNNING_PROCESSES.pop(job_id, None)
             result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
-            log = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
-            Path(str(row["log_path"])).parent.mkdir(parents=True, exist_ok=True)
-            Path(str(row["log_path"])).write_text(log, encoding="utf-8")
+            _write_log_tail(Path(str(row["log_path"])), result.stdout, result.stderr)
             if result.returncode != 0:
                 if _is_retry_requested(job_id):
                     _requeue_after_retry(job_id, row)
@@ -145,6 +200,8 @@ def run_template_job(job_id: str) -> None:
             # A ready template automatically becomes a queued template-video export.
             # The export job is idempotent per template version.
             service.ensure_export_job_for_template(row, draft_path=draft_path)
+            service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
+                                          phase="完成", message="模板草稿已生成并进入后续导出队列")
             _report_executor("completed")
         except subprocess.TimeoutExpired:
             if _is_retry_requested(job_id):
@@ -155,8 +212,11 @@ def run_template_job(job_id: str) -> None:
             if _is_retry_requested(job_id):
                 _requeue_after_retry(job_id, row)
                 return
+            service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
+                                          phase="失败", message=str(exc))
             _fail(job_id, row, f"模板生成失败：{exc}")
         finally:
+            heartbeat_stop.set()
             with PROCESS_LOCK:
                 RUNNING_PROCESSES.pop(job_id, None)
 

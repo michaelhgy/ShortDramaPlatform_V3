@@ -65,6 +65,15 @@ def _diagnostic_log_excerpt(raw_error: str) -> str | None:
     return raw[:limit] + "\n\n（页面仅显示前 1600 个字符；完整错误已保留在任务记录和生成日志中。）"
 
 
+def _executor_diagnostic(run_id: str, raw_error: str) -> str | None:
+    """Prefer the real execution trail; retain the terminal error below it."""
+    trace = service.executor_trace_excerpt(run_id)
+    error = _diagnostic_log_excerpt(raw_error)
+    if trace and error:
+        return f"{trace}\n\n最终结果：{error}"
+    return trace or error
+
+
 def _executor_available(executor_id: str) -> bool:
     from server.executor_management import ExecutorManager
     conn = service.connection()
@@ -627,7 +636,7 @@ def _export_task_item(row: Any) -> dict[str, Any]:
         "durationSeconds": duration_seconds, "durationFormatted": duration_formatted, "isTimeout": status == "timeout", "hasValidDraft": True,
         "hasCompletedFirstExport": status == "done", "taskType": "video_export", "taskSubType": "template_video_export" if str(row["subject_type"]) == "template" else "final_video_export",
         "executorId": "video_exporter", "executorName": "视频导出器", "draftPath": str(row["draft_path"] or "") or None,
-        "outputPath": str(row["target_path"] or "") or None, "fileSizeMb": (Path(str(row["target_path"])).stat().st_size / 1024 / 1024 if Path(str(row["target_path"] or "")).is_file() else 0), "errorDetail": detail, "diagnosticLog": _diagnostic_log_excerpt(raw_error),
+        "outputPath": str(row["target_path"] or "") or None, "fileSizeMb": (Path(str(row["target_path"])).stat().st_size / 1024 / 1024 if Path(str(row["target_path"] or "")).is_file() else 0), "errorDetail": detail, "diagnosticLog": _executor_diagnostic(str(row["id"]), raw_error),
         "stageInfo": {"currentStage": stage_labels.get(raw, "视频导出"), "stepIndex": 3, "totalSteps": 3} if status == "running" else None,
     }
 
@@ -665,7 +674,7 @@ def _final_task_item(row: Any) -> dict[str, Any]:
         "isTimeout": raw == "generation_timeout", "hasValidDraft": raw == "draft_ready" and bool(str(row["draft_path"] or "")),
         "hasCompletedFirstExport": False, "taskType": "final_draft", "executorId": "final_generator", "executorName": "成片生成器",
         "isOrphan": False, "draftPath": str(row["draft_path"] or "") or None, "outputPath": str(row["output_path"] or "") or None,
-        "diagnosticLog": _diagnostic_log_excerpt(raw_error), "errorDetail": error, "sequenceNo": int(row["sequence_no"] or 0) if row["sequence_no"] is not None else None,
+        "diagnosticLog": _executor_diagnostic(str(row["id"]), raw_error), "errorDetail": error, "sequenceNo": int(row["sequence_no"] or 0) if row["sequence_no"] is not None else None,
     }
 
 
@@ -721,6 +730,6 @@ def _task_item(row: Any) -> dict[str, Any]:
         "isTimeout": is_timeout, "hasValidDraft": raw == "draft_ready", "hasCompletedFirstExport": False,
         "taskType": "template_draft", "executorId": "template_generator", "executorName": "模板生成器",
         "isOrphan": row["task_id"] is not None and row["account_name"] is None,
-        "draftPath": str(row["draft_path"] or "") or None, "diagnosticLog": _diagnostic_log_excerpt(raw_error) or str(row["log_path"] or "") or None,
+        "draftPath": str(row["draft_path"] or "") or None, "diagnosticLog": _executor_diagnostic(str(row["id"]), raw_error) or str(row["log_path"] or "") or None,
         "errorDetail": error,
     }

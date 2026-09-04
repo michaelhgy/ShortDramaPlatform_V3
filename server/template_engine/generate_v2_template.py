@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from server.template_engine.jianying59_template.project_base import build_t00_plan, probe_video
@@ -14,6 +15,14 @@ from server.template_engine.jianying59_template.final_contract import create_fin
 from server.template_engine.jianying59_template.flower_style_library import default_flower_style_catalog_path
 from server.template_engine.jianying59_template.sticker_skin_library import default_sticker_skin_catalog_path
 from server.template_engine.jianying59_template.text_visual import create_text_visual_draft
+
+
+def _trace(path: Path | None, phase: str, message: str) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"phase": phase, "message": message}, ensure_ascii=False) + "\n")
 
 
 def main() -> int:
@@ -42,7 +51,9 @@ def main() -> int:
         help="由 sync_jianying59_flower_styles.py 同步的本机花字完整名录（默认用户本机运行时目录）",
     )
     parser.add_argument("--source-draft-name", help="text-visual 阶段要复制的已验收原生草稿名")
+    parser.add_argument("--trace-path", type=Path, help="仅供上层任务诊断读取的过程记录")
     args = parser.parse_args()
+    _trace(args.trace_path, "准备模板方案", "正在生成本次模板随机方案")
     plan = build_t00_plan(args.seed)
     if args.stage == "t00":
         print(plan.to_json())
@@ -65,12 +76,14 @@ def main() -> int:
         if not args.photo_prep_output_dir:
             parser.error("使用 --viral-account-day-dir 还需要 --photo-prep-output-dir（必须是一个尚不存在的新目录）")
         from server.template_engine.jianying59_template.photo_prep import prepare_drama_photos
+        _trace(args.trace_path, "准备剧照", "正在从真人素材中准备模板剧照")
         prepared = prepare_drama_photos(
             account_day_dir=args.viral_account_day_dir,
             output_dir=args.photo_prep_output_dir,
             seed=args.seed,
         )
         photo_dir = Path(prepared.output_directory)
+        _trace(args.trace_path, "剧照准备完成", "模板剧照已准备完成")
     if not args.draft_root or not args.name or not args.video:
         parser.error("非 t00 阶段需要 --draft-root、--name 和 --video")
     if args.stage in ("final", "t02-03", "t05"):
@@ -80,13 +93,17 @@ def main() -> int:
         if not args.video_3:
             parser.error("--stage t05/t06 还需要 --video-3")
     if args.stage == "final":
+        _trace(args.trace_path, "检查视频素材", "正在读取三条真人视频的时长和参数")
+        source01, source02, source03 = probe_video(args.video), probe_video(args.video_2), probe_video(args.video_3)
+        _trace(args.trace_path, "写入模板草稿", "正在生成剪映模板草稿和轨道内容")
         decision, validation = create_final_template_draft(
             draft_root=args.draft_root, draft_name=args.name, plan=plan,
-            source01=probe_video(args.video), source02=probe_video(args.video_2), source03=probe_video(args.video_3),
+            source01=source01, source02=source02, source03=source03,
             photo_dir=photo_dir, photo_cache_root=args.photo_cache_root, user_data_root=args.user_data_root,
             sticker_skin_catalog=args.sticker_skin_catalog,
             flower_style_catalog=args.flower_style_catalog,
         )
+        _trace(args.trace_path, "模板草稿完成", "剪映模板草稿和结构检查均已完成")
         print("{" + f'"templateDecision":{decision.to_json()},"structuralValidation":{validation.to_json()}' + "}")
         return 0
     if args.stage == "t05":

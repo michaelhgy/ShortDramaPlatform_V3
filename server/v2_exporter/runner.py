@@ -91,17 +91,23 @@ class V2ExportRunner:
         require_jianying_ready(self.settings)
         attempt = self.repository.activate_attempt_deadline(attempt_id)
         job = self.repository.job_for_attempt(attempt_id)
+        from server import v2_file_service as service
+        task_id = str(job["production_task_id"])
+        service.clear_executor_trace(attempt_id)
+        self._trace(attempt_id, task_id, "开始", "已领取视频导出任务，正在连接剪映")
         deadline = _deadline_timestamp(str(attempt["deadline_at"]))
         lease = WindowsInputLease(maximum_seconds=max(1.0, deadline - time.time()))
         coordinator = AttemptCoordinator(self.repository, lease)
         bridge = Jianying59Bridge(lease, attempt_id, executable=str(self.settings.get("jianying_executable") or ""), debug_sink=self._debug_sink(attempt_id) if bool(attempt["debug_enabled"]) else None)
         try:
             coordinator.begin(attempt_id)
+            self._trace(attempt_id, task_id, "启动剪映", "正在确认剪映窗口可用")
             bridge.ensure_started()
             # Match V1's fast handoff: finish local draft reading before the
             # editor button becomes actionable, then open the draft and click
             # its already-confirmed Export button without a V2-only gap.
             expected_duration = draft_duration_seconds(Path(str(job["draft_path"])))
+            self._trace(attempt_id, task_id, "打开草稿", "正在打开并检查待导出的剪映草稿")
             bridge.recover_and_open(str(job["draft_name"]))
             manual_check_required = bool(job["manual_check_required"])
             if str(job["subject_type"]) == "final":
@@ -112,6 +118,7 @@ class V2ExportRunner:
                 if task_row is not None:
                     manual_check_required = bool(task_row["final_video_manual_check"])
             if str(job["subject_type"]) == "final" and manual_check_required:
+                self._trace(attempt_id, task_id, "等待人工检查", "草稿已打开，等待人工确认后继续")
                 coordinator.await_human_check(attempt_id)
                 self._wait_for_human_enter(attempt_id, lease, deadline, wait_for_enter)
                 coordinator.confirm_human_check(attempt_id)
@@ -121,6 +128,7 @@ class V2ExportRunner:
             else:
                 coordinator.begin_submission(attempt_id)
             lease.require_active(attempt_id)
+            self._trace(attempt_id, task_id, "提交导出", "正在向剪映提交视频导出")
             receipt = bridge.submit(
                 draft_name=str(job["draft_name"]), target_path=Path(str(job["target_path"])), expected_duration=expected_duration,
                 subject_type=str(job["subject_type"]),
@@ -129,17 +137,22 @@ class V2ExportRunner:
             coordinator.submission_confirmed(attempt_id, source_output_path=str(receipt.source_path), baseline=receipt.baseline)
             # No more Jianying calls below this point.  Users may manually
             # cancel/edit/re-submit while V2 passively watches this same path.
+            self._trace(attempt_id, task_id, "等待视频文件", "剪映已接收导出，正在等待输出文件稳定")
             wait_for_stable_new_file(receipt.source_path, baseline=receipt.baseline, deadline=_deadline_monotonic(deadline))
+            self._trace(attempt_id, task_id, "验收视频", "输出文件已出现，正在检查视频是否完整")
             verification = verify_media(receipt.source_path, expected_duration=expected_duration)
             coordinator.begin_finalization(attempt_id)
+            self._trace(attempt_id, task_id, "保存视频", "视频验收通过，正在移动到正式目录")
             output_path = self._recovery_output_path(job, attempt_id=attempt_id)
             safe_move_verified_output(receipt.source_path, output_path)
             self._persist_output_path(job, output_path)
             self._record_finalization(attempt_id, verification)
             result = coordinator.complete(attempt_id)
+            self._trace(attempt_id, task_id, "完成", "视频已完成导出并保存到正式目录")
             ExecutorManager(self.connection).report_result("video_exporter", outcome="completed")
             return result
         except V2ExportFailure as exc:
+            self._trace(attempt_id, task_id, "失败", exc.detail)
             if exc.code == "USER_DOUBLE_ESC_ABORT":
                 result = coordinator.double_esc_abort(attempt_id)
                 ExecutorManager(self.connection).report_result("video_exporter", outcome="aborted")
@@ -148,11 +161,18 @@ class V2ExportRunner:
                 ExecutorManager(self.connection).report_result("video_exporter", outcome="timed_out" if exc.code.endswith("TIMEOUT") else "failed")
             return result
         except Exception as exc:
+            self._trace(attempt_id, task_id, "失败", str(exc))
             result = coordinator.fail(attempt_id, code="UNEXPECTED_FAILURE", message=str(exc))
             ExecutorManager(self.connection).report_result("video_exporter", outcome="failed")
             return result
         finally:
             lease.release(attempt_id)
+
+    @staticmethod
+    def _trace(attempt_id: str, task_id: str, phase: str, message: str) -> None:
+        from server import v2_file_service as service
+        service.record_executor_trace(executor_id="video_exporter", run_id=attempt_id,
+                                      production_task_id=task_id, phase=phase, message=message)
 
     def recover_passive_observation(self, attempt_id: str) -> dict[str, Any]:
         """Finish an export already accepted by Jianying before a V2 restart.
