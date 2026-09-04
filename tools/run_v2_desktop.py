@@ -31,6 +31,10 @@ MIN_WIDTH = 1100
 MIN_HEIGHT = 720
 
 
+class StartupCancelled(Exception):
+    """The user deliberately closed the first-run setup window."""
+
+
 def wait_until_reachable(url: str, label: str) -> None:
     deadline = time.monotonic() + 20
     opener = build_opener(ProxyHandler({}))
@@ -81,11 +85,64 @@ def report_startup_failure(exc: BaseException) -> None:
         print(message, file=sys.stderr, flush=True)
 
 
+def choose_initial_data_drive(drives: list[str]) -> str | None:
+    """Ask once where this computer should keep V2's working data."""
+    if not drives:
+        raise RuntimeError("未发现可用磁盘，无法创建 V2 数据目录")
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+    except ImportError as exc:
+        raise RuntimeError("当前 Windows 环境无法显示首次数据盘选择窗口") from exc
+
+    root = tk.Tk()
+    root.title("首次设置 V2 数据盘")
+    root.resizable(False, False)
+    root.attributes("-topmost", True)
+    selected = tk.StringVar(value=drives[0])
+    result: dict[str, str | None] = {"drive": None}
+    frame = ttk.Frame(root, padding=20)
+    frame.grid()
+    ttk.Label(frame, text="请选择保存短剧数据的磁盘", font=("Microsoft YaHei UI", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w")
+    ttk.Label(frame, text="数据库、素材、草稿和导出视频会保存到该磁盘；不会写入软件文件夹。", wraplength=420).grid(row=1, column=0, columnspan=2, pady=(8, 14), sticky="w")
+    ttk.Label(frame, text="数据盘：").grid(row=2, column=0, sticky="w")
+    picker = ttk.Combobox(frame, textvariable=selected, values=drives, state="readonly", width=18)
+    picker.grid(row=2, column=1, sticky="ew")
+    ttk.Label(frame, text="系统将创建：X:\\短剧推广运营系统", foreground="#666666").grid(row=3, column=0, columnspan=2, pady=(8, 18), sticky="w")
+
+    def confirm() -> None:
+        result["drive"] = selected.get().strip()
+        root.destroy()
+
+    def cancel() -> None:
+        root.destroy()
+
+    buttons = ttk.Frame(frame)
+    buttons.grid(row=4, column=0, columnspan=2, sticky="e")
+    ttk.Button(buttons, text="取消", command=cancel).grid(row=0, column=0, padx=(0, 8))
+    ttk.Button(buttons, text="确认并启动", command=confirm).grid(row=0, column=1)
+    root.protocol("WM_DELETE_WINDOW", cancel)
+    root.mainloop()
+    return result["drive"]
+
+
+def ensure_initial_data_drive(service: object) -> None:
+    """Persist the first-machine choice before creating the local service."""
+    if getattr(service, "WORKSPACE") is not None:
+        return
+    drives = list(getattr(service, "list_windows_drives")())
+    selected = choose_initial_data_drive(drives)
+    if not selected:
+        raise StartupCancelled()
+    getattr(service, "update_v2_settings")({"data_drive": selected})
+
+
 def start_production_server() -> tuple[object, str]:
     # Keep this import inside the protected desktop boundary. A missing native
     # dependency on another PC must show a useful error instead of silently
     # exiting before main() begins.
     from server import v2_file_service as service
+    ensure_initial_data_drive(service)
     service.frontend_dist_root()
     server = service.create_v2_server()
     try:
@@ -172,6 +229,8 @@ if __name__ == "__main__":
     if not _run_worker_if_requested():
         try:
             main()
+        except StartupCancelled:
+            pass
         except Exception as exc:  # noqa: BLE001
             report_startup_failure(exc)
             raise SystemExit(1) from exc
