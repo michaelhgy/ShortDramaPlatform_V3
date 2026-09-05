@@ -26,10 +26,10 @@ from .track01 import (
     Track01Decision,
     _attach_native_paths_and_filter,
     _default_user_data_root,
-    _latest_payload,
     add_track01_to_draft,
     decide_track01,
 )
+from server.jianying_resource_paths import attach_cached_path_if_present
 from .track04 import Track04Decision, _attach_native_mirror_path, add_track04_to_draft, decide_track04
 
 
@@ -342,10 +342,7 @@ def _new_line_mask(*, first_photo: PhotoInput, feather: float, region: str, user
     material = next(item for item in payload["materials"]["masks"] if item.get("resource_type") == "line")
     material = copy.deepcopy(material)
     material["id"] = uuid.uuid4().hex
-    material["path"] = _latest_payload(
-        user_data_root / "Cache" / "effect" / str(list(MaskType)[0].value.effect_id),
-        label="线性蒙版",
-    ).as_posix()
+    attach_cached_path_if_present(material, user_data_root / "Cache" / "effect" / str(list(MaskType)[0].value.effect_id))
     material["config"] = {
         "aspectRatio": 1.0,
         "centerX": 0.0,

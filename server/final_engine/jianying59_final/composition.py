@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from server.jianying_resource_paths import attach_cached_path_if_present, latest_cached_payload
 from server.tool_resolver import resolve_ffprobe
 from server.runtime_process import no_window_kwargs
 
@@ -456,11 +457,10 @@ def _add_video_segments(draft: Any, track_name: str, segments: list[dict[str, An
         draft.add_segment(segment, track_name)
 
 
-def _latest_cache_payload(root: Path, label: str) -> Path:
-    payloads = sorted((item for item in root.iterdir() if item.is_dir()), key=lambda item: item.stat().st_mtime, reverse=True) if root.is_dir() else []
-    if not payloads:
-        raise RuntimeError(f"当前剪映5.9未找到{label}本地资源，不能生成成片")
-    return payloads[0]
+def _latest_cache_payload(root: Path, label: str) -> Path | None:
+    """Reuse a downloaded Jianying payload without making it a prerequisite."""
+    del label
+    return latest_cached_payload(root)
 
 
 def _attach_native_mask_paths(content_path: Path, user_data_root: Path) -> None:
@@ -472,12 +472,12 @@ def _attach_native_mask_paths(content_path: Path, user_data_root: Path) -> None:
     masks = list(materials.get("masks") or materials.get("common_mask") or [])
     if not masks:
         raise RuntimeError("5.9原生写入后未找到蒙版材料")
-    required = {"rectangle": _latest_cache_payload(user_data_root / "Cache" / "effect" / "636077", "矩形蒙版")}
+    required = {"rectangle": user_data_root / "Cache" / "effect" / "636077"}
     found: set[str] = set()
     for mask in masks:
         resource_type = str(mask.get("resource_type") or "")
         if resource_type in required:
-            mask["path"] = required[resource_type].as_posix()
+            attach_cached_path_if_present(mask, required[resource_type])
             found.add(resource_type)
     if found != set(required):
         raise RuntimeError("5.9原生写入后缺少矩形或镜面蒙版")

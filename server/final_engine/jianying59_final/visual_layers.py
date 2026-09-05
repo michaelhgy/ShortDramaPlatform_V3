@@ -255,7 +255,7 @@ def _append_adjustment(document: dict[str, Any], decision: dict[str, Any], durat
     document.setdefault("tracks", []).append({"attribute": 0, "flag": 0, "id": new_id(), "is_default_name": False, "name": "F05_GLOBAL_ADJUST", "segments": [segment], "type": "adjust"})
 
 
-def _nested_draft(layer: dict[str, Any], rectangle_payload: Path) -> dict[str, Any]:
+def _nested_draft(layer: dict[str, Any], rectangle_payload: Path | None) -> dict[str, Any]:
     from pyJianYingDraft import ClipSettings, MaskType, ScriptFile, Timerange, TrackType, VideoMaterial, VideoSegment
     nested = ScriptFile(CANVAS_WIDTH, CANVAS_HEIGHT, 30, False)
     for index, item in enumerate(layer["photos"], start=1):
@@ -284,12 +284,13 @@ def _nested_draft(layer: dict[str, Any], rectangle_payload: Path) -> dict[str, A
         material["crop"] = {}
         material["crop_ratio"] = "free"
         material["has_audio"] = False
-    for mask in document.get("materials", {}).get("masks", []):
-        mask["path"] = rectangle_payload.as_posix()
+    if rectangle_payload is not None:
+        for mask in document.get("materials", {}).get("masks", []):
+            mask["path"] = rectangle_payload.as_posix()
     return document
 
 
-def _append_real_photo_compound(document: dict[str, Any], layer: dict[str, Any], duration_us: int, rectangle_payload: Path, user_data_root: Path) -> None:
+def _append_real_photo_compound(document: dict[str, Any], layer: dict[str, Any], duration_us: int, rectangle_payload: Path | None, user_data_root: Path) -> None:
     materials = document.setdefault("materials", {})
     prototype = next((item for item in materials.get("videos", []) if item.get("path")), None)
     if prototype is None:
@@ -315,7 +316,7 @@ def _append_real_photo_compound(document: dict[str, Any], layer: dict[str, Any],
     document.setdefault("tracks", []).append({"attribute": 0, "flag": 0, "id": new_id(), "is_default_name": False, "name": "F06_REAL_PHOTO_COMPOUND", "segments": [parent], "type": "video"})
 
 
-def append_visual_layers(*, content_path: Path, plan: dict[str, Any], user_data_root: Path, rectangle_payload: Path) -> None:
+def append_visual_layers(*, content_path: Path, plan: dict[str, Any], user_data_root: Path, rectangle_payload: Path | None) -> None:
     document = json.loads(content_path.read_text(encoding="utf-8"))
     duration_us = int(plan["duration_us"])
     materials = document.setdefault("materials", {})

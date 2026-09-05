@@ -105,7 +105,10 @@ RESOURCE_PROBE_QUEUE: queue.Queue[tuple[str, Path, str, int, int]] = queue.Queue
 RESOURCE_PROBE_PENDING: set[str] = set()
 RESOURCE_PROBE_LOCK = threading.Lock()
 RESOURCE_PROBE_THREAD: threading.Thread | None = None
-EXECUTOR_TRACE_LIMIT = 80
+# A template run records several concrete steps for each of ten photos.  Keep
+# one complete run visible without turning task diagnostics into an unbounded
+# log store (cleanup still owns the lifecycle of these rows).
+EXECUTOR_TRACE_LIMIT = 160
 
 
 def application_resource_root() -> Path:
@@ -681,7 +684,8 @@ def clear_executor_trace(run_id: str) -> None:
 
 
 def record_executor_trace(*, executor_id: str, run_id: str, production_task_id: str,
-                          phase: str, message: str, detail: dict[str, object] | None = None) -> None:
+                          phase: str, message: str, detail: dict[str, object] | None = None,
+                          created_at: str | None = None) -> None:
     """Persist a compact, user-readable progress trail for one executor run.
 
     The fixed per-run limit is deliberate: diagnostics must help a failed task
@@ -694,7 +698,7 @@ def record_executor_trace(*, executor_id: str, run_id: str, production_task_id: 
             "SELECT ?,?,?,?,?,?,?,?,?", (
                 uuid.uuid4().hex, executor_id, run_id, production_task_id,
                 int(conn.execute("SELECT COALESCE(MAX(sequence_no), 0) FROM executor_trace_events WHERE run_id=?", (run_id,)).fetchone()[0]) + 1,
-                phase, message, json.dumps(detail or {}, ensure_ascii=False, sort_keys=True), now_text(),
+                phase, message, json.dumps(detail or {}, ensure_ascii=False, sort_keys=True), created_at or now_text(),
             ),
         )
         conn.execute(

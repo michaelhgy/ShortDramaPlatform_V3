@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from .project_base import CANVAS_HEIGHT, T00ProjectPlan, VideoProbe
-from .track01 import MICROSECONDS, Track01Decision, _default_user_data_root, _latest_payload, calculate_cover_geometry, decide_track01
+from .track01 import MICROSECONDS, Track01Decision, _default_user_data_root, calculate_cover_geometry, decide_track01
 from .track04 import Track04Decision
 from .track02_03 import PhotoWallDecision, create_track03_draft
+from server.jianying_resource_paths import attach_cached_path_if_present
 
 
 @dataclass(frozen=True)
@@ -136,10 +137,10 @@ def _append_track05_to_content(
     mirror_mask = next((item for item in fragment["materials"].get("masks", []) if item.get("resource_type") == "mirror"), None)
     if mirror_mask is None:
         raise RuntimeError("T05未能生成当前5.9镜面蒙版材料")
-    mirror_mask["path"] = _latest_payload(
+    attach_cached_path_if_present(
+        mirror_mask,
         user_data_root / "Cache" / "effect" / str(__import__("pyJianYingDraft").MaskType.镜面.value.effect_id),
-        label="镜面蒙版",
-    ).as_posix()
+    )
 
     native_track = copy.deepcopy(fragment["tracks"][0])
     native_track["id"] = uuid.uuid4().hex

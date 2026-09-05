@@ -1,12 +1,36 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from unittest.mock import patch
 
+from server.template_engine.generate_v2_template import _trace
+from server.template_engine import runner
 from server.template_engine.jianying59_template import photo_prep
 
 
 class TemplateDiagnosticsTests(unittest.TestCase):
+    def test_worker_trace_has_its_own_precise_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            trace = Path(directory) / "执行过程.jsonl"
+            _trace(trace, "抽取候选画面", "测试")
+            payload = json.loads(trace.read_text(encoding="utf-8"))
+            self.assertEqual("抽取候选画面", payload["phase"])
+            self.assertIn("T", payload["occurred_at"])
+
+    def test_runner_preserves_worker_event_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            trace = Path(directory) / "执行过程.jsonl"
+            trace.write_text(json.dumps({
+                "occurred_at": "2026-09-05T14:47:29.123",
+                "phase": "剧照处理完成",
+                "message": "抽帧 1.0 秒，OCR 2.0 秒",
+            }, ensure_ascii=False), encoding="utf-8")
+            self.assertEqual(
+                [("剧照处理完成", "抽帧 1.0 秒，OCR 2.0 秒", "2026-09-05T14:47:29.123")],
+                runner._worker_trace_entries(trace),
+            )
+
     def test_photo_preparation_reports_video_frame_and_ocr_steps(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -41,3 +65,6 @@ class TemplateDiagnosticsTests(unittest.TestCase):
             self.assertIn("分析候选画面", phases)
             self.assertIn("OCR 字幕处理", phases)
             self.assertIn("剧照处理完成", phases)
+            completed = [message for phase, message in events if phase == "剧照处理完成"]
+            self.assertEqual(10, len(completed))
+            self.assertTrue(all("抽帧" in message and "OCR" in message and "本张合计" in message for message in completed))

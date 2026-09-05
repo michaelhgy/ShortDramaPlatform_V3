@@ -14,11 +14,11 @@ from .track01 import (
     Track01Decision,
     _attach_native_paths_and_filter,
     _default_user_data_root,
-    _latest_payload,
     add_track01_to_draft,
     calculate_cover_geometry,
     decide_track01,
 )
+from server.jianying_resource_paths import attach_cached_path_if_present
 
 
 @dataclass(frozen=True)
@@ -98,10 +98,7 @@ def _attach_native_mirror_path(*, content_path: Path, user_data_root: Path) -> N
         raise RuntimeError("T04 write produced no mirror-mask material")
 
     shared_mask = mirror_masks[0]
-    shared_mask["path"] = _latest_payload(
-        user_data_root / "Cache" / "effect" / str(MaskType.镜面.value.effect_id),
-        label="镜面蒙版",
-    ).as_posix()
+    attach_cached_path_if_present(shared_mask, user_data_root / "Cache" / "effect" / str(MaskType.镜面.value.effect_id))
     shared_mask_id = shared_mask["id"]
     obsolete_mask_ids = {item["id"] for item in mirror_masks[1:]}
     materials["masks"] = [item for item in masks if item.get("id") not in obsolete_mask_ids]

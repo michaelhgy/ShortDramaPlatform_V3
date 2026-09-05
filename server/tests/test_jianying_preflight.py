@@ -6,8 +6,7 @@ from server.jianying_preflight import JianyingPreflightStatus, require_jianying_
 def _runtime(tmp_path: Path, *, draft: bool = True, font: bool = True) -> tuple[dict[str, object], dict[str, str]]:
     app = tmp_path / "JianyingPro" / "Apps" / "5.9.0.11632"
     executable = app / "JianyingPro.exe"; executable.parent.mkdir(parents=True); executable.write_bytes(b"test")
-    for path in (app / "Resources" / "DefaultAdjustBundle" / "combine_adjust", app / "Resources" / "DefaultAdjustBundle" / "hsl_v1",
-                 tmp_path / "JianyingPro" / "User Data" / "Cache" / "effect", tmp_path / "JianyingPro" / "User Data" / "Cache" / "artistEffect"):
+    for path in (app / "Resources" / "DefaultAdjustBundle" / "combine_adjust", app / "Resources" / "DefaultAdjustBundle" / "hsl_v1"):
         path.mkdir(parents=True)
     if font:
         (app / "Resources" / "Font" / "SystemFont").mkdir(parents=True)
@@ -43,6 +42,11 @@ def test_valid_59_runtime_is_ready(tmp_path):
     result = _run(settings, environ)
     assert result.status == JianyingPreflightStatus.READY
     assert result.version == "5.9.0.11632"
+
+
+def test_empty_jianying_resource_cache_is_not_a_generation_blocker(tmp_path):
+    settings, environ = _runtime(tmp_path)
+    assert _run(settings, environ).status == JianyingPreflightStatus.READY
 
 
 def test_other_version_is_unverified(tmp_path):

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+import traceback
+from datetime import datetime
 from pathlib import Path
 
 from server.template_engine.jianying59_template.project_base import build_t00_plan, probe_video
@@ -22,7 +25,19 @@ def _trace(path: Path | None, phase: str, message: str) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"phase": phase, "message": message}, ensure_ascii=False) + "\n")
+        handle.write(json.dumps({
+            "occurred_at": datetime.now().astimezone().isoformat(timespec="milliseconds"),
+            "phase": phase,
+            "message": message,
+        }, ensure_ascii=False) + "\n")
+
+
+def _trace_path_from_argv() -> Path | None:
+    try:
+        index = sys.argv.index("--trace-path")
+        return Path(sys.argv[index + 1])
+    except (ValueError, IndexError):
+        return None
 
 
 def main() -> int:
@@ -159,4 +174,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:  # Keep frozen worker failures in the task diagnostic instead of a GUI crash dialog.
+        _trace(_trace_path_from_argv(), "失败", f"{type(exc).__name__}: {exc}")
+        traceback.print_exc(file=sys.stderr)
+        raise SystemExit(1) from exc

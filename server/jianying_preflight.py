@@ -133,8 +133,6 @@ def run_jianying_preflight(
     app_root = executable.parent
     required = {
         "剪映用户数据目录": user_data,
-        "特效缓存目录": user_data / "Cache" / "effect",
-        "滤镜缓存目录": user_data / "Cache" / "artistEffect",
         "默认调节资源 combine_adjust": app_root / "Resources" / "DefaultAdjustBundle" / "combine_adjust",
         "默认调节资源 hsl_v1": app_root / "Resources" / "DefaultAdjustBundle" / "hsl_v1",
         "中文系统字体 zh-hans.ttf": app_root / "Resources" / "Font" / "SystemFont" / "zh-hans.ttf",

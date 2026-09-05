@@ -34,13 +34,15 @@ def _write_log_tail(path: Path, stdout: str | None, stderr: str | None) -> None:
     path.write_text(text[-_LOG_TAIL_LIMIT:], encoding="utf-8")
 
 
-def _worker_trace_entries(path: Path) -> list[tuple[str, str]]:
+def _worker_trace_entries(path: Path) -> list[tuple[str, str, str | None]]:
     try:
-        entries: list[tuple[str, str]] = []
+        entries: list[tuple[str, str, str | None]] = []
         for line in path.read_text(encoding="utf-8")[-65536:].splitlines():
             payload = json.loads(line)
             if payload.get("phase") and payload.get("message"):
-                entries.append((str(payload["phase"]), str(payload["message"])))
+                occurred_at = payload.get("occurred_at")
+                entries.append((str(payload["phase"]), str(payload["message"]),
+                                str(occurred_at) if occurred_at else None))
         return entries
     except (OSError, json.JSONDecodeError):
         return []
@@ -53,9 +55,10 @@ def _start_heartbeat(*, job_id: str, task_id: str, stop: threading.Event, worker
         while not stop.wait(2):
             entries = _worker_trace_entries(worker_trace)
             if len(entries) > seen:
-                for phase, message in entries[seen:]:
+                for phase, message, occurred_at in entries[seen:]:
                     service.record_executor_trace(executor_id="template_generator", run_id=job_id,
-                                                  production_task_id=task_id, phase=phase, message=message)
+                                                  production_task_id=task_id, phase=phase, message=message,
+                                                  created_at=occurred_at)
                 seen = len(entries)
                 idle_seconds = 0
                 continue

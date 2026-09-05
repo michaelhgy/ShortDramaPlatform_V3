@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from server.jianying_resource_paths import attach_cached_path_if_present, latest_cached_payload
+
 from .project_base import CANVAS_HEIGHT, CANVAS_WIDTH, T00ProjectPlan, VideoProbe, create_native_t00_draft
 
 
@@ -111,11 +113,14 @@ def _default_user_data_root() -> Path:
     return Path(local_app_data) / "JianyingPro" / "User Data"
 
 
-def _latest_payload(root: Path, *, label: str) -> Path:
-    payloads = sorted((item for item in root.iterdir() if item.is_dir()), key=lambda item: item.stat().st_mtime, reverse=True) if root.is_dir() else []
-    if not payloads:
-        raise RuntimeError(f"当前剪映5.9未找到{label}本地资源，不能生成T01")
-    return payloads[0]
+def _latest_payload(root: Path, *, label: str) -> Path | None:
+    """Compatibility name for optional Jianying cache reuse.
+
+    ``label`` remains for callers and diagnostics, but a cache miss must not
+    prevent a draft from being written: Jianying hydrates the resource on open.
+    """
+    del label
+    return latest_cached_payload(root)
 
 
 def _attach_native_paths_and_filter(*, content_path: Path, decision: Track01Decision, user_data_root: Path) -> None:
@@ -132,19 +137,14 @@ def _attach_native_paths_and_filter(*, content_path: Path, decision: Track01Deci
         raise RuntimeError("T01写入后未找到矩形蒙版材料")
 
     shared_mask = rectangle_masks[0]
-    shared_mask["path"] = _latest_payload(
-        user_data_root / "Cache" / "effect" / RECTANGLE_MASK_CACHE_CATEGORY,
-        label="矩形蒙版",
-    ).as_posix()
+    attach_cached_path_if_present(shared_mask, user_data_root / "Cache" / "effect" / RECTANGLE_MASK_CACHE_CATEGORY)
     shared_mask_id = shared_mask["id"]
     obsolete_mask_ids = {item["id"] for item in rectangle_masks[1:]}
     materials["masks"] = [item for item in masks if item.get("id") not in obsolete_mask_ids]
 
     candidate = next(item for item in TRACK01_FILTER_CANDIDATES if item.resource_id == decision.filter_resource_id)
-    filter_payload = _latest_payload(
-        user_data_root / "Cache" / "artistEffect" / candidate.resource_id,
-        label=f"滤镜“{candidate.name}”",
-    )
+    filter_payload = _latest_payload(user_data_root / "Cache" / "artistEffect" / candidate.resource_id,
+                                     label=f"滤镜“{candidate.name}”")
     filter_id = uuid.uuid4().hex.upper()
     filter_material = {
         "adjust_params": [],
@@ -164,7 +164,7 @@ def _attach_native_paths_and_filter(*, content_path: Path, decision: Track01Deci
         "multi_language_current": "",
         "name": candidate.name,
         "panel_id": "",
-        "path": filter_payload.as_posix(),
+        "path": filter_payload.as_posix() if filter_payload else "",
         "platform": "all",
         "request_id": "",
         "resource_id": candidate.resource_id,

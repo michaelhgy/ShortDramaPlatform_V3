@@ -379,22 +379,33 @@ def prepare_drama_photos(*, account_day_dir: Path, output_dir: Path, seed: int, 
         final.mkdir()
         total_duration = sum(source.duration_seconds for source in sources)
         for index, global_time in enumerate(planned_global_times(total_duration=total_duration, count=count), start=1):
+            photo_started = time.monotonic()
             source, local_time = locate_source_time(sources=sources, global_time=global_time)
             candidate_paths: list[tuple[FrameCandidate, Path]] = []
+            extraction_seconds = 0.0
+            analysis_seconds = 0.0
             for offset_index, offset in enumerate(FRAME_OFFSETS, start=1):
                 candidate_time = min(max(0.08, local_time + offset), max(0.08, source.duration_seconds - 0.08))
                 frame = raw / f"{index:02d}_{offset_index:02d}.jpg"
                 _report(progress, "抽取候选画面", f"剧照 {index}/{count}：正在从 {source.path.name} 抽取候选画面 {offset_index}/{len(FRAME_OFFSETS)}")
+                started = time.monotonic()
                 _extract_frame(source=source, time_seconds=candidate_time, target=frame)
+                extraction_seconds += time.monotonic() - started
                 _report(progress, "分析候选画面", f"剧照 {index}/{count}：正在分析候选画面 {offset_index}/{len(FRAME_OFFSETS)}")
+                started = time.monotonic()
                 candidate_paths.append((_measure_frame(source=source, time_seconds=candidate_time, frame_path=frame), frame))
+                analysis_seconds += time.monotonic() - started
             candidate = choose_frame_candidate(candidates=(item[0] for item in candidate_paths), already_selected=chosen)
             source_frame = next(path for measured, path in candidate_paths if measured == candidate)
             target = final / f"剧集人物_{index:03d}.jpg"
             _report(progress, "裁切剧照", f"剧照 {index}/{count}：正在裁切为 3:4 画面")
+            started = time.monotonic()
             _crop_three_four(source_frame, target)
+            crop_seconds = time.monotonic() - started
             _report(progress, "OCR 字幕处理", f"剧照 {index}/{count}：正在识别并柔化字幕")
+            started = time.monotonic()
             subtitle_blur_count = soften_detected_text(image_path=target)
+            ocr_seconds = time.monotonic() - started
             prepared.append(PreparedPhoto(
                 index=index, source_video=str(candidate.source.path), source_time_seconds=round(candidate.time_seconds, 3),
                 output=str(output_dir / target.name), sha256=_sha256(target), sharpness=round(candidate.sharpness, 3),
@@ -402,7 +413,13 @@ def prepare_drama_photos(*, account_day_dir: Path, output_dir: Path, seed: int, 
                 subtitle_blur_count=subtitle_blur_count,
             ))
             chosen.append(candidate)
-            _report(progress, "剧照处理完成", f"剧照 {index}/{count} 已完成")
+            _report(
+                progress,
+                "剧照处理完成",
+                f"剧照 {index}/{count} 已完成：抽帧 {extraction_seconds:.2f} 秒，"
+                f"分析 {analysis_seconds:.2f} 秒，裁切 {crop_seconds:.2f} 秒，"
+                f"OCR {ocr_seconds:.2f} 秒，本张合计 {time.monotonic() - photo_started:.2f} 秒",
+            )
         if len({item.sha256 for item in prepared}) != count:
             raise RuntimeError("剧照候选仍出现完全重复，拒绝生成重复照片墙")
         manifest = {
