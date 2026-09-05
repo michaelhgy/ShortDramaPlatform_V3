@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from server.application_resources import application_resource_path
 from .sticker_skin_library import default_user_data_root
 
 
@@ -32,6 +33,11 @@ def default_flower_style_catalog_path() -> Path:
     if not local_app_data:
         raise RuntimeError("未找到 LOCALAPPDATA，无法定位花字视觉库")
     return Path(local_app_data) / "ShortDramaPlatform" / "jianying59" / "flower_style_catalog.json"
+
+
+def bundled_flower_style_catalog_path() -> Path:
+    """Return the verified base catalogue shipped with V2 Portable."""
+    return application_resource_path("server", "template_engine", "jianying59_template", "resources", "flower_style_catalog.json")
 
 
 def _text(value: Any) -> str:
@@ -191,6 +197,25 @@ def load_flower_style_catalog(path: Path) -> FlowerStyleCatalog:
         schema_version=SCHEMA_VERSION, source=_text(payload.get("source")), synced_at=_text(payload.get("synced_at")),
         approved_categories=tuple(_text(item) for item in payload.get("approved_categories") or []), styles=styles,
     )
+
+
+def resolve_flower_style_catalog_path() -> Path:
+    """Prefer a valid user refresh, otherwise use V2's bundled base catalogue."""
+    try:
+        local = default_flower_style_catalog_path()
+    except RuntimeError:
+        local = None
+    if local is not None and local.is_file():
+        try:
+            load_flower_style_catalog(local)
+        except (OSError, ValueError, json.JSONDecodeError, RuntimeError):
+            pass
+        else:
+            return local
+    bundled = bundled_flower_style_catalog_path()
+    if bundled.is_file():
+        return bundled
+    raise FileNotFoundError("V2 缺少内置花字参数清单，请重新安装完整 Portable")
 
 
 def choose_flower_style(

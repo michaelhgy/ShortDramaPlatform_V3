@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from server.application_resources import application_resource_path
+
 MGET_ITEM_URL = "https://lv-api-sinfonlinea.ulikecam.com/artist/v1/effect/mget_item"
 SYSTEM_CATEGORY_NAMES = frozenset({"收藏", "热门", "AI贴纸", "最新"})
 CATALOG_SCHEMA_VERSION = 1
@@ -42,6 +44,11 @@ def default_sticker_skin_catalog_path() -> Path:
     if not local_app_data:
         raise RuntimeError("未找到 LOCALAPPDATA，无法定位贴纸皮肤库")
     return Path(local_app_data) / "ShortDramaPlatform" / "jianying59" / "sticker_skin_catalog.json"
+
+
+def bundled_sticker_skin_catalog_path() -> Path:
+    """Return the verified base catalogue shipped with V2 Portable."""
+    return application_resource_path("server", "template_engine", "jianying59_template", "resources", "sticker_skin_catalog.json")
 
 
 def _catalog_params() -> dict[str, str]:
@@ -268,6 +275,25 @@ def load_sticker_skin_catalog(path: Path) -> StickerSkinCatalog:
         source=_text(payload.get("source")), synced_at=_text(payload.get("synced_at")),
         skins=tuple(skins),
     )
+
+
+def resolve_sticker_skin_catalog_path() -> Path:
+    """Prefer a valid user refresh, otherwise use V2's bundled base catalogue."""
+    try:
+        local = default_sticker_skin_catalog_path()
+    except RuntimeError:
+        local = None
+    if local is not None and local.is_file():
+        try:
+            load_sticker_skin_catalog(local)
+        except (OSError, ValueError, json.JSONDecodeError, RuntimeError):
+            pass
+        else:
+            return local
+    bundled = bundled_sticker_skin_catalog_path()
+    if bundled.is_file():
+        return bundled
+    raise FileNotFoundError("V2 缺少内置贴纸皮肤参数清单，请重新安装完整 Portable")
 
 
 @dataclass(frozen=True)

@@ -34,29 +34,37 @@ def _write_log_tail(path: Path, stdout: str | None, stderr: str | None) -> None:
     path.write_text(text[-_LOG_TAIL_LIMIT:], encoding="utf-8")
 
 
-def _latest_worker_trace(path: Path) -> tuple[str, str] | None:
+def _worker_trace_entries(path: Path) -> list[tuple[str, str]]:
     try:
-        for line in reversed(path.read_text(encoding="utf-8")[-4096:].splitlines()):
+        entries: list[tuple[str, str]] = []
+        for line in path.read_text(encoding="utf-8")[-65536:].splitlines():
             payload = json.loads(line)
             if payload.get("phase") and payload.get("message"):
-                return str(payload["phase"]), str(payload["message"])
+                entries.append((str(payload["phase"]), str(payload["message"])))
+        return entries
     except (OSError, json.JSONDecodeError):
-        pass
-    return None
+        return []
 
 
 def _start_heartbeat(*, job_id: str, task_id: str, stop: threading.Event, worker_trace: Path) -> threading.Thread:
     def heartbeat() -> None:
-        while not stop.wait(10):
-            latest = _latest_worker_trace(worker_trace)
-            if latest:
-                phase, message = latest
-                service.record_executor_trace(executor_id="template_generator", run_id=job_id,
-                                              production_task_id=task_id, phase=phase, message=message)
+        seen = 0
+        idle_seconds = 0
+        while not stop.wait(2):
+            entries = _worker_trace_entries(worker_trace)
+            if len(entries) > seen:
+                for phase, message in entries[seen:]:
+                    service.record_executor_trace(executor_id="template_generator", run_id=job_id,
+                                                  production_task_id=task_id, phase=phase, message=message)
+                seen = len(entries)
+                idle_seconds = 0
                 continue
-            service.record_executor_trace(executor_id="template_generator", run_id=job_id,
-                                          production_task_id=task_id, phase="等待模板草稿生成",
-                                          message="子程序仍在运行，等待模板草稿写入完成")
+            idle_seconds += 2
+            if idle_seconds >= 10:
+                service.record_executor_trace(executor_id="template_generator", run_id=job_id,
+                                              production_task_id=task_id, phase="等待模板草稿生成",
+                                              message="子程序仍在运行，等待当前步骤完成")
+                idle_seconds = 0
     thread = threading.Thread(target=heartbeat, name=f"v2-template-trace-{job_id[:8]}", daemon=True)
     thread.start()
     return thread

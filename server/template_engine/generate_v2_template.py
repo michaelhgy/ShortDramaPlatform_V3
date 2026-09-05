@@ -12,8 +12,8 @@ from server.template_engine.jianying59_template.track02_03 import create_track03
 from server.template_engine.jianying59_template.track04 import create_track04_only_draft
 from server.template_engine.jianying59_template.track05 import create_track05_draft
 from server.template_engine.jianying59_template.final_contract import create_final_template_draft
-from server.template_engine.jianying59_template.flower_style_library import default_flower_style_catalog_path
-from server.template_engine.jianying59_template.sticker_skin_library import default_sticker_skin_catalog_path
+from server.template_engine.jianying59_template.flower_style_library import resolve_flower_style_catalog_path
+from server.template_engine.jianying59_template.sticker_skin_library import resolve_sticker_skin_catalog_path
 from server.template_engine.jianying59_template.text_visual import create_text_visual_draft
 
 
@@ -43,12 +43,12 @@ def main() -> int:
     parser.add_argument("--photo-cache-root", type=Path)
     parser.add_argument("--user-data-root", type=Path)
     parser.add_argument(
-        "--sticker-skin-catalog", type=Path, default=default_sticker_skin_catalog_path(),
-        help="由 sync_jianying59_sticker_skins.py 同步的本机贴纸皮肤库（默认用户本机运行时目录）",
+        "--sticker-skin-catalog", type=Path, default=resolve_sticker_skin_catalog_path(),
+        help="优先使用本机更新的贴纸皮肤库；否则使用 V2 内置的已验证基础清单",
     )
     parser.add_argument(
-        "--flower-style-catalog", type=Path, default=default_flower_style_catalog_path(),
-        help="由 sync_jianying59_flower_styles.py 同步的本机花字完整名录（默认用户本机运行时目录）",
+        "--flower-style-catalog", type=Path, default=resolve_flower_style_catalog_path(),
+        help="优先使用本机更新的花字库；否则使用 V2 内置的已验证基础清单",
     )
     parser.add_argument("--source-draft-name", help="text-visual 阶段要复制的已验收原生草稿名")
     parser.add_argument("--trace-path", type=Path, help="仅供上层任务诊断读取的过程记录")
@@ -81,6 +81,7 @@ def main() -> int:
             account_day_dir=args.viral_account_day_dir,
             output_dir=args.photo_prep_output_dir,
             seed=args.seed,
+            progress=lambda phase, message: _trace(args.trace_path, phase, message),
         )
         photo_dir = Path(prepared.output_directory)
         _trace(args.trace_path, "剧照准备完成", "模板剧照已准备完成")

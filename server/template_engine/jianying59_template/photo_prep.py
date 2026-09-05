@@ -23,9 +23,10 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
 from server.runtime_process import no_window_kwargs
@@ -34,6 +35,12 @@ from server.runtime_process import no_window_kwargs
 PHOTO_COUNT = 10
 VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".mkv", ".avi", ".m4v"})
 FRAME_OFFSETS = (-2.4, -1.2, 0.0, 1.2, 2.4)
+ProgressReporter = Callable[[str, str], None]
+
+
+def _report(progress: ProgressReporter | None, phase: str, message: str) -> None:
+    if progress is not None:
+        progress(phase, message)
 
 
 def _natural_key(path: Path) -> tuple[Any, ...]:
@@ -95,13 +102,16 @@ class PhotoPrepDecision:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
 
 
-def discover_drama_videos(video_dir: Path) -> tuple[VideoSource, ...]:
+def discover_drama_videos(video_dir: Path, *, progress: ProgressReporter | None = None) -> tuple[VideoSource, ...]:
     """Return readable videos in deterministic order; do not recurse or mutate."""
     if not video_dir.is_dir():
         raise FileNotFoundError(f"剧集视频目录不存在：{video_dir}")
     sources: list[VideoSource] = []
     for path in sorted((item for item in video_dir.iterdir() if item.is_file() and item.suffix.casefold() in VIDEO_EXTENSIONS), key=_natural_key):
+        started = time.monotonic()
+        _report(progress, "读取剧集视频", f"正在读取视频：{path.name}")
         duration = _probe_duration(path)
+        _report(progress, "读取剧集视频", f"视频读取完成：{path.name}，耗时 {time.monotonic() - started:.1f} 秒")
         if duration > 0:
             sources.append(VideoSource(path=path.resolve(), duration_seconds=duration))
     if not sources:
@@ -109,7 +119,7 @@ def discover_drama_videos(video_dir: Path) -> tuple[VideoSource, ...]:
     return tuple(sources)
 
 
-def discover_account_day_drama_sources(account_day_dir: Path) -> tuple[DramaPhotoSource, ...]:
+def discover_account_day_drama_sources(account_day_dir: Path, *, progress: ProgressReporter | None = None) -> tuple[DramaPhotoSource, ...]:
     """Discover candidate dramas under ``爆款/账号日`` without changing sources.
 
     Production batches normally contain one subdirectory per drama.  Direct
@@ -126,12 +136,13 @@ def discover_account_day_drama_sources(account_day_dir: Path) -> tuple[DramaPhot
         return (DramaPhotoSource(
             drama_name=account_day_dir.name,
             directory=account_day_dir.resolve(),
-            videos=discover_drama_videos(account_day_dir),
+            videos=discover_drama_videos(account_day_dir, progress=progress),
         ),)
     sources: list[DramaPhotoSource] = []
     for directory in sorted((item for item in account_day_dir.iterdir() if item.is_dir()), key=_natural_key):
         try:
-            videos = discover_drama_videos(directory)
+            _report(progress, "扫描剧集目录", f"正在扫描剧集目录：{directory.name}")
+            videos = discover_drama_videos(directory, progress=progress)
         except RuntimeError:
             continue
         sources.append(DramaPhotoSource(drama_name=directory.name, directory=directory.resolve(), videos=videos))
@@ -146,9 +157,9 @@ def choose_account_day_drama_source(*, account_day_dir: Path, seed: int) -> Dram
     return random.Random(f"{seed}:drama-photo-source").choice(candidates)
 
 
-def account_day_video_sources(*, account_day_dir: Path) -> tuple[DramaPhotoSource, tuple[VideoSource, ...]]:
+def account_day_video_sources(*, account_day_dir: Path, progress: ProgressReporter | None = None) -> tuple[DramaPhotoSource, tuple[VideoSource, ...]]:
     """Aggregate every readable viral video in this account/day, never another day."""
-    dramas = discover_account_day_drama_sources(account_day_dir)
+    dramas = discover_account_day_drama_sources(account_day_dir, progress=progress)
     videos = tuple(video for drama in dramas for video in drama.videos)
     if not videos:
         raise RuntimeError("current account/day has no readable viral videos")
@@ -339,7 +350,8 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def prepare_drama_photos(*, account_day_dir: Path, output_dir: Path, seed: int, count: int = PHOTO_COUNT) -> PhotoPrepDecision:
+def prepare_drama_photos(*, account_day_dir: Path, output_dir: Path, seed: int, count: int = PHOTO_COUNT,
+                         progress: ProgressReporter | None = None) -> PhotoPrepDecision:
     """Create exactly ten varied 3:4 stills without modifying source videos.
 
     All readable viral videos under the current account/day participate.  The
@@ -351,7 +363,9 @@ def prepare_drama_photos(*, account_day_dir: Path, output_dir: Path, seed: int, 
         raise ValueError("当前照片墙合同固定需要10张剧照")
     if output_dir.exists():
         raise FileExistsError(f"剧照输出目录必须尚不存在，避免覆盖：{output_dir}")
-    dramas, sources = account_day_video_sources(account_day_dir=account_day_dir)
+    _report(progress, "扫描剧集素材", "正在查找可用于剧照的剧集视频")
+    dramas, sources = account_day_video_sources(account_day_dir=account_day_dir, progress=progress)
+    _report(progress, "剧集素材已就绪", f"已找到 {len(dramas)} 个剧集目录、{len(sources)} 条可读视频；开始准备 10 张剧照")
     parent = output_dir.parent
     if not parent.is_dir():
         parent.mkdir(parents=True, exist_ok=True)
@@ -370,12 +384,16 @@ def prepare_drama_photos(*, account_day_dir: Path, output_dir: Path, seed: int, 
             for offset_index, offset in enumerate(FRAME_OFFSETS, start=1):
                 candidate_time = min(max(0.08, local_time + offset), max(0.08, source.duration_seconds - 0.08))
                 frame = raw / f"{index:02d}_{offset_index:02d}.jpg"
+                _report(progress, "抽取候选画面", f"剧照 {index}/{count}：正在从 {source.path.name} 抽取候选画面 {offset_index}/{len(FRAME_OFFSETS)}")
                 _extract_frame(source=source, time_seconds=candidate_time, target=frame)
+                _report(progress, "分析候选画面", f"剧照 {index}/{count}：正在分析候选画面 {offset_index}/{len(FRAME_OFFSETS)}")
                 candidate_paths.append((_measure_frame(source=source, time_seconds=candidate_time, frame_path=frame), frame))
             candidate = choose_frame_candidate(candidates=(item[0] for item in candidate_paths), already_selected=chosen)
             source_frame = next(path for measured, path in candidate_paths if measured == candidate)
             target = final / f"剧集人物_{index:03d}.jpg"
+            _report(progress, "裁切剧照", f"剧照 {index}/{count}：正在裁切为 3:4 画面")
             _crop_three_four(source_frame, target)
+            _report(progress, "OCR 字幕处理", f"剧照 {index}/{count}：正在识别并柔化字幕")
             subtitle_blur_count = soften_detected_text(image_path=target)
             prepared.append(PreparedPhoto(
                 index=index, source_video=str(candidate.source.path), source_time_seconds=round(candidate.time_seconds, 3),
@@ -384,6 +402,7 @@ def prepare_drama_photos(*, account_day_dir: Path, output_dir: Path, seed: int, 
                 subtitle_blur_count=subtitle_blur_count,
             ))
             chosen.append(candidate)
+            _report(progress, "剧照处理完成", f"剧照 {index}/{count} 已完成")
         if len({item.sha256 for item in prepared}) != count:
             raise RuntimeError("剧照候选仍出现完全重复，拒绝生成重复照片墙")
         manifest = {
@@ -398,6 +417,7 @@ def prepare_drama_photos(*, account_day_dir: Path, output_dir: Path, seed: int, 
             "items": [asdict(item) for item in prepared],
         }
         (final / "剧照准备清单.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        _report(progress, "发布剧照", "10 张剧照已完成，正在写入任务缓存")
         os.replace(final, output_dir)
     return PhotoPrepDecision(
         count=count, output_directory=str(output_dir), source_scope="all_readable_viral_videos_in_current_account_day",
