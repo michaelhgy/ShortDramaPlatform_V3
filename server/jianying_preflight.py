@@ -11,6 +11,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Callable, Mapping
 
+from server.jianying_runtime_paths import JianyingRuntimePaths, resolve_jianying_runtime_paths
+
 
 class JianyingPreflightStatus(StrEnum):
     READY = "READY"
@@ -127,15 +129,16 @@ def run_jianying_preflight(
                        f"无法确认受支持的剪映专业版 5.9{shown}；V2 当前仅验证 5.9", version=version,
                        version_source=version_source)
 
-    environment = dict(os.environ if environ is None else environ)
-    local_app_data = Path(str(environment.get("LOCALAPPDATA") or "")).expanduser()
-    user_data = local_app_data / "JianyingPro" / "User Data"
-    app_root = executable.parent
+    try:
+        runtime_paths: JianyingRuntimePaths = resolve_jianying_runtime_paths(settings, environ=environ)
+    except RuntimeError as exc:
+        return _result(JianyingPreflightStatus.INVALID_CONFIGURATION, str(exc), version=version,
+                       version_source=version_source)
     required = {
-        "剪映用户数据目录": user_data,
-        "默认调节资源 combine_adjust": app_root / "Resources" / "DefaultAdjustBundle" / "combine_adjust",
-        "默认调节资源 hsl_v1": app_root / "Resources" / "DefaultAdjustBundle" / "hsl_v1",
-        "中文系统字体 zh-hans.ttf": app_root / "Resources" / "Font" / "SystemFont" / "zh-hans.ttf",
+        "剪映用户数据目录": runtime_paths.user_data_root,
+        "默认调节资源 combine_adjust": runtime_paths.app_root / "Resources" / "DefaultAdjustBundle" / "combine_adjust",
+        "默认调节资源 hsl_v1": runtime_paths.app_root / "Resources" / "DefaultAdjustBundle" / "hsl_v1",
+        "中文系统字体 zh-hans.ttf": runtime_paths.app_root / "Resources" / "Font" / "SystemFont" / "zh-hans.ttf",
     }
     missing = [name for name, path in required.items() if not path.exists()]
     if missing:
@@ -151,7 +154,10 @@ def run_jianying_preflight(
         return _result(JianyingPreflightStatus.ENVIRONMENT_ERROR, f"Windows 剪映自动化运行环境不可用：{exc}",
                        version=version, version_source=version_source)
     return _result(JianyingPreflightStatus.READY, "剪映 5.9 运行环境已就绪", version=version,
-                   version_source=version_source, details={"required_resource_count": len(required)})
+                   version_source=version_source, details={"required_resource_count": len(required),
+                                                           "draft_root": str(runtime_paths.draft_root),
+                                                           "user_data_root": str(runtime_paths.user_data_root),
+                                                           "app_root": str(runtime_paths.app_root)})
 
 
 def require_jianying_ready(settings: Mapping[str, object]) -> JianyingPreflightResult:

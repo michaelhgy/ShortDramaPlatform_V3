@@ -43,6 +43,7 @@ def main() -> int:
     parser.add_argument("--pairing", required=True, type=Path)
     parser.add_argument("--draft-root", required=True, type=Path)
     parser.add_argument("--user-data-root", required=True, type=Path)
+    parser.add_argument("--jianying-app-root", required=True, type=Path)
     parser.add_argument("--real-photo-dir", required=True, type=Path)
     parser.add_argument("--real-photo-files", default="", help="JSON array of six task-reserved real-photo paths")
     parser.add_argument("--draft-name", required=True)
@@ -93,6 +94,7 @@ def main() -> int:
         "--pairing", str(args.pairing),
         "--draft-root", str(args.draft_root),
         "--user-data-root", str(args.user_data_root),
+        "--jianying-app-root", str(args.jianying_app_root),
         "--real-photo-dir", str(args.real_photo_dir),
         "--real-photo-files", args.real_photo_files,
         "--draft-name", args.draft_name,

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from server.jianying_preflight import JianyingPreflightStatus, require_jianying_ready, run_jianying_preflight
+from server.jianying_runtime_paths import resolve_jianying_runtime_paths
 
 
 def _runtime(tmp_path: Path, *, draft: bool = True, font: bool = True) -> tuple[dict[str, object], dict[str, str]]:
@@ -42,6 +43,32 @@ def test_valid_59_runtime_is_ready(tmp_path):
     result = _run(settings, environ)
     assert result.status == JianyingPreflightStatus.READY
     assert result.version == "5.9.0.11632"
+
+
+def test_runtime_paths_find_user_data_by_name_instead_of_fixed_parent_depth(tmp_path):
+    settings, environ = _runtime(tmp_path)
+    nested_draft = tmp_path / "JianyingPro" / "User Data" / "custom" / "drafts"
+    nested_draft.mkdir(parents=True)
+    settings["jianying_draft_root"] = str(nested_draft)
+
+    paths = resolve_jianying_runtime_paths(settings, environ=environ)
+
+    assert paths.user_data_root == tmp_path / "JianyingPro" / "User Data"
+    assert paths.app_root == Path(str(settings["jianying_executable"])).parent
+
+
+def test_runtime_paths_reject_unrelated_draft_root_instead_of_using_default_user_data(tmp_path):
+    settings, environ = _runtime(tmp_path)
+    unrelated = tmp_path / "other" / "drafts"
+    unrelated.mkdir(parents=True)
+    settings["jianying_draft_root"] = str(unrelated)
+
+    try:
+        resolve_jianying_runtime_paths(settings, environ=environ)
+    except RuntimeError as exc:
+        assert "无法从已配置的剪映草稿目录定位" in str(exc)
+    else:
+        raise AssertionError("expected unrelated draft root to be rejected")
 
 
 def test_empty_jianying_resource_cache_is_not_a_generation_blocker(tmp_path):

@@ -18,6 +18,7 @@ def main() -> int:
     parser.add_argument("--pairing", required=True, type=Path)
     parser.add_argument("--draft-root", required=True, type=Path)
     parser.add_argument("--user-data-root", required=True, type=Path)
+    parser.add_argument("--jianying-app-root", required=True, type=Path)
     parser.add_argument("--real-photo-dir", required=True, type=Path)
     parser.add_argument("--real-photo-files", default="", help="JSON array of the six reserved image paths")
     parser.add_argument("--draft-name", required=True)
@@ -36,6 +37,8 @@ def main() -> int:
             raise FileNotFoundError(path)
     if not args.user_data_root.is_dir():
         raise NotADirectoryError(f"剪映User Data目录不存在：{args.user_data_root}")
+    if not args.jianying_app_root.is_dir():
+        raise NotADirectoryError(f"剪映程序资源目录不存在：{args.jianying_app_root}")
     if not args.real_photo_dir.is_dir():
         raise NotADirectoryError(f"真人图片素材库不存在：{args.real_photo_dir}")
     pairing = json.loads(args.pairing.read_text(encoding="utf-8-sig"))
@@ -46,7 +49,9 @@ def main() -> int:
         bgm=probe_media(args.bgm, audio_only=True), bgm_id=args.bgm_id, bgm_title=args.bgm_title,
         real_photo_dir=args.real_photo_dir, real_photo_files=real_photo_files or None,
     )
-    draft_path = write_native_draft(plan=plan, draft_root=args.draft_root, draft_name=args.draft_name, user_data_root=args.user_data_root)
+    draft_path = write_native_draft(plan=plan, draft_root=args.draft_root, draft_name=args.draft_name,
+                                    user_data_root=args.user_data_root,
+                                    jianying_app_root=args.jianying_app_root)
     report = report_payload(plan=plan, draft_path=draft_path, draft_name=args.draft_name)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

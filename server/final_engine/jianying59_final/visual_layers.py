@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-import os
 import random
 import uuid
 from pathlib import Path
@@ -229,17 +228,7 @@ def _track_segment(material_id: str, duration_us: int, index: int) -> dict[str, 
         "uniform_scale": None, "visible": True, "volume": 1.0}
 
 
-def _find_app_root() -> Path:
-    root = Path(os.environ.get("LOCALAPPDATA", "")) / "JianyingPro" / "Apps"
-    for candidate in sorted(root.iterdir(), reverse=True) if root.is_dir() else []:
-        bundle = candidate / "Resources" / "DefaultAdjustBundle"
-        if (bundle / "combine_adjust").is_dir() and (bundle / "hsl_v1").is_dir():
-            return candidate
-    raise RuntimeError("当前剪映安装中未找到5.9调节资源")
-
-
-def _append_adjustment(document: dict[str, Any], decision: dict[str, Any], duration_us: int) -> None:
-    app_root = _find_app_root()
+def _append_adjustment(document: dict[str, Any], decision: dict[str, Any], duration_us: int, app_root: Path) -> None:
     materials = document.setdefault("materials", {})
     placeholder_id = new_id()
     materials.setdefault("placeholders", []).append({"id": placeholder_id, "material_resource_id": "", "name": "F05_GLOBAL_ADJUST", "type": "adjust"})
@@ -316,7 +305,8 @@ def _append_real_photo_compound(document: dict[str, Any], layer: dict[str, Any],
     document.setdefault("tracks", []).append({"attribute": 0, "flag": 0, "id": new_id(), "is_default_name": False, "name": "F06_REAL_PHOTO_COMPOUND", "segments": [parent], "type": "video"})
 
 
-def append_visual_layers(*, content_path: Path, plan: dict[str, Any], user_data_root: Path, rectangle_payload: Path | None) -> None:
+def append_visual_layers(*, content_path: Path, plan: dict[str, Any], user_data_root: Path,
+                         jianying_app_root: Path, rectangle_payload: Path | None) -> None:
     document = json.loads(content_path.read_text(encoding="utf-8"))
     duration_us = int(plan["duration_us"])
     materials = document.setdefault("materials", {})
@@ -324,7 +314,8 @@ def append_visual_layers(*, content_path: Path, plan: dict[str, Any], user_data_
         material = _effect_material(item, user_data_root)
         materials.setdefault("video_effects", []).append(material)
         document.setdefault("tracks", []).append({"attribute": 0, "flag": 0, "id": new_id(), "is_default_name": False, "name": f"F0{3 + index}_GLOBAL_EFFECT", "segments": [_track_segment(material["id"], duration_us, index)], "type": "effect"})
-    _append_adjustment(document, plan["tracks"]["global_layers"]["adjustment"], duration_us)
+    _append_adjustment(document, plan["tracks"]["global_layers"]["adjustment"], duration_us,
+                       jianying_app_root)
     _append_real_photo_compound(document, plan["tracks"]["real_photo"], duration_us, rectangle_payload, user_data_root)
     order = {
         "F01_VIRAL_MAIN": 1, "F02_TEMPLATE_LOOP": 2, "F03_GLOBAL_EFFECT": 3,

@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 import json
 from pathlib import Path
@@ -86,7 +87,8 @@ class V2FinalEngineTests(unittest.TestCase):
         root = Path(self.temp.name)
         command = runner._processed_composition_command(
             source=root / "素材-1.mp4", template_video=root / "模板.mp4", pairing=root / "配对.json",
-            draft_root=root / "drafts", user_data_root=root / "User Data", real_photo_dir=root / "真人图片",
+            draft_root=root / "drafts", user_data_root=root / "User Data", jianying_app_root=root / "JianyingPro",
+            real_photo_dir=root / "真人图片",
             draft_prefix="2026-08-28-账号-剧集-成片", account_id="账号", midroll=root / "中插01.mp4",
             endroll=root / "尾插01.mp4", bgm=root / "bgm.m4a", work_dir=root / "work",
         )
@@ -94,6 +96,7 @@ class V2FinalEngineTests(unittest.TestCase):
         self.assertTrue(command[1].endswith("run_jianying_composition_batch.py"))
         self.assertEqual(str(root / "素材-1.mp4"), command[command.index("--source-file") + 1])
         self.assertIn("--no-bgm-auto-replenish", command)
+        self.assertEqual(str(root / "JianyingPro"), command[command.index("--jianying-app-root") + 1])
         self.assertEqual("compatibility", command[command.index("--local-vision-ai-mode") + 1])
 
     def test_final_work_dir_is_under_the_production_task_cache(self) -> None:
@@ -108,6 +111,18 @@ class V2FinalEngineTests(unittest.TestCase):
             {"source": str(source), "status": "FAILED", "error": "FileNotFoundError: 缺少模板配对参数"},
         ]}, ensure_ascii=False), encoding="utf-8")
         self.assertEqual("FileNotFoundError: 缺少模板配对参数", runner._batch_failure_detail(summary, source))
+
+    def test_short_lived_worker_trace_is_relayed_after_process_exit(self) -> None:
+        trace = Path(self.temp.name) / "执行过程.jsonl"
+        trace.write_text(json.dumps({"phase": "写入成片草稿失败", "message": "RuntimeError: 明确原因"}, ensure_ascii=False) + "\n", encoding="utf-8")
+        task = service.create_task({"source_id": "trace-final", "account_name": "账号", "drama_name": "剧集", "planned_publish_at": "2026-08-27T08:00"})
+        state = {"seen": 0}
+        with patch.object(service, "record_executor_trace") as record:
+            relayed = runner._relay_worker_trace(video_id="video", task_id=str(task["id"]), worker_trace=trace,
+                                                 state=state, lock=threading.Lock())
+        self.assertTrue(relayed)
+        self.assertEqual(1, state["seen"])
+        self.assertEqual("写入成片草稿失败", record.call_args.kwargs["phase"])
 
     def test_retry_cleans_only_failed_video_process_files_and_requeues_same_task(self) -> None:
         task = service.create_task({"source_id": "retry-final", "account_name": "账号", "drama_name": "剧集", "planned_publish_at": "2026-08-27T08:00"})

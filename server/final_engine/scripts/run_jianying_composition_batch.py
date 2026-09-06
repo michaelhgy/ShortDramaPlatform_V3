@@ -9,6 +9,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from server.runtime_process import no_window_kwargs, worker_command
@@ -161,6 +162,14 @@ def run(command: list[str]) -> None:
         raise RuntimeError(text or f"Command failed: {command[1]}")
 
 
+def run_stage(args: argparse.Namespace, phase: str, message: str, command: list[str]) -> None:
+    """Record one useful start/end pair for a potentially slow major stage."""
+    write_trace(args.trace_path, phase, message)
+    started = time.monotonic()
+    run(command)
+    write_trace(args.trace_path, f"{phase}完成", f"{phase}已完成，耗时 {time.monotonic() - started:.1f} 秒")
+
+
 def opening_start(report: Path) -> float:
     decision = read_json(report).get("decision", {})
     return float(decision["cut_start_seconds"]) if decision.get("action") == "AUTO_CUT_LOCAL_VISION" else 0.0
@@ -262,6 +271,7 @@ def main() -> int:
     parser.add_argument("--pairing", required=True, type=Path)
     parser.add_argument("--draft-root", required=True, type=Path)
     parser.add_argument("--user-data-root", required=True, type=Path)
+    parser.add_argument("--jianying-app-root", required=True, type=Path)
     parser.add_argument("--real-photo-dir", required=True, type=Path)
     parser.add_argument("--real-photo-files", default="", help="JSON array of six task-reserved real-photo paths")
     parser.add_argument("--draft-prefix", required=True)
@@ -298,7 +308,8 @@ def main() -> int:
         raise SystemExit("--draft-suffix is empty or contains an illegal Windows path character")
     if args.source_file is None and args.viral_dir is None:
         raise SystemExit("Specify --source-file or --viral-dir")
-    for path in (args.template_video, args.pairing, args.draft_root, args.user_data_root, args.real_photo_dir, args.midroll, args.endroll):
+    for path in (args.template_video, args.pairing, args.draft_root, args.user_data_root,
+                 args.jianying_app_root, args.real_photo_dir, args.midroll, args.endroll):
         if not path.exists():
             raise SystemExit(f"Required path missing: {path}")
     if args.bgm and not args.bgm.is_file():
@@ -330,9 +341,13 @@ def main() -> int:
     vision_model = {"compatibility": "qwen2.5vl:3b", "quality": "qwen2.5vl:7b"}.get(args.local_vision_ai_mode)
     if vision_model:
         write_trace(args.trace_path, "启动本地视觉服务", "正在确认本地视觉分析服务可用")
+        started = time.monotonic()
         ensure_local_ollama(vision_model)
+        write_trace(args.trace_path, "本地视觉服务就绪", f"本地视觉分析服务已就绪，耗时 {time.monotonic() - started:.1f} 秒")
     write_trace(args.trace_path, "准备背景音乐", "正在准备本次成片草稿需要的背景音乐")
+    started = time.monotonic()
     bgm_pool = replenish_ready_bgm(args)
+    write_trace(args.trace_path, "背景音乐准备完成", f"背景音乐已准备好，耗时 {time.monotonic() - started:.1f} 秒")
     results: list[dict[str, Any]] = []
     for source in sources:
         ordinal = natural_index(source)
@@ -352,7 +367,6 @@ def main() -> int:
         proxy_report = reports / "清理代理.json"
         draft_report = reports / "剪映成片草稿.json"
         try:
-            write_trace(args.trace_path, "分析片头", f"正在分析素材 {source.name} 的片头")
             selected_bgm = None
             if args.bgm_ready_manifest:
                 selected_bgm = select_ready_bgm(
@@ -364,16 +378,14 @@ def main() -> int:
                 opening_command.extend(["--model", vision_model])
             else:
                 opening_command.append("--disable-vlm")
-            run(opening_command)
+            run_stage(args, "分析片头", f"正在分析素材 {source.name} 的片头", opening_command)
             start = opening_start(cover_report)
             capped_end = min(probe_duration(source), start + source_budget)
-            write_trace(args.trace_path, "分析片尾", f"正在分析素材 {source.name} 的片尾")
-            run(worker_command("server.final_engine.scripts.detect_tail_guidance", SCRIPT_DIR / "detect_tail_guidance.py", ["--video", str(source), "--report", str(tail_report),
+            run_stage(args, "分析片尾", f"正在分析素材 {source.name} 的片尾", worker_command("server.final_engine.scripts.detect_tail_guidance", SCRIPT_DIR / "detect_tail_guidance.py", ["--video", str(source), "--report", str(tail_report),
                 "--evidence-dir", str(evidence / "片尾"), "--source-start", f"{start:.6f}", "--source-end", f"{capped_end:.6f}",
             ]))
             end = tail_end(tail_report, capped_end)
-            write_trace(args.trace_path, "检测画面边缘", f"正在检查素材 {source.name} 的黑边")
-            run(worker_command("server.final_engine.scripts.detect_black_bars", SCRIPT_DIR / "detect_black_bars.py", ["--video", str(source), "--report", str(black_bar_report)]))
+            run_stage(args, "检测画面边缘", f"正在检查素材 {source.name} 的黑边", worker_command("server.final_engine.scripts.detect_black_bars", SCRIPT_DIR / "detect_black_bars.py", ["--video", str(source), "--report", str(black_bar_report)]))
             active_picture = active_picture_from_black_bar_report(black_bar_report, source)
             title_command = worker_command("server.final_engine.scripts.detect_drama_title_region", SCRIPT_DIR / "detect_drama_title_region.py", ["--video", str(source), "--report", str(title_report),
                 "--evidence-dir", str(evidence / "剧名"), "--source-start", f"{start:.6f}", "--source-end", f"{end:.6f}",
@@ -383,14 +395,14 @@ def main() -> int:
                 title_command.extend(["--model", vision_model])
             else:
                 title_command.append("--disable-vlm")
-            write_trace(args.trace_path, "识别剧名区域", f"正在识别素材 {source.name} 的剧名区域")
-            run(title_command)
+            run_stage(args, "识别剧名区域", f"正在识别素材 {source.name} 的剧名区域", title_command)
             command = worker_command("server.final_engine.scripts.generate_composition_from_detection_reports", SCRIPT_DIR / "generate_composition_from_detection_reports.py", [
                 "--viral-source", str(source), "--cover-report", str(cover_report), "--tail-report", str(tail_report), "--title-report", str(title_report), "--black-bar-report", str(black_bar_report),
                 "--clean-proxy", str(proxy), "--clean-proxy-report", str(proxy_report),
                 "--template-video", str(args.template_video), "--pairing", str(args.pairing),
                 "--draft-root", str(args.draft_root), "--draft-name", draft_name, "--account-id", args.account_id,
                 "--user-data-root", str(args.user_data_root),
+                "--jianying-app-root", str(args.jianying_app_root),
                 "--real-photo-dir", str(args.real_photo_dir),
                 "--real-photo-files", args.real_photo_files,
                 "--midroll", str(args.midroll), "--endroll", str(args.endroll), "--report", str(draft_report),
@@ -402,13 +414,12 @@ def main() -> int:
                     "--bgm", str(selected_bgm["path"]), "--bgm-id", str(selected_bgm["music_id"]),
                     "--bgm-title", str(selected_bgm.get("title", selected_bgm["music_id"])),
                 ])
-            write_trace(args.trace_path, "写入成片草稿", f"正在生成素材 {source.name} 的剪映成片草稿")
-            run(command)
+            run_stage(args, "写入成片草稿", f"正在生成素材 {source.name} 的剪映成片草稿", command)
             export_job = None
             if args.export_queue and args.finished_output_dir:
                 output = args.finished_output_dir / finished_output_name(source)
                 export_task = item_dir / "导出任务"
-                run(worker_command("server.final_engine.scripts.prepare_finished_video_export", SCRIPT_DIR / "prepare_finished_video_export.py", [
+                run_stage(args, "写入导出队列", f"正在写入素材 {source.name} 的后续导出任务", worker_command("server.final_engine.scripts.prepare_finished_video_export", SCRIPT_DIR / "prepare_finished_video_export.py", [
                     "--composition-report", str(draft_report), "--task-root", str(export_task),
                     "--output", str(output), "--queue", str(args.export_queue),
                     "--queue-job-id", f"finished-{hashlib.sha256(str(output).encode('utf-8')).hexdigest()[:20]}",

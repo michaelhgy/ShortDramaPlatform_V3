@@ -537,7 +537,8 @@ def _account_motion_keyframes(path: list[list[float]], duration_us: int) -> list
     return keyframes
 
 
-def write_native_draft(*, plan: dict[str, Any], draft_root: Path, draft_name: str, user_data_root: Path) -> Path:
+def write_native_draft(*, plan: dict[str, Any], draft_root: Path, draft_name: str,
+                       user_data_root: Path, jianying_app_root: Path) -> Path:
     """Create a new native draft once.  Existing drafts are never overwritten."""
     validate_plan(plan)
     target = draft_root / draft_name
@@ -587,7 +588,8 @@ def write_native_draft(*, plan: dict[str, Any], draft_root: Path, draft_name: st
         raise RuntimeError("5.9原生写入后缺少draft_content.json")
     rectangle_payload = _latest_cache_payload(user_data_root / "Cache" / "effect" / "636077", "矩形蒙版")
     if "global_layers" in tracks:
-        append_visual_layers(content_path=content_path, plan=plan, user_data_root=user_data_root, rectangle_payload=rectangle_payload)
+        append_visual_layers(content_path=content_path, plan=plan, user_data_root=user_data_root,
+                             jianying_app_root=jianying_app_root, rectangle_payload=rectangle_payload)
     _attach_native_mask_paths(content_path, user_data_root)
     return target
 

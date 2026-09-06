@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from server import v2_file_service as service
+from server.jianying_runtime_paths import resolve_jianying_runtime_paths
 from server.runtime_process import no_window_kwargs, worker_command
 
 # Keep V2's runtime self-contained, but use the same verified processing
@@ -63,17 +64,27 @@ def _batch_failure_detail(summary_path: Path, source: Path) -> str | None:
         return None
 
 
-def _start_heartbeat(*, video_id: str, task_id: str, stop: threading.Event, worker_trace: Path) -> threading.Thread:
+def _relay_worker_trace(*, video_id: str, task_id: str, worker_trace: Path,
+                        state: dict[str, int], lock: threading.Lock) -> bool:
+    with lock:
+        entries = _worker_trace_entries(worker_trace)
+        seen = state["seen"]
+        if len(entries) <= seen:
+            return False
+        for phase, message, occurred_at in entries[seen:]:
+            service.record_executor_trace(executor_id="final_generator", run_id=video_id,
+                                          production_task_id=task_id, phase=phase, message=message,
+                                          created_at=occurred_at)
+        state["seen"] = len(entries)
+        return True
+
+
+def _start_heartbeat(*, video_id: str, task_id: str, stop: threading.Event, worker_trace: Path,
+                     relay_state: dict[str, int], relay_lock: threading.Lock) -> threading.Thread:
     def heartbeat() -> None:
-        seen = 0
         while not stop.wait(10):
-            entries = _worker_trace_entries(worker_trace)
-            if len(entries) > seen:
-                for phase, message, occurred_at in entries[seen:]:
-                    service.record_executor_trace(executor_id="final_generator", run_id=video_id,
-                                                  production_task_id=task_id, phase=phase, message=message,
-                                                  created_at=occurred_at)
-                seen = len(entries)
+            if _relay_worker_trace(video_id=video_id, task_id=task_id, worker_trace=worker_trace,
+                                   state=relay_state, lock=relay_lock):
                 continue
             service.record_executor_trace(executor_id="final_generator", run_id=video_id,
                                           production_task_id=task_id, phase="等待成片草稿生成",
@@ -137,7 +148,7 @@ def _numbered(root: Path, prefix: str) -> Path | None:
 
 
 def _processed_composition_command(*, source: Path, template_video: Path, pairing: Path,
-                                   draft_root: Path, user_data_root: Path, real_photo_dir: Path,
+                                   draft_root: Path, user_data_root: Path, jianying_app_root: Path, real_photo_dir: Path,
                                    draft_prefix: str, account_id: str, midroll: Path, endroll: Path,
                                    bgm: Path, work_dir: Path, real_photo_files: list[Path] | None = None,
                                    local_vision_ai_mode: str = "compatibility") -> list[str]:
@@ -146,6 +157,7 @@ def _processed_composition_command(*, source: Path, template_video: Path, pairin
         "--source-file", str(source),
         "--template-video", str(template_video), "--pairing", str(pairing),
         "--draft-root", str(draft_root), "--user-data-root", str(user_data_root),
+        "--jianying-app-root", str(jianying_app_root),
         "--real-photo-dir", str(real_photo_dir),
         "--real-photo-files", json.dumps([str(path) for path in (real_photo_files or [])], ensure_ascii=False),
         "--draft-prefix", draft_prefix, "--account-id", account_id,
@@ -186,6 +198,7 @@ def run_finished_video(video_id: str) -> None:
     with _PROCESS_LOCK:
         _RUN_TOKENS[video_id] = token
     try:
+        input_started = time.monotonic()
         if not template or not Path(str(template["video_path"] or "")).is_file() or not Path(str(template["pairing_path"] or "")).is_file():
             raise RuntimeError("对应模板视频或同源配对参数尚未准备好")
         if not getattr(sys, "frozen", False) and not FINAL_SCRIPT.is_file():
@@ -202,22 +215,32 @@ def run_finished_video(video_id: str) -> None:
         music = [path for path in music_root.iterdir() if path.is_file() and path.suffix.lower() in BGM_EXTENSIONS]
         if not music:
             raise RuntimeError("V2 生成资源/BGM 缺少可用音乐")
+        service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
+                                      phase="输入检查完成",
+                                      message=f"模板、素材、真人图片和背景音乐均已准备好，耗时 {time.monotonic() - input_started:.1f} 秒")
         _set_video(video_id, "generating", started_at=service.now_text())
         # The configured limit covers the complete generation attempt, not
         # only the final communicate() call.
         settings = service.get_v2_settings()
         timeout_seconds = int(settings.get("final_generation_timeout_min", 30)) * 60
         deadline = time.monotonic() + timeout_seconds
+        runtime_started = time.monotonic()
+        # Scheduled tasks bypass the button-level preflight, so they must use
+        # the same configured-runtime gate before starting a worker.
+        from server.jianying_preflight import require_jianying_ready
+        require_jianying_ready(settings)
+        runtime_paths = resolve_jianying_runtime_paths(settings)
+        service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
+                                      phase="剪映路径检查完成",
+                                      message=f"已确认当前剪映程序、用户数据和草稿目录，耗时 {time.monotonic() - runtime_started:.1f} 秒")
         work_dir = _final_work_dir(task_root=Path(str(row["root_path"])), video_id=video_id)
         work_dir.mkdir(parents=True, exist_ok=True)
-        draft_root = Path(str(service.get_v2_settings().get("jianying_draft_root") or "")).expanduser()
-        if not draft_root.is_dir():
-            raise RuntimeError("尚未配置剪映草稿目录")
         draft_prefix = f"{row['created_date']}-{row['account_name']}-{row['drama_name']}-成片"
         command = _processed_composition_command(
             source=Path(str(row["file_path"])), template_video=Path(str(template["video_path"])),
-            pairing=Path(str(template["pairing_path"])), draft_root=draft_root,
-            user_data_root=draft_root.parents[1], real_photo_dir=real_photo_dir, real_photo_files=real_photo_files,
+            pairing=Path(str(template["pairing_path"])), draft_root=runtime_paths.draft_root,
+            user_data_root=runtime_paths.user_data_root, jianying_app_root=runtime_paths.app_root,
+            real_photo_dir=real_photo_dir, real_photo_files=real_photo_files,
             draft_prefix=draft_prefix, account_id=str(row["account_name"]), midroll=midroll,
             endroll=endroll, bgm=random.choice(music), work_dir=work_dir,
             local_vision_ai_mode=str(settings.get("local_vision_ai_mode") or "compatibility"),
@@ -238,7 +261,10 @@ def run_finished_video(video_id: str) -> None:
         service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
                                       phase="成片生成中", message="成片生成子程序已启动", detail={"pid": process.pid})
         heartbeat_stop = threading.Event()
-        _start_heartbeat(video_id=video_id, task_id=task_id, stop=heartbeat_stop, worker_trace=worker_trace)
+        relay_state = {"seen": 0}
+        relay_lock = threading.Lock()
+        _start_heartbeat(video_id=video_id, task_id=task_id, stop=heartbeat_stop, worker_trace=worker_trace,
+                         relay_state=relay_state, relay_lock=relay_lock)
         try:
             remaining = max(0.1, deadline - time.monotonic())
             stdout, stderr = process.communicate(timeout=remaining)
@@ -254,6 +280,8 @@ def run_finished_video(video_id: str) -> None:
             raise subprocess.TimeoutExpired(command, timeout_seconds, output=stdout, stderr=stderr)
         finally:
             heartbeat_stop.set()
+            _relay_worker_trace(video_id=video_id, task_id=task_id, worker_trace=worker_trace,
+                                state=relay_state, lock=relay_lock)
             with _PROCESS_LOCK:
                 if _ACTIVE_PROCESSES.get(video_id) is process:
                     _ACTIVE_PROCESSES.pop(video_id, None)
@@ -287,9 +315,10 @@ def run_finished_video(video_id: str) -> None:
         outcome = "timed_out"
     except Exception as exc:
         if _run_is_current(video_id, token):
+            detail = f"{type(exc).__name__}: {exc}"
             service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
-                                          phase="失败", message=str(exc))
-            _set_video(video_id, "generation_failed", error_message=str(exc), finished_at=service.now_text())
+                                          phase="失败", message=detail)
+            _set_video(video_id, "generation_failed", error_message=detail, finished_at=service.now_text())
     finally:
         stale_run = not _run_is_current(video_id, token)
         with _PROCESS_LOCK:
