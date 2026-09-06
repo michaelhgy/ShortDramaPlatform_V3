@@ -34,25 +34,46 @@ def _write_log_tail(path: Path, stdout: str | None, stderr: str | None) -> None:
     path.write_text(text[-_LOG_TAIL_LIMIT:], encoding="utf-8")
 
 
-def _latest_worker_trace(path: Path) -> tuple[str, str] | None:
+def _worker_trace_entries(path: Path) -> list[tuple[str, str, str | None]]:
     try:
-        for line in reversed(path.read_text(encoding="utf-8")[-4096:].splitlines()):
+        entries: list[tuple[str, str, str | None]] = []
+        for line in path.read_text(encoding="utf-8")[-65536:].splitlines():
             payload = json.loads(line)
             if payload.get("phase") and payload.get("message"):
-                return str(payload["phase"]), str(payload["message"])
+                occurred_at = payload.get("occurred_at")
+                entries.append((str(payload["phase"]), str(payload["message"]),
+                                str(occurred_at) if occurred_at else None))
+        return entries
     except (OSError, json.JSONDecodeError):
-        pass
-    return None
+        return []
+
+
+def _batch_failure_detail(summary_path: Path, source: Path) -> str | None:
+    """Return the per-video worker error instead of a bare process exit code."""
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        result = next(
+            (item for item in summary.get("results", [])
+             if str(item.get("source") or "") == str(source)),
+            None,
+        )
+        error = str((result or {}).get("error") or "").strip()
+        return error or None
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None
 
 
 def _start_heartbeat(*, video_id: str, task_id: str, stop: threading.Event, worker_trace: Path) -> threading.Thread:
     def heartbeat() -> None:
+        seen = 0
         while not stop.wait(10):
-            latest = _latest_worker_trace(worker_trace)
-            if latest:
-                phase, message = latest
-                service.record_executor_trace(executor_id="final_generator", run_id=video_id,
-                                              production_task_id=task_id, phase=phase, message=message)
+            entries = _worker_trace_entries(worker_trace)
+            if len(entries) > seen:
+                for phase, message, occurred_at in entries[seen:]:
+                    service.record_executor_trace(executor_id="final_generator", run_id=video_id,
+                                                  production_task_id=task_id, phase=phase, message=message,
+                                                  created_at=occurred_at)
+                seen = len(entries)
                 continue
             service.record_executor_trace(executor_id="final_generator", run_id=video_id,
                                           production_task_id=task_id, phase="等待成片草稿生成",
@@ -238,9 +259,11 @@ def run_finished_video(video_id: str) -> None:
                     _ACTIVE_PROCESSES.pop(video_id, None)
         result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
         _write_log_tail(work_dir / "成片生成日志.txt", result.stdout, result.stderr)
-        if result.returncode:
-            raise RuntimeError((result.stderr or result.stdout or "成片生成器退出失败").strip()[-2000:])
         summary_path = work_dir / "批量结果.json"
+        if result.returncode:
+            detail = _batch_failure_detail(summary_path, Path(str(row["file_path"])))
+            fallback = (result.stderr or result.stdout or "成片生成器退出失败").strip()[-2000:]
+            raise RuntimeError(detail or fallback)
         if not summary_path.is_file():
             raise RuntimeError("成片生成器未写入批量结果")
         summary = json.loads(summary_path.read_text(encoding="utf-8"))

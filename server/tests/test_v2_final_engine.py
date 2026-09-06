@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -98,6 +99,15 @@ class V2FinalEngineTests(unittest.TestCase):
     def test_final_work_dir_is_under_the_production_task_cache(self) -> None:
         root = Path(self.temp.name) / "production-task"
         self.assertEqual(root / "缓存" / "成片" / "video-1", runner._final_work_dir(task_root=root, video_id="video-1"))
+
+    def test_batch_failure_detail_uses_the_actual_source_error(self) -> None:
+        root = Path(self.temp.name)
+        source = root / "素材-1.mp4"
+        summary = root / "批量结果.json"
+        summary.write_text(json.dumps({"results": [
+            {"source": str(source), "status": "FAILED", "error": "FileNotFoundError: 缺少模板配对参数"},
+        ]}, ensure_ascii=False), encoding="utf-8")
+        self.assertEqual("FileNotFoundError: 缺少模板配对参数", runner._batch_failure_detail(summary, source))
 
     def test_retry_cleans_only_failed_video_process_files_and_requeues_same_task(self) -> None:
         task = service.create_task({"source_id": "retry-final", "account_name": "账号", "drama_name": "剧集", "planned_publish_at": "2026-08-27T08:00"})

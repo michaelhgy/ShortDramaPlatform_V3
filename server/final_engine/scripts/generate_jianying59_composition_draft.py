@@ -55,4 +55,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        # Frozen workers have no console for Python's default traceback.  Send
+        # the real cause back to the parent process instead of only exit code 1.
+        print(json.dumps({"error": type(exc).__name__, "message": str(exc)}, ensure_ascii=True), file=sys.stderr)
+        raise SystemExit(1)

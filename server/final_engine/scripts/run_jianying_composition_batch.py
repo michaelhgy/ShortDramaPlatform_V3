@@ -33,7 +33,11 @@ def write_trace(path: Path | None, phase: str, message: str) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"phase": phase, "message": message}, ensure_ascii=False) + "\n")
+        handle.write(json.dumps({
+            "occurred_at": datetime.now().isoformat(timespec="milliseconds"),
+            "phase": phase,
+            "message": message,
+        }, ensure_ascii=False) + "\n")
 
 
 def probe_duration(path: Path) -> float:
@@ -147,7 +151,14 @@ def run(command: list[str]) -> None:
     result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
     if result.returncode:
         detail = result.stderr[-3000:] or result.stdout[-3000:]
-        raise RuntimeError(detail.strip() or f"Command failed: {command[1]}")
+        text = detail.strip()
+        try:
+            payload = json.loads(text)
+            if isinstance(payload, dict) and payload.get("error") and payload.get("message"):
+                text = f"{payload['error']}: {payload['message']}"
+        except json.JSONDecodeError:
+            pass
+        raise RuntimeError(text or f"Command failed: {command[1]}")
 
 
 def opening_start(report: Path) -> float:
@@ -413,8 +424,9 @@ def main() -> int:
             })
             write_trace(args.trace_path, "成片草稿完成", f"素材 {source.name} 的剪映成片草稿已完成")
         except Exception as exc:
-            write_trace(args.trace_path, "成片草稿失败", f"素材 {source.name}：{exc}")
-            results.append({"source": str(source), "status": "FAILED", "error": str(exc)})
+            detail = f"{type(exc).__name__}: {exc}"
+            write_trace(args.trace_path, "成片草稿失败", f"素材 {source.name}：{detail}")
+            results.append({"source": str(source), "status": "FAILED", "error": detail})
     summary = {
         "schema": "jianying_composition_batch_v1", "requested_count": len(sources),
         "completed_count": sum(row["status"] == "STRUCTURAL_PASS_VISUAL_PENDING" for row in results), "source_budget_seconds": round(source_budget, 3),

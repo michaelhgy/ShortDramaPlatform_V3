@@ -1038,7 +1038,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
 
         {/* Right Column (8 cols): Current Account × Drama Production Workspace */}
         {selectedUnit && (
-          <div className="xl:col-span-8 bg-white rounded-3xl p-5 border border-black/[0.06] shadow-xs flex flex-col h-[calc(100vh-185px)] min-h-[640px] space-y-4">
+          <div className="xl:col-span-8 bg-white rounded-3xl p-5 border border-black/[0.06] shadow-xs flex flex-col h-[calc(100vh-185px)] min-h-[640px] space-y-4 [@media(max-height:1100px)]:overflow-y-auto [@media(max-height:1100px)]:pr-2">
             
             {/* Header Area (Fixed at top) */}
             <div className="pb-3.5 border-b border-black/[0.06] shrink-0 space-y-3">
@@ -1398,7 +1398,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
             </div>
 
             {/* SECTION 3: 成片区域 (Material-Driven Final Videos - 3-Stage Progress Rail + Independent Vertical Scroll, No Scrollbars) */}
-            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-black/[0.06] flex-1 flex flex-col min-h-0 space-y-2.5">
+            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-black/[0.06] flex-1 flex flex-col min-h-0 space-y-2.5 [@media(max-height:1100px)]:flex-none [@media(max-height:1100px)]:min-h-[420px]">
               
               {/* Header: Title & Action Button */}
               <div className="flex items-center justify-between gap-2.5 shrink-0">

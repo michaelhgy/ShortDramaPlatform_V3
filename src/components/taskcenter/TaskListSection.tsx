@@ -741,7 +741,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                           {task.fileSizeMb && (
                             <>
                               <span>·</span>
-                              <span>产物文件: <strong className="font-mono text-emerald-700 font-bold">{task.fileSizeMb}MB</strong></span>
+                              <span>产物文件: <strong className="font-mono text-emerald-700 font-bold">{task.fileSizeMb.toFixed(1)}MB</strong></span>
                             </>
                           )}
                         </div>
