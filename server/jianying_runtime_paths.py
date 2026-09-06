@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -24,6 +25,15 @@ def _user_data_from_draft_root(draft_root: Path) -> Path | None:
     return None
 
 
+def _default_user_data_root(environ: Mapping[str, str] | None) -> Path | None:
+    environment = os.environ if environ is None else environ
+    local_app_data = str(environment.get("LOCALAPPDATA") or "").strip()
+    if not local_app_data:
+        return None
+    candidate = Path(local_app_data).expanduser() / "JianyingPro" / "User Data"
+    return candidate if candidate.is_dir() else None
+
+
 def resolve_jianying_runtime_paths(
     settings: Mapping[str, object], *, environ: Mapping[str, str] | None = None,
 ) -> JianyingRuntimePaths:
@@ -39,11 +49,17 @@ def resolve_jianying_runtime_paths(
     if not draft_root.is_dir():
         raise RuntimeError("已配置的剪映草稿目录不存在或不是目录")
 
-    user_data_root = _user_data_from_draft_root(draft_root)
+    user_data_text = str(settings.get("jianying_user_data_root") or "").strip()
+    user_data_root = Path(user_data_text).expanduser() if user_data_text else None
+    if user_data_root is not None and not user_data_root.is_dir():
+        raise RuntimeError("已配置的剪映用户数据目录不存在或不是目录")
+    if user_data_root is None:
+        user_data_root = _user_data_from_draft_root(draft_root)
+    if user_data_root is None:
+        user_data_root = _default_user_data_root(environ)
     if user_data_root is None:
         raise RuntimeError(
-            "无法从已配置的剪映草稿目录定位剪映用户数据目录；请在系统设置中选择当前剪映用户的草稿目录，"
-            "其路径应位于剪映 User Data 目录内"
+            "未找到剪映用户数据目录；请先在系统设置中配置，或确认当前 Windows 用户已启动过剪映"
         )
 
     return JianyingRuntimePaths(

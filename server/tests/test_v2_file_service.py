@@ -474,7 +474,9 @@ class V2FileServiceTests(unittest.TestCase):
         executable = Path(self.temp.name) / "JianyingPro.exe"
         executable.write_bytes(b"")
         draft_root = Path(self.temp.name) / "drafts"
+        user_data_root = Path(self.temp.name) / "user-data"
         draft_root.mkdir()
+        user_data_root.mkdir()
 
         def derived_root(drive: object) -> Path:
             return Path(self.temp.name) / service.normalize_data_drive(drive).replace(":", "")
@@ -486,6 +488,7 @@ class V2FileServiceTests(unittest.TestCase):
                 "data_drive": "e:",
                 "jianying_executable": str(executable),
                 "jianying_draft_root": str(draft_root),
+                "jianying_user_data_root": str(user_data_root),
             })
             changed = service.update_v2_settings({"data_drive": "f:"})
 
@@ -493,6 +496,7 @@ class V2FileServiceTests(unittest.TestCase):
         self.assertEqual("F:", changed["data_drive"])
         self.assertEqual(str(executable), changed["jianying_executable"])
         self.assertEqual(str(draft_root), changed["jianying_draft_root"])
+        self.assertEqual(str(user_data_root), changed["jianying_user_data_root"])
         self.assertEqual({"data_drive": "F:"}, json.loads(bootstrap.read_text(encoding="utf-8")))
 
     def test_legacy_system_root_bootstrap_migrates_to_data_drive(self) -> None:

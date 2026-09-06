@@ -1366,6 +1366,7 @@ DEFAULT_SETTINGS = {
     "publish_date_offset_days": 0,
     "jianying_executable": "",
     "jianying_draft_root": "",
+    "jianying_user_data_root": "",
     "template_timeout_min": 15,
     "final_generation_timeout_min": 30,
     "video_export_timeout_min": 20,
@@ -1433,15 +1434,18 @@ def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
         raise ValueError("发布时间预设格式不正确")
     if not isinstance(values["publish_date_offset_days"], int) or values["publish_date_offset_days"] < 0:
         raise ValueError("发布日期偏移必须是 0 或更大的整数天数")
-    for key in ("jianying_executable", "jianying_draft_root"):
+    for key in ("jianying_executable", "jianying_draft_root", "jianying_user_data_root"):
         if not isinstance(values[key], str):
             raise ValueError("剪映路径设置格式不正确")
     executable = str(values["jianying_executable"]).strip()
     draft_root = str(values["jianying_draft_root"]).strip()
+    user_data_root = str(values["jianying_user_data_root"]).strip()
     if executable and (not Path(executable).is_file() or Path(executable).suffix.lower() != ".exe"):
         raise ValueError("剪映程序路径必须是存在的 .exe 文件")
     if draft_root and not Path(draft_root).is_dir():
         raise ValueError("剪映草稿目录必须是存在的文件夹")
+    if user_data_root and not Path(user_data_root).is_dir():
+        raise ValueError("剪映用户数据目录必须是存在的文件夹")
     if not isinstance(values["template_timeout_min"], int) or not 1 <= values["template_timeout_min"] <= 120:
         raise ValueError("模板生成超时时间必须为 1-120 分钟")
     if not isinstance(values["final_generation_timeout_min"], int) or not 1 <= values["final_generation_timeout_min"] <= 180:

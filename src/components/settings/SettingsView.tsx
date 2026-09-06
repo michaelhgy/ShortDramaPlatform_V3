@@ -51,6 +51,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isChangingDataDrive, setIsChangingDataDrive] = useState(false);
   const [jianyingExePath, setJianyingExePath] = useState('');
   const [capcutDraftPath, setCapcutDraftPath] = useState('');
+  const [jianyingUserDataPath, setJianyingUserDataPath] = useState('');
 
   // ==========================================
   // 2. 生产与任务 (Production & Tasks)
@@ -99,7 +100,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // 7. 系统诊断状态 (Diagnostics)
   // ==========================================
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null);
-  const [selectingPath, setSelectingPath] = useState<'file' | 'directory' | null>(null);
+  const [selectingPath, setSelectingPath] = useState<'file' | 'draft' | 'userData' | null>(null);
 
   useEffect(() => {
     getV2Settings().then((settings) => {
@@ -110,6 +111,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setPublishDateOffsetDays(settings.publish_date_offset_days);
       setJianyingExePath(settings.jianying_executable || '');
       setCapcutDraftPath(settings.jianying_draft_root || '');
+      setJianyingUserDataPath(settings.jianying_user_data_root || '');
       setTemplateTimeoutMin(settings.template_timeout_min);
       setVideoGenTimeoutMin(settings.final_generation_timeout_min);
       setExportTimeoutMin(settings.video_export_timeout_min);
@@ -144,6 +146,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       publish_date_offset_days: publishDateOffsetDays,
       jianying_executable: jianyingExePath,
       jianying_draft_root: capcutDraftPath,
+      jianying_user_data_root: jianyingUserDataPath,
       template_timeout_min: templateTimeoutMin,
       final_generation_timeout_min: videoGenTimeoutMin,
       video_export_timeout_min: exportTimeoutMin,
@@ -176,16 +179,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSelectPath = (kind: 'file' | 'directory') => {
-    setSelectingPath(kind);
+  const handleSelectPath = (kind: 'file' | 'directory', directoryTarget: 'draft' | 'userData' = 'draft') => {
+    setSelectingPath(kind === 'file' ? 'file' : directoryTarget);
     selectV2Path(kind).then((result) => {
       if (!result.path) {
         showToast('已取消路径选择');
         return;
       }
       if (kind === 'file') setJianyingExePath(result.path);
+      else if (directoryTarget === 'userData') setJianyingUserDataPath(result.path);
       else setCapcutDraftPath(result.path);
-      showToast(kind === 'file' ? '已选择剪映程序' : '已选择剪映草稿目录');
+      showToast(kind === 'file' ? '已选择剪映程序' : directoryTarget === 'userData' ? '已选择剪映用户数据目录' : '已选择剪映草稿目录');
     }).catch((error: unknown) => showToast(error instanceof Error && error.message ? error.message : '路径选择失败，请检查 V2 本地服务。'))
       .finally(() => setSelectingPath(null));
   };
@@ -434,7 +438,33 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
                 disabled={selectingPath !== null}
                 className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#1A1D2E] font-bold cursor-pointer transition-colors shrink-0"
               >
-                {selectingPath === 'directory' ? '选择中...' : '选择目录'}
+                {selectingPath === 'draft' ? '选择中...' : '选择目录'}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="font-bold text-[#1A1D2E] flex items-center gap-1.5">
+              <span>剪映用户数据目录（可留空自动识别）</span>
+            </label>
+            <p className="text-[11px] text-[#64748B]">
+              用于读取剪映本机缓存和原生资源。草稿可以单独放在其他磁盘；若剪映未使用默认用户目录，请在此选择它的 User Data 文件夹。
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={jianyingUserDataPath}
+                onChange={(e) => setJianyingUserDataPath(e.target.value)}
+                placeholder="留空则自动识别当前 Windows 用户的剪映目录"
+                className="flex-1 px-3 py-2 bg-[#F8FAFC] border border-black/[0.06] rounded-xl text-[#1A1D2E] font-mono text-xs focus:outline-none focus:bg-white focus:border-[#1A1D2E]"
+              />
+              <button
+                type="button"
+                onClick={() => handleSelectPath('directory', 'userData')}
+                disabled={selectingPath !== null}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#1A1D2E] font-bold cursor-pointer transition-colors shrink-0"
+              >
+                {selectingPath === 'userData' ? '选择中...' : '选择目录'}
               </button>
             </div>
           </div>

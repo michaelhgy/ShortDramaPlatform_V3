@@ -57,18 +57,31 @@ def test_runtime_paths_find_user_data_by_name_instead_of_fixed_parent_depth(tmp_
     assert paths.app_root == Path(str(settings["jianying_executable"])).parent
 
 
-def test_runtime_paths_reject_unrelated_draft_root_instead_of_using_default_user_data(tmp_path):
+def test_runtime_paths_allow_custom_draft_root_with_default_user_data(tmp_path):
     settings, environ = _runtime(tmp_path)
     unrelated = tmp_path / "other" / "drafts"
     unrelated.mkdir(parents=True)
     settings["jianying_draft_root"] = str(unrelated)
 
-    try:
-        resolve_jianying_runtime_paths(settings, environ=environ)
-    except RuntimeError as exc:
-        assert "无法从已配置的剪映草稿目录定位" in str(exc)
-    else:
-        raise AssertionError("expected unrelated draft root to be rejected")
+    paths = resolve_jianying_runtime_paths(settings, environ=environ)
+
+    assert paths.draft_root == unrelated
+    assert paths.user_data_root == tmp_path / "JianyingPro" / "User Data"
+
+
+def test_runtime_paths_prefer_explicit_user_data_for_custom_install(tmp_path):
+    settings, environ = _runtime(tmp_path)
+    custom_drafts = tmp_path / "D-drive" / "JianyingPro Drafts"
+    custom_user_data = tmp_path / "D-drive" / "JianyingPro User Data"
+    custom_drafts.mkdir(parents=True)
+    custom_user_data.mkdir(parents=True)
+    settings["jianying_draft_root"] = str(custom_drafts)
+    settings["jianying_user_data_root"] = str(custom_user_data)
+
+    paths = resolve_jianying_runtime_paths(settings, environ=environ)
+
+    assert paths.draft_root == custom_drafts
+    assert paths.user_data_root == custom_user_data
 
 
 def test_empty_jianying_resource_cache_is_not_a_generation_blocker(tmp_path):

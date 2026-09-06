@@ -94,6 +94,7 @@ export interface V2Settings {
   publish_date_offset_days: number;
   jianying_executable: string;
   jianying_draft_root: string;
+  jianying_user_data_root: string;
   template_timeout_min: number;
   final_generation_timeout_min: number;
   video_export_timeout_min: number;

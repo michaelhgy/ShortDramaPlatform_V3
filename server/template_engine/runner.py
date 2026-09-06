@@ -129,8 +129,11 @@ def run_template_job(job_id: str) -> None:
                                       phase="开始", message="已领取模板任务，正在检查剪映和素材条件")
 
         from server.jianying_preflight import require_jianying_ready
+        from server.jianying_runtime_paths import resolve_jianying_runtime_paths
         try:
-            require_jianying_ready(service.get_v2_settings())
+            settings = service.get_v2_settings()
+            require_jianying_ready(settings)
+            runtime_paths = resolve_jianying_runtime_paths(settings)
         except Exception as exc:
             service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
                                           phase="剪映检查失败", message=str(exc))
@@ -142,11 +145,7 @@ def run_template_job(job_id: str) -> None:
         attempt_root = Path(str(row["template_path"])) / f"R{int(row['version_no']):02d}"
         photos = attempt_root / "模板剧照缓存"
         photo_cache = attempt_root / "照片缓存"
-        configured_draft_root = str(service.get_v2_settings().get("jianying_draft_root") or "").strip()
-        if not configured_draft_root:
-            _fail(job_id, row, "请先在系统设置中配置剪映草稿目录")
-            return
-        draft_root = Path(configured_draft_root).expanduser()
+        draft_root = runtime_paths.draft_root
         draft_path = draft_root / str(row["draft_name"])
         reserved = json.loads(str(row["reserved_videos_json"] or "[]"))
         videos = [Path(str(item.get("reserved_path") or "")) for item in reserved]
@@ -161,6 +160,7 @@ def run_template_job(job_id: str) -> None:
             "--name", str(row["draft_name"]), "--video", str(videos[0]), "--video-2", str(videos[1]),
             "--video-3", str(videos[2]), "--viral-account-day-dir", str(row["material_path"]),
             "--photo-prep-output-dir", str(photos), "--photo-cache-root", str(photo_cache),
+            "--user-data-root", str(runtime_paths.user_data_root),
         ])
         worker_trace = attempt_root / "执行过程.jsonl"
         worker_trace.unlink(missing_ok=True)
