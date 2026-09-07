@@ -41,6 +41,17 @@ def write_trace(path: Path | None, phase: str, message: str) -> None:
         }, ensure_ascii=False) + "\n")
 
 
+def vision_worker_arguments(vision_model: str | None) -> list[str]:
+    """Return the explicit vision policy for every detector worker.
+
+    A missing argument makes individual scripts fall back to their historical
+    7B default.  That is not an acceptable interpretation of the user's V2
+    setting: disabled must never contact Ollama, and compatibility must use
+    the selected 3B model consistently.
+    """
+    return ["--model", vision_model] if vision_model else ["--disable-vlm"]
+
+
 def probe_duration(path: Path) -> float:
     result = subprocess.run(
         [str(resolve_ffprobe()), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
@@ -374,16 +385,15 @@ def main() -> int:
                     seed=args.bgm_seed, task_key=f"{args.draft_prefix}:{ordinal}",
                 )
             opening_command = worker_command("server.final_engine.scripts.detect_opening_cover", SCRIPT_DIR / "detect_opening_cover.py", ["--video", str(source), "--report", str(cover_report), "--evidence-dir", str(evidence / "片头")])
-            if vision_model:
-                opening_command.extend(["--model", vision_model])
-            else:
-                opening_command.append("--disable-vlm")
+            opening_command.extend(vision_worker_arguments(vision_model))
             run_stage(args, "分析片头", f"正在分析素材 {source.name} 的片头", opening_command)
             start = opening_start(cover_report)
             capped_end = min(probe_duration(source), start + source_budget)
-            run_stage(args, "分析片尾", f"正在分析素材 {source.name} 的片尾", worker_command("server.final_engine.scripts.detect_tail_guidance", SCRIPT_DIR / "detect_tail_guidance.py", ["--video", str(source), "--report", str(tail_report),
+            tail_command = worker_command("server.final_engine.scripts.detect_tail_guidance", SCRIPT_DIR / "detect_tail_guidance.py", ["--video", str(source), "--report", str(tail_report),
                 "--evidence-dir", str(evidence / "片尾"), "--source-start", f"{start:.6f}", "--source-end", f"{capped_end:.6f}",
-            ]))
+            ])
+            tail_command.extend(vision_worker_arguments(vision_model))
+            run_stage(args, "分析片尾", f"正在分析素材 {source.name} 的片尾", tail_command)
             end = tail_end(tail_report, capped_end)
             run_stage(args, "检测画面边缘", f"正在检查素材 {source.name} 的黑边", worker_command("server.final_engine.scripts.detect_black_bars", SCRIPT_DIR / "detect_black_bars.py", ["--video", str(source), "--report", str(black_bar_report)]))
             active_picture = active_picture_from_black_bar_report(black_bar_report, source)
@@ -391,10 +401,7 @@ def main() -> int:
                 "--evidence-dir", str(evidence / "剧名"), "--source-start", f"{start:.6f}", "--source-end", f"{end:.6f}",
                 "--active-picture", f"{active_picture['left']:.9f}", f"{active_picture['top']:.9f}", f"{active_picture['right']:.9f}", f"{active_picture['bottom']:.9f}",
             ])
-            if vision_model:
-                title_command.extend(["--model", vision_model])
-            else:
-                title_command.append("--disable-vlm")
+            title_command.extend(vision_worker_arguments(vision_model))
             run_stage(args, "识别剧名区域", f"正在识别素材 {source.name} 的剧名区域", title_command)
             command = worker_command("server.final_engine.scripts.generate_composition_from_detection_reports", SCRIPT_DIR / "generate_composition_from_detection_reports.py", [
                 "--viral-source", str(source), "--cover-report", str(cover_report), "--tail-report", str(tail_report), "--title-report", str(title_report), "--black-bar-report", str(black_bar_report),

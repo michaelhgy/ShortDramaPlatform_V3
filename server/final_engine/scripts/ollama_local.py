@@ -183,9 +183,14 @@ def request_chat(payload: dict[str, Any], *, timeout: float = 180.0, attempts: i
                 return response
             except (LocalOllamaError, urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as error:
                 last_error = error
+                # A malformed/oversized request or an absent model will not
+                # become healthy on a second identical request.  Avoid making
+                # the operator wait through two needless long retries.
+                if isinstance(error, urllib.error.HTTPError) and error.code in {400, 404}:
+                    break
                 if attempt < attempts:
                     time.sleep(float(attempt))
     assert last_error is not None
     raise LocalOllamaError(
-        f"OLLAMA_CHAT_FAILED after {attempts} attempts: {_error_detail(last_error)}"
+        f"OLLAMA_CHAT_FAILED: {_error_detail(last_error)}"
     ) from last_error

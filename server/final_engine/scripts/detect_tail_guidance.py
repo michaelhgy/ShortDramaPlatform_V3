@@ -28,6 +28,13 @@ except ImportError:  # Direct execution keeps the script directory on sys.path.
 
 
 DEFAULT_MODEL = "qwen2.5vl:7b"
+# Qwen vision converts every supplied image into a substantial number of
+# context entries.  Three masked, downscaled samples keep a request safely
+# below this product's fixed 8K local context while still showing the start,
+# middle and end of a six-second group.
+MAX_VISION_SAMPLES = 3
+MODEL_IMAGE_MAX_WIDTH = 320
+MODEL_IMAGE_JPEG_QUALITY = 80
 
 
 @dataclass
@@ -134,7 +141,13 @@ def image_b64(path: str) -> str:
     image[:, :side] = 0
     image[:, width - side :] = 0
     image[:top, :] = 0
-    ok, masked = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+    if width > MODEL_IMAGE_MAX_WIDTH:
+        image = cv2.resize(
+            image,
+            (MODEL_IMAGE_MAX_WIDTH, max(2, round(height * MODEL_IMAGE_MAX_WIDTH / width))),
+            interpolation=cv2.INTER_AREA,
+        )
+    ok, masked = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), MODEL_IMAGE_JPEG_QUALITY])
     if not ok:
         raise RuntimeError(f"Cannot encode masked evidence image: {path}")
     return base64.b64encode(masked.tobytes()).decode("ascii")
@@ -282,7 +295,24 @@ def chunks(frames: list[Frame], sample_fps: float, chunk_seconds: float) -> list
     return [frames[start : start + size] for start in range(0, len(frames), size)]
 
 
-def detect(video: Path, report: Path, evidence_dir: Path, model: str, range_start: float, range_end: float, window_seconds: float, sample_fps: float, chunk_seconds: float, min_confidence: int) -> dict[str, Any]:
+def vision_samples(frames: list[Frame]) -> list[Frame]:
+    """Choose a bounded, evenly spread set for one local VLM request."""
+    return even_samples(frames, maximum=MAX_VISION_SAMPLES)
+
+
+def disabled_vision_decision() -> dict[str, Any]:
+    """Keep the no-VLM route conservative: OCR and scene rules may still trim."""
+    return {
+        "kind": "plot",
+        "primary_is_plot": True,
+        "contains_guidance": False,
+        "confidence": 0,
+        "reason": "local vision disabled",
+        "raw": "",
+    }
+
+
+def detect(video: Path, report: Path, evidence_dir: Path, model: str | None, range_start: float, range_end: float, window_seconds: float, sample_fps: float, chunk_seconds: float, min_confidence: int) -> dict[str, Any]:
     duration, native_fps = probe_video(video)
     # Container duration (FFprobe) can extend a few audio packets beyond the
     # last decodable video frame reported by OpenCV. Clamp only that tiny tail
@@ -295,8 +325,8 @@ def detect(video: Path, report: Path, evidence_dir: Path, model: str, range_star
     frames = extract_frames(video, analysis_start, range_end, sample_fps, evidence_dir)
     groups: list[dict[str, Any]] = []
     for group in chunks(frames, sample_fps, chunk_seconds):
-        selected = even_samples(group)
-        vision = ask_tail_model(model, selected)
+        selected = vision_samples(group)
+        vision = ask_tail_model(model, selected) if model else disabled_vision_decision()
         groups.append({
             "start_seconds": group[0].time_seconds,
             "end_seconds": round(group[-1].time_seconds + 1.0 / sample_fps, 3),
@@ -356,7 +386,7 @@ def detect(video: Path, report: Path, evidence_dir: Path, model: str, range_star
     if action == "NO_TRAILING_GUIDANCE":
         guard_start = max(range_start, range_end - 3.0)
         guard_frames = extract_frames(video, guard_start, range_end, 10.0, evidence_dir / "短尾兜底")
-        guard_samples = even_samples(guard_frames, maximum=12)
+        guard_samples = vision_samples(guard_frames)
         ocr_guard = find_tail_ocr_endcard(guard_frames)
         short_tail_guard = {
             "range_start_seconds": guard_start,
@@ -376,7 +406,7 @@ def detect(video: Path, report: Path, evidence_dir: Path, model: str, range_star
                 "safety_lead_seconds": safety_lead_seconds,
                 "trim_end_seconds": trim_end,
             }
-        else:
+        elif model:
             guard = ask_short_tail_model(model, guard_samples)
             short_tail_guard["decision"] = guard
             if guard["has_nonplot_tail"] and guard["confidence"] >= 50:
@@ -391,24 +421,24 @@ def detect(video: Path, report: Path, evidence_dir: Path, model: str, range_star
                     "trim_end_seconds": trim_end,
                     "vision": guard,
                 }
-            else:
-                # Final visual-transition fallback.  It is deliberately limited
-                # to the final three seconds and a high local scene score so that
-                # ordinary mid-video scene cuts are never considered.
-                endcard_frame = final_visual_endcard_transition(guard_frames, guard_start)
-                if endcard_frame is not None:
-                    safety_lead_seconds = 1.0
-                    trim_end = max(range_start, endcard_frame.time_seconds - safety_lead_seconds)
-                    action = "AUTO_TRIM_FINAL_VISUAL_ENDCARD"
-                    selected = {
-                        "start_seconds": endcard_frame.time_seconds,
-                        "short_tail_guard": True,
-                        "visual_transition_fallback": True,
-                        "scene_score": endcard_frame.scene_score_from_previous,
-                        "safety_lead_seconds": safety_lead_seconds,
-                        "trim_end_seconds": trim_end,
-                        "vision": guard,
-                    }
+        else:
+            short_tail_guard["decision"] = {"status": "disabled", "reason": "local vision disabled"}
+        # Final visual-transition fallback is deliberately limited to the final
+        # three seconds.  It remains available when local vision is disabled.
+        if action == "NO_TRAILING_GUIDANCE":
+            endcard_frame = final_visual_endcard_transition(guard_frames, guard_start)
+            if endcard_frame is not None:
+                safety_lead_seconds = 1.0
+                trim_end = max(range_start, endcard_frame.time_seconds - safety_lead_seconds)
+                action = "AUTO_TRIM_FINAL_VISUAL_ENDCARD"
+                selected = {
+                    "start_seconds": endcard_frame.time_seconds,
+                    "short_tail_guard": True,
+                    "visual_transition_fallback": True,
+                    "scene_score": endcard_frame.scene_score_from_previous,
+                    "safety_lead_seconds": safety_lead_seconds,
+                    "trim_end_seconds": trim_end,
+                }
     with video.open("rb") as source_file:
         digest = hashlib.sha256(source_file.read(1024 * 1024)).hexdigest()
     result = {
@@ -416,8 +446,8 @@ def detect(video: Path, report: Path, evidence_dir: Path, model: str, range_star
         "created_unix": int(time.time()),
         "source": {"path": str(video), "size_bytes": video.stat().st_size, "first_megabyte_sha256": digest},
         "input_range": {"start_seconds": range_start, "end_seconds": range_end, "native_duration_seconds": round(duration, 3)},
-        "sampling": {"analysis_start_seconds": analysis_start, "window_seconds": window_seconds, "sample_fps": sample_fps, "chunk_seconds": chunk_seconds, "native_fps": native_fps, "model_overlay_mask": {"left_right_width_percent": 16, "top_height_percent": 7}},
-        "local_model": model,
+        "sampling": {"analysis_start_seconds": analysis_start, "window_seconds": window_seconds, "sample_fps": sample_fps, "chunk_seconds": chunk_seconds, "native_fps": native_fps, "max_vision_samples_per_request": MAX_VISION_SAMPLES, "model_image_max_width": MODEL_IMAGE_MAX_WIDTH, "model_overlay_mask": {"left_right_width_percent": 16, "top_height_percent": 7}},
+        "local_model": model or "disabled",
         "decision": {"action": action, "trim_end_seconds": trim_end, "selected": selected},
         "short_tail_guard": short_tail_guard,
         "groups": groups,
@@ -437,6 +467,7 @@ def main() -> int:
     parser.add_argument("--source-start", type=float, default=0.0)
     parser.add_argument("--source-end", type=float)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--disable-vlm", action="store_true", help="Use only OCR and fixed rules; never call Ollama")
     parser.add_argument("--window-seconds", type=float, default=45.0)
     parser.add_argument("--sample-fps", type=float, default=2.0)
     parser.add_argument("--chunk-seconds", type=float, default=6.0)
@@ -449,7 +480,7 @@ def main() -> int:
     if args.window_seconds < 6 or args.window_seconds > 90 or args.sample_fps < 1 or args.sample_fps > 8 or args.chunk_seconds < 2 or args.chunk_seconds > 15:
         raise SystemExit("Invalid sampling arguments")
     evidence = args.evidence_dir or (args.report.parent / "片尾检测证据" / hashlib.sha256(str(args.video).encode("utf-8")).hexdigest()[:12])
-    result = detect(args.video, args.report, evidence, args.model, args.source_start, source_end, args.window_seconds, args.sample_fps, args.chunk_seconds, args.min_confidence)
+    result = detect(args.video, args.report, evidence, None if args.disable_vlm else args.model, args.source_start, source_end, args.window_seconds, args.sample_fps, args.chunk_seconds, args.min_confidence)
     print(dump({"action": result["decision"]["action"], "trim_end_seconds": result["decision"]["trim_end_seconds"], "report": str(args.report)}))
     return 0
 

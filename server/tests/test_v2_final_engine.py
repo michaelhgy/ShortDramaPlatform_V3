@@ -2,8 +2,10 @@ import tempfile
 import threading
 import unittest
 import json
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from server import v2_file_service as service
 from server.final_engine import runner
@@ -98,6 +100,45 @@ class V2FinalEngineTests(unittest.TestCase):
         self.assertIn("--no-bgm-auto-replenish", command)
         self.assertEqual(str(root / "JianyingPro"), command[command.index("--jianying-app-root") + 1])
         self.assertEqual("compatibility", command[command.index("--local-vision-ai-mode") + 1])
+
+    def test_every_final_detector_receives_the_selected_vision_policy(self) -> None:
+        from server.final_engine.scripts.run_jianying_composition_batch import vision_worker_arguments
+
+        self.assertEqual(["--model", "qwen2.5vl:3b"], vision_worker_arguments("qwen2.5vl:3b"))
+        self.assertEqual(["--model", "qwen2.5vl:7b"], vision_worker_arguments("qwen2.5vl:7b"))
+        self.assertEqual(["--disable-vlm"], vision_worker_arguments(None))
+
+    def test_disabled_tail_analysis_never_calls_ollama_and_keeps_fixed_safety_rules(self) -> None:
+        from server.final_engine.scripts import detect_tail_guidance as tail
+
+        source = Path(self.temp.name) / "source.mp4"
+        source.write_bytes(b"test source")
+        report = Path(self.temp.name) / "tail.json"
+        frames = [tail.Frame(index=index, time_seconds=float(index), path=f"frame-{index}.jpg") for index in range(12)]
+        guard_frames = [tail.Frame(index=index, time_seconds=7.0 + index / 10, path=f"guard-{index}.jpg") for index in range(30)]
+        with patch.object(tail, "probe_video", return_value=(10.0, 30.0)), \
+             patch.object(tail, "extract_frames", side_effect=[frames, guard_frames]), \
+             patch.object(tail, "ask_tail_model") as coarse_model, \
+             patch.object(tail, "ask_short_tail_model") as guard_model, \
+             patch.object(tail, "find_tail_ocr_endcard", return_value={"has_endcard_marker": False}), \
+             patch.object(tail, "final_visual_endcard_transition", return_value=None):
+            result = tail.detect(source, report, Path(self.temp.name) / "evidence", None, 0.0, 10.0, 45.0, 2.0, 6.0, 60)
+
+        coarse_model.assert_not_called()
+        guard_model.assert_not_called()
+        self.assertEqual("disabled", result["local_model"])
+        self.assertEqual("NO_TRAILING_GUIDANCE", result["decision"]["action"])
+        self.assertEqual("disabled", result["short_tail_guard"]["decision"]["status"])
+        self.assertTrue(all(len(group["frames"]) <= 3 for group in result["groups"]))
+
+    def test_context_or_missing_model_error_is_not_retried(self) -> None:
+        from server.final_engine.scripts import ollama_local
+
+        error = HTTPError("http://127.0.0.1:11434/api/chat", 400, "bad request", {}, BytesIO(b'{"error":"context too large"}'))
+        with patch.object(ollama_local, "_request_json", side_effect=error) as request:
+            with self.assertRaisesRegex(ollama_local.LocalOllamaError, "HTTP 400"):
+                ollama_local.request_chat({"model": "qwen2.5vl:3b"})
+        self.assertEqual(1, request.call_count)
 
     def test_final_work_dir_is_under_the_production_task_cache(self) -> None:
         root = Path(self.temp.name) / "production-task"
