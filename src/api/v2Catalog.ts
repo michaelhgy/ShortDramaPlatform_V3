@@ -99,6 +99,7 @@ export interface V2Settings {
   final_generation_timeout_min: number;
   video_export_timeout_min: number;
   final_video_manual_check: boolean;
+  final_raw_material_process: boolean;
   video_export_debug: boolean;
   revenue_auto_collection_enabled: boolean;
   revenue_auto_collection_times: string[];

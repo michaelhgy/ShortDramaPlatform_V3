@@ -151,9 +151,10 @@ def _processed_composition_command(*, source: Path, template_video: Path, pairin
                                    draft_root: Path, user_data_root: Path, jianying_app_root: Path, real_photo_dir: Path,
                                    draft_prefix: str, account_id: str, midroll: Path, endroll: Path,
                                    bgm: Path, work_dir: Path, real_photo_files: list[Path] | None = None,
-                                   local_vision_ai_mode: str = "compatibility") -> list[str]:
+                                   local_vision_ai_mode: str = "compatibility",
+                                   skip_raw_processing: bool = False) -> list[str]:
     """Build the V1-equivalent single-source processing command for V2."""
-    return worker_command("server.final_engine.scripts.run_jianying_composition_batch", FINAL_SCRIPT, [
+    command = worker_command("server.final_engine.scripts.run_jianying_composition_batch", FINAL_SCRIPT, [
         "--source-file", str(source),
         "--template-video", str(template_video), "--pairing", str(pairing),
         "--draft-root", str(draft_root), "--user-data-root", str(user_data_root),
@@ -166,6 +167,9 @@ def _processed_composition_command(*, source: Path, template_video: Path, pairin
         "--no-bgm-auto-replenish",
         "--local-vision-ai-mode", local_vision_ai_mode,
     ])
+    if skip_raw_processing:
+        command.append("--skip-raw-processing")
+    return command
 
 
 def _final_work_dir(*, task_root: Path, video_id: str) -> Path:
@@ -244,6 +248,7 @@ def run_finished_video(video_id: str) -> None:
             draft_prefix=draft_prefix, account_id=str(row["account_name"]), midroll=midroll,
             endroll=endroll, bgm=random.choice(music), work_dir=work_dir,
             local_vision_ai_mode=str(settings.get("local_vision_ai_mode") or "compatibility"),
+            skip_raw_processing=not bool(settings.get("final_raw_material_process", True)),
         )
         worker_trace = work_dir / "执行过程.jsonl"
         worker_trace.unlink(missing_ok=True)

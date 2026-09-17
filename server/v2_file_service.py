@@ -1742,6 +1742,9 @@ DEFAULT_SETTINGS = {
     "final_generation_timeout_min": 30,
     "video_export_timeout_min": 20,
     "final_video_manual_check": False,
+    # 成片生成前是否对原素材做"清理代理"处理（掐头去尾 + 裁黑边 + 抹掉剧名/水印）。
+    # 关闭时：跳过全部分析与处理，直接用原素材合成（仍按 900 秒上限截断时长）。
+    "final_raw_material_process": True,
     "video_export_debug": False,
     "revenue_auto_collection_enabled": True,
     "revenue_auto_collection_times": ["06:00", "12:30", "18:00"],

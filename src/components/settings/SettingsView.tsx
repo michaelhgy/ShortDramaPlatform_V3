@@ -57,6 +57,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // 2. 生产与任务 (Production & Tasks)
   // ==========================================
   const [defaultCheckMode, setDefaultCheckMode] = useState(false);
+  // 成片是否对原素材做"清理代理"处理（掐头去尾 + 裁黑边 + 抹掉剧名/水印）
+  const [rawMaterialProcess, setRawMaterialProcess] = useState(true);
   // 独立任务超时时间 (三独立执行器)
   const [templateTimeoutMin, setTemplateTimeoutMin] = useState<number>(15);
   const [videoGenTimeoutMin, setVideoGenTimeoutMin] = useState<number>(30);
@@ -116,6 +118,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setVideoGenTimeoutMin(settings.final_generation_timeout_min);
       setExportTimeoutMin(settings.video_export_timeout_min);
       setDefaultCheckMode(settings.final_video_manual_check);
+      setRawMaterialProcess(settings.final_raw_material_process ?? true);
       setAutoSyncRevenue(settings.revenue_auto_collection_enabled);
       setSyncTimeSlots(settings.revenue_auto_collection_times);
       setLocalVisionAiMode(settings.local_vision_ai_mode);
@@ -151,6 +154,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       final_generation_timeout_min: videoGenTimeoutMin,
       video_export_timeout_min: exportTimeoutMin,
       final_video_manual_check: defaultCheckMode,
+      final_raw_material_process: rawMaterialProcess,
       revenue_auto_collection_enabled: autoSyncRevenue,
       revenue_auto_collection_times: syncTimeSlots,
       local_vision_ai_mode: localVisionAiMode,
@@ -508,6 +512,33 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
           >
             <div className={`w-5 h-5 rounded-full bg-white transition-transform absolute top-0.5 ${
               defaultCheckMode ? 'right-0.5' : 'left-0.5'
+            }`} />
+          </button>
+        </div>
+
+        {/* 2.1b 成片原素材视频处理开关 */}
+        <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-black/[0.04] flex items-center justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm text-[#1A1D2E]">成片启用「原素材视频处理」</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold">
+                默认开启
+              </span>
+            </div>
+            <p className="text-[11px] text-[#64748B]">
+              开启时：生成成片前会分析片头片尾、裁掉黑边，并抹掉原素材上的剧名/水印。关闭时：跳过全部分析与处理，直接用原素材合成（素材过长仍按上限截断时长），速度更快——适合本来就干净的素材。
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setRawMaterialProcess(!rawMaterialProcess)}
+            className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ml-4 ${
+              rawMaterialProcess ? 'bg-[#1A1D2E]' : 'bg-slate-300'
+            }`}
+          >
+            <div className={`w-5 h-5 rounded-full bg-white transition-transform absolute top-0.5 ${
+              rawMaterialProcess ? 'right-0.5' : 'left-0.5'
             }`} />
           </button>
         </div>

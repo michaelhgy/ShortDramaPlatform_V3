@@ -15,7 +15,7 @@ from pathlib import Path
 from server.runtime_process import no_window_kwargs, worker_command
 from typing import Any
 
-from server.tool_resolver import resolve_ffprobe
+from server.tool_resolver import resolve_ffmpeg, resolve_ffprobe
 
 from server.final_engine.scripts.ollama_local import ensure_local_ollama
 from server.final_engine.scripts.detect_black_bars import probe_video as probe_black_bar_video, source_identity as black_bar_source_identity
@@ -274,6 +274,85 @@ def selected_sources(*, viral_dir: Path | None, start_index: int, count: int, so
     return sources
 
 
+def raw_trim_proxy(*, source: Path, output: Path, budget_seconds: float) -> Path:
+    """Return the viral input used when raw-material processing is switched off.
+
+    No frame analysis, no black-bar crop and no de-logo pass happen here.  A
+    source that already fits the batch budget is passed through untouched; a
+    longer one is trimmed, preferring a stream copy so a clean source is not
+    re-encoded for nothing.
+    """
+    if probe_duration(source) <= budget_seconds:
+        return source
+    output.parent.mkdir(parents=True, exist_ok=True)
+    partial = output.with_suffix(output.suffix + ".partial.mp4")
+    partial.unlink(missing_ok=True)
+    head = [str(resolve_ffmpeg()), "-y", "-i", str(source), "-t", f"{budget_seconds:.6f}",
+            "-map", "0:v:0", "-map", "0:a?"]
+    tail = ["-movflags", "+faststart", str(partial)]
+    attempts = (
+        head + ["-c", "copy"] + tail,
+        head + ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-b:a", "128k"] + tail,
+    )
+    failure = ""
+    for command in attempts:
+        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", **no_window_kwargs())
+        if result.returncode == 0 and partial.is_file() and probe_duration(partial) > 0:
+            partial.replace(output)
+            return output
+        failure = (result.stderr or "").strip()[-500:]
+        partial.unlink(missing_ok=True)
+    raise RuntimeError(f"无法按上限截断原素材：{failure}")
+
+
+def raw_source_compose_command(*, args: argparse.Namespace, viral: Path, draft_name: str,
+                              report: Path, selected_bgm: dict[str, Any] | None) -> list[str]:
+    """Build the native composition command for an unprocessed source."""
+    command = worker_command("server.final_engine.scripts.generate_jianying59_composition_draft", SCRIPT_DIR / "generate_jianying59_composition_draft.py", [
+        "--viral", str(viral),
+        "--template-video", str(args.template_video),
+        "--pairing", str(args.pairing),
+        "--draft-root", str(args.draft_root),
+        "--user-data-root", str(args.user_data_root),
+        "--jianying-app-root", str(args.jianying_app_root),
+        "--real-photo-dir", str(args.real_photo_dir),
+        "--real-photo-files", args.real_photo_files,
+        "--draft-name", draft_name,
+        "--account-id", args.account_id,
+        "--midroll", str(args.midroll), "--endroll", str(args.endroll),
+        "--report", str(report),
+    ])
+    if args.bgm:
+        command.extend(["--bgm", str(args.bgm), "--bgm-id", args.bgm_id, "--bgm-title", args.bgm_title])
+    elif selected_bgm:
+        command.extend([
+            "--bgm", str(selected_bgm["path"]), "--bgm-id", str(selected_bgm["music_id"]),
+            "--bgm-title", str(selected_bgm.get("title", selected_bgm["music_id"])),
+        ])
+    else:
+        raise RuntimeError("本次成片没有可用的背景音乐")
+    return command
+
+
+def write_raw_source_report(*, source: Path, draft_name: str, draft_report: Path, native_report: Path) -> None:
+    """Write the composition report the export step reads, for an unprocessed source."""
+    base = read_json(native_report)
+    result = {
+        "status": base["status"],
+        "schema": "composition_from_detection_reports_v1",
+        "draft_path": base["draft_path"],
+        "draft_name": draft_name,
+        "source_unchanged": True,
+        "source": str(source),
+        "clean_proxy": {"skipped": True, "reason": "已关闭原素材视频处理，直接使用原素材"},
+        "detection_reports": {},
+        "composition": base["composition"],
+        "next_actions": [],
+    }
+    draft_report.parent.mkdir(parents=True, exist_ok=True)
+    draft_report.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Batch create Jianying composition drafts from real viral inputs")
     parser.add_argument("--viral-dir", type=Path, help="Folder batch mode input")
@@ -306,9 +385,10 @@ def main() -> int:
     parser.add_argument("--bgm-replenish-attempt-limit", type=int, default=50)
     parser.add_argument("--bgm-replenish-report", type=Path)
     parser.add_argument("--no-bgm-auto-replenish", dest="bgm_auto_replenish", action="store_false", help="Do not replenish the local ready BGM pool before this batch")
+    parser.add_argument("--skip-raw-processing", dest="skip_raw_processing", action="store_true", help="跳过片头/片尾/黑边/剧名分析与清理代理，直接用原素材合成（长于预算时只截断时长）")
     parser.add_argument("--export-queue", type=Path, help="Optional shared Jianying queue; creates one finished-video job after each draft")
     parser.add_argument("--finished-output-dir", type=Path, help="Required with --export-queue; final directory for this drama")
-    parser.set_defaults(bgm_auto_replenish=True)
+    parser.set_defaults(bgm_auto_replenish=True, skip_raw_processing=False)
     args = parser.parse_args()
     write_trace(args.trace_path, "检查成片条件", "正在检查成片草稿所需的素材和路径")
     if args.count < 1:
@@ -384,44 +464,58 @@ def main() -> int:
                     args.bgm_ready_manifest, args.bgm_usage_log,
                     seed=args.bgm_seed, task_key=f"{args.draft_prefix}:{ordinal}",
                 )
-            opening_command = worker_command("server.final_engine.scripts.detect_opening_cover", SCRIPT_DIR / "detect_opening_cover.py", ["--video", str(source), "--report", str(cover_report), "--evidence-dir", str(evidence / "片头")])
-            opening_command.extend(vision_worker_arguments(vision_model))
-            run_stage(args, "分析片头", f"正在分析素材 {source.name} 的片头", opening_command)
-            start = opening_start(cover_report)
-            capped_end = min(probe_duration(source), start + source_budget)
-            tail_command = worker_command("server.final_engine.scripts.detect_tail_guidance", SCRIPT_DIR / "detect_tail_guidance.py", ["--video", str(source), "--report", str(tail_report),
-                "--evidence-dir", str(evidence / "片尾"), "--source-start", f"{start:.6f}", "--source-end", f"{capped_end:.6f}",
-            ])
-            tail_command.extend(vision_worker_arguments(vision_model))
-            run_stage(args, "分析片尾", f"正在分析素材 {source.name} 的片尾", tail_command)
-            end = tail_end(tail_report, capped_end)
-            run_stage(args, "检测画面边缘", f"正在检查素材 {source.name} 的黑边", worker_command("server.final_engine.scripts.detect_black_bars", SCRIPT_DIR / "detect_black_bars.py", ["--video", str(source), "--report", str(black_bar_report)]))
-            active_picture = active_picture_from_black_bar_report(black_bar_report, source)
-            title_command = worker_command("server.final_engine.scripts.detect_drama_title_region", SCRIPT_DIR / "detect_drama_title_region.py", ["--video", str(source), "--report", str(title_report),
-                "--evidence-dir", str(evidence / "剧名"), "--source-start", f"{start:.6f}", "--source-end", f"{end:.6f}",
-                "--active-picture", f"{active_picture['left']:.9f}", f"{active_picture['top']:.9f}", f"{active_picture['right']:.9f}", f"{active_picture['bottom']:.9f}",
-            ])
-            title_command.extend(vision_worker_arguments(vision_model))
-            run_stage(args, "识别剧名区域", f"正在识别素材 {source.name} 的剧名区域", title_command)
-            command = worker_command("server.final_engine.scripts.generate_composition_from_detection_reports", SCRIPT_DIR / "generate_composition_from_detection_reports.py", [
-                "--viral-source", str(source), "--cover-report", str(cover_report), "--tail-report", str(tail_report), "--title-report", str(title_report), "--black-bar-report", str(black_bar_report),
-                "--clean-proxy", str(proxy), "--clean-proxy-report", str(proxy_report),
-                "--template-video", str(args.template_video), "--pairing", str(args.pairing),
-                "--draft-root", str(args.draft_root), "--draft-name", draft_name, "--account-id", args.account_id,
-                "--user-data-root", str(args.user_data_root),
-                "--jianying-app-root", str(args.jianying_app_root),
-                "--real-photo-dir", str(args.real_photo_dir),
-                "--real-photo-files", args.real_photo_files,
-                "--midroll", str(args.midroll), "--endroll", str(args.endroll), "--report", str(draft_report),
-            ])
-            if args.bgm:
-                command.extend(["--bgm", str(args.bgm), "--bgm-id", args.bgm_id, "--bgm-title", args.bgm_title])
-            elif selected_bgm:
-                command.extend([
-                    "--bgm", str(selected_bgm["path"]), "--bgm-id", str(selected_bgm["music_id"]),
-                    "--bgm-title", str(selected_bgm.get("title", selected_bgm["music_id"])),
+            if args.skip_raw_processing:
+                # 关闭"原素材视频处理"：不做片头/片尾/黑边/剧名分析，也不生成清理代理，
+                # 直接用原素材合成；素材长于预算时才截断时长。
+                raw_proxy = raw_trim_proxy(
+                    source=source, output=item_dir / f"{source.stem}_原素材代理.mp4", budget_seconds=source_budget,
+                )
+                native_report = reports / "剪映成片草稿.native59.json"
+                write_trace(args.trace_path, "跳过原素材处理", f"素材 {source.name} 未做片头/片尾/黑边/剧名分析与清理代理")
+                run_stage(args, "写入成片草稿", f"正在用原素材生成 {source.name} 的剪映成片草稿",
+                          raw_source_compose_command(args=args, viral=raw_proxy, draft_name=draft_name,
+                                                     report=native_report, selected_bgm=selected_bgm))
+                write_raw_source_report(source=source, draft_name=draft_name, draft_report=draft_report,
+                                        native_report=native_report)
+            else:
+                opening_command = worker_command("server.final_engine.scripts.detect_opening_cover", SCRIPT_DIR / "detect_opening_cover.py", ["--video", str(source), "--report", str(cover_report), "--evidence-dir", str(evidence / "片头")])
+                opening_command.extend(vision_worker_arguments(vision_model))
+                run_stage(args, "分析片头", f"正在分析素材 {source.name} 的片头", opening_command)
+                start = opening_start(cover_report)
+                capped_end = min(probe_duration(source), start + source_budget)
+                tail_command = worker_command("server.final_engine.scripts.detect_tail_guidance", SCRIPT_DIR / "detect_tail_guidance.py", ["--video", str(source), "--report", str(tail_report),
+                    "--evidence-dir", str(evidence / "片尾"), "--source-start", f"{start:.6f}", "--source-end", f"{capped_end:.6f}",
                 ])
-            run_stage(args, "写入成片草稿", f"正在生成素材 {source.name} 的剪映成片草稿", command)
+                tail_command.extend(vision_worker_arguments(vision_model))
+                run_stage(args, "分析片尾", f"正在分析素材 {source.name} 的片尾", tail_command)
+                end = tail_end(tail_report, capped_end)
+                run_stage(args, "检测画面边缘", f"正在检查素材 {source.name} 的黑边", worker_command("server.final_engine.scripts.detect_black_bars", SCRIPT_DIR / "detect_black_bars.py", ["--video", str(source), "--report", str(black_bar_report)]))
+                active_picture = active_picture_from_black_bar_report(black_bar_report, source)
+                title_command = worker_command("server.final_engine.scripts.detect_drama_title_region", SCRIPT_DIR / "detect_drama_title_region.py", ["--video", str(source), "--report", str(title_report),
+                    "--evidence-dir", str(evidence / "剧名"), "--source-start", f"{start:.6f}", "--source-end", f"{end:.6f}",
+                    "--active-picture", f"{active_picture['left']:.9f}", f"{active_picture['top']:.9f}", f"{active_picture['right']:.9f}", f"{active_picture['bottom']:.9f}",
+                ])
+                title_command.extend(vision_worker_arguments(vision_model))
+                run_stage(args, "识别剧名区域", f"正在识别素材 {source.name} 的剧名区域", title_command)
+                command = worker_command("server.final_engine.scripts.generate_composition_from_detection_reports", SCRIPT_DIR / "generate_composition_from_detection_reports.py", [
+                    "--viral-source", str(source), "--cover-report", str(cover_report), "--tail-report", str(tail_report), "--title-report", str(title_report), "--black-bar-report", str(black_bar_report),
+                    "--clean-proxy", str(proxy), "--clean-proxy-report", str(proxy_report),
+                    "--template-video", str(args.template_video), "--pairing", str(args.pairing),
+                    "--draft-root", str(args.draft_root), "--draft-name", draft_name, "--account-id", args.account_id,
+                    "--user-data-root", str(args.user_data_root),
+                    "--jianying-app-root", str(args.jianying_app_root),
+                    "--real-photo-dir", str(args.real_photo_dir),
+                    "--real-photo-files", args.real_photo_files,
+                    "--midroll", str(args.midroll), "--endroll", str(args.endroll), "--report", str(draft_report),
+                ])
+                if args.bgm:
+                    command.extend(["--bgm", str(args.bgm), "--bgm-id", args.bgm_id, "--bgm-title", args.bgm_title])
+                elif selected_bgm:
+                    command.extend([
+                        "--bgm", str(selected_bgm["path"]), "--bgm-id", str(selected_bgm["music_id"]),
+                        "--bgm-title", str(selected_bgm.get("title", selected_bgm["music_id"])),
+                    ])
+                run_stage(args, "写入成片草稿", f"正在生成素材 {source.name} 的剪映成片草稿", command)
             export_job = None
             if args.export_queue and args.finished_output_dir:
                 output = args.finished_output_dir / finished_output_name(source)
