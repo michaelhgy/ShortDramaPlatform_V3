@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -58,15 +60,24 @@ def stop_v2_processes() -> None:
 
 
 def _port_is_free(port: int) -> bool:
-    result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-         f"@(Get-NetTCPConnection -State Listen -LocalPort {port} -ErrorAction SilentlyContinue).Count"],
-        cwd=PROJECT_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip() in {"", "0"}
+    """Probe the port by connecting to it.
+
+    The previous implementation started a PowerShell process for every single
+    check, and the wait loop checks both ports repeatedly; process startup alone
+    costs a second or two each time, which is why a cold start could take the
+    better part of a minute before the window appeared.
+
+    Connecting (rather than binding) is deliberate: on Windows a plain bind to
+    an already-listening port can still succeed, and some port ranges are
+    reserved outright, so bind is not a reliable "is anything listening" test.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.3)
+        try:
+            probe.connect(("127.0.0.1", port))
+        except OSError:
+            return True
+    return False
 
 
 def wait_for_ports_to_close() -> None:
@@ -80,10 +91,12 @@ def wait_for_ports_to_close() -> None:
 
 
 def _runtime_command() -> tuple[str, list[str]]:
-    """Prefer a Python installation that actually contains pywebview."""
-    probe = ["-c", "import webview"]
-    current = subprocess.run([sys.executable, *probe], check=False, capture_output=True)
-    if current.returncode == 0:
+    """Prefer a Python installation that actually contains pywebview.
+
+    The check runs in-process first: spawning an interpreter just to ask
+    ``import webview`` costs another second or two on every single launch.
+    """
+    if importlib.util.find_spec("webview") is not None:
         return sys.executable, []
     launcher = shutil.which("py.exe") or shutil.which("py")
     if launcher:
