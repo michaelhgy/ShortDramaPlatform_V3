@@ -44,6 +44,10 @@ DATABASE_INITIALIZATION_LOCK = threading.Lock()
 # 期间独占写锁，会把同时打开的页面请求全部堵死
 # （表现为"启动慢 / 刷新不出来 / database is locked"）。
 SCHEMA_VERSION = 1
+# 变更日志（v2_change_events）是"数据变了就通知前端刷新"的游标表，**不是审计日志**。
+# 它由 30 多个触发器自动写入，长期累积会拖慢每一次写操作
+# （2026-09-17 故障：累积到 343 万行，把整个数据库拖垮）。服务启动时只保留最近这么多条。
+CHANGE_EVENT_RETENTION = 50_000
 DATABASE_INITIALIZED_PATH: Path | None = None
 
 
@@ -187,6 +191,23 @@ def _recover_interrupted_revenue_runs(conn: sqlite3.Connection) -> None:
         REVENUE_RUNS_RECOVERED = True
 
 
+def _prune_change_events(conn: sqlite3.Connection, keep: int = CHANGE_EVENT_RETENTION) -> int:
+    """Trim the change feed so write amplification cannot grow without bound.
+
+    The table is a notification cursor for the UI, not an audit trail; rows the
+    UI has already passed are dead weight that slows down every write.
+    """
+    row = conn.execute("SELECT MAX(id) FROM v2_change_events").fetchone()
+    if not row or row[0] is None:
+        return 0
+    cutoff = int(row[0]) - keep
+    if cutoff <= 0:
+        return 0
+    cursor = conn.execute("DELETE FROM v2_change_events WHERE id <= ?", (cutoff,))
+    conn.commit()
+    return max(0, int(cursor.rowcount or 0))
+
+
 def _initialize_connection() -> sqlite3.Connection:
     """Create or migrate one database once for each service process/path."""
     path = db_path()
@@ -199,6 +220,7 @@ def _initialize_connection() -> sqlite3.Connection:
     if int(conn.execute("PRAGMA user_version").fetchone()[0]) == SCHEMA_VERSION:
         # 结构已是最新：只读一个版本号就返回，绝不重跑那套 DDL。
         _recover_interrupted_revenue_runs(conn)
+        _prune_change_events(conn)
         conn.commit()
         return conn
     conn.executescript(
@@ -741,6 +763,7 @@ def _initialize_connection() -> sqlite3.Connection:
     """)
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     _recover_interrupted_revenue_runs(conn)
+    _prune_change_events(conn)
     conn.commit()
     return conn
 
