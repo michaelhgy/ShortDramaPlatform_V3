@@ -38,6 +38,12 @@ STANDARD_SYSTEM_ROOT_NAME = "短剧推广运营系统"
 REVENUE_RUN_RECOVERY_LOCK = threading.Lock()
 REVENUE_RUNS_RECOVERED = False
 DATABASE_INITIALIZATION_LOCK = threading.Lock()
+# 数据库结构版本。**改动任何 DDL（建表 / 建索引 / 建触发器 / ALTER TABLE）后必须 +1**，
+# 否则已有数据库会跳过新脚本、改动不生效。
+# 版本一致时 _initialize_connection 完全跳过那套结构脚本——它在 250MB 库上要十几到几十秒，
+# 期间独占写锁，会把同时打开的页面请求全部堵死
+# （表现为"启动慢 / 刷新不出来 / database is locked"）。
+SCHEMA_VERSION = 1
 DATABASE_INITIALIZED_PATH: Path | None = None
 
 
@@ -162,6 +168,25 @@ def db_path() -> Path:
     return data_root / "database" / "v2_system.db"
 
 
+def _recover_interrupted_revenue_runs(conn: sqlite3.Connection) -> None:
+    """Fail revenue collections that were still running when the service stopped.
+
+    This is business recovery rather than schema work, so it also has to run on
+    the fast path where the structural script is skipped.
+    """
+    global REVENUE_RUNS_RECOVERED
+    with REVENUE_RUN_RECOVERY_LOCK:
+        if REVENUE_RUNS_RECOVERED:
+            return
+        now = datetime.now().isoformat(timespec="seconds")
+        conn.execute(
+            """UPDATE v2_revenue_collection_runs SET status='failed', error_message='软件重启，未完成的收益采集已停止，请重新发起采集',
+                finished_at=?, updated_at=? WHERE status IN ('queued', 'running')""",
+            (now, now),
+        )
+        REVENUE_RUNS_RECOVERED = True
+
+
 def _initialize_connection() -> sqlite3.Connection:
     """Create or migrate one database once for each service process/path."""
     path = db_path()
@@ -171,6 +196,11 @@ def _initialize_connection() -> sqlite3.Connection:
     # with ``database is locked`` while a task is being retried.
     conn = sqlite3.connect(path, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    if int(conn.execute("PRAGMA user_version").fetchone()[0]) == SCHEMA_VERSION:
+        # 结构已是最新：只读一个版本号就返回，绝不重跑那套 DDL。
+        _recover_interrupted_revenue_runs(conn)
+        conn.commit()
+        return conn
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS production_tasks (
@@ -709,13 +739,8 @@ def _initialize_connection() -> sqlite3.Connection:
           INSERT INTO v2_change_events(change_type,updated_at) VALUES ('revenue_changed',NEW.updated_at);
         END;
     """)
-    global REVENUE_RUNS_RECOVERED
-    with REVENUE_RUN_RECOVERY_LOCK:
-        if not REVENUE_RUNS_RECOVERED:
-            now = datetime.now().isoformat(timespec="seconds")
-            conn.execute("""UPDATE v2_revenue_collection_runs SET status='failed', error_message='软件重启，未完成的收益采集已停止，请重新发起采集',
-                finished_at=?, updated_at=? WHERE status IN ('queued', 'running')""", (now, now))
-            REVENUE_RUNS_RECOVERED = True
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    _recover_interrupted_revenue_runs(conn)
     conn.commit()
     return conn
 
