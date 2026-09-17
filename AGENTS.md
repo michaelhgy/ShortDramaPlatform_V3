@@ -12,7 +12,7 @@
 
 ## 安全边界（硬性）
 
-- `D:\ShortDramaPlatform`（V1）是受保护核心：**默认不碰**。
+- `D:\ShortDramaPlatform`（V1）**已停用**（用户确认业务已迁移 V2）：不碰、不开发、不删除。
 - `D:\短剧推广运营系统` 是真实业务数据：**默认只读**，任何写入必须明确授权。
 - 禁止 `git reset --hard`、`git clean -fd`、强推；禁止未经授权删除历史版本。
 - `packaging/`（约1.6GB）与 `node_modules/` 是构建产物：不手动清理、不全量扫描。
