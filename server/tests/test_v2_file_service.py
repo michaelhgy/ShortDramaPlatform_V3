@@ -17,10 +17,12 @@ class V2FileServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
+        self._originals = (service.WORKSPACE, service.DATA_ROOT, service.DATABASE_INITIALIZED_PATH)
         service.WORKSPACE = root / "workspace"
         service.DATA_ROOT = root / "system-data"
 
     def tearDown(self) -> None:
+        service.WORKSPACE, service.DATA_ROOT, service.DATABASE_INITIALIZED_PATH = self._originals
         self.temp.cleanup()
 
     def test_connection_initializes_one_workspace_only_once_per_process(self) -> None:

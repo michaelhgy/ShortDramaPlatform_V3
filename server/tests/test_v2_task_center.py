@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from server import task_center_service
+from server import v2_file_service
 from server.task_center_service import _diagnostic_log_excerpt, _executor_snapshot, _executor_stage_items, _export_task_item, _user_facing_error_detail
 
 
@@ -22,6 +23,26 @@ class V2TaskCenterErrorPresentationTests(unittest.TestCase):
 
 
 class V2TaskCenterExecutorOwnershipTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        self._originals = (
+            v2_file_service.WORKSPACE,
+            v2_file_service.DATA_ROOT,
+            v2_file_service.DATABASE_INITIALIZED_PATH,
+        )
+        v2_file_service.WORKSPACE = root / "workspace"
+        v2_file_service.DATA_ROOT = root / "system-data"
+        v2_file_service.DATABASE_INITIALIZED_PATH = None
+
+    def tearDown(self) -> None:
+        (
+            v2_file_service.WORKSPACE,
+            v2_file_service.DATA_ROOT,
+            v2_file_service.DATABASE_INITIALIZED_PATH,
+        ) = self._originals
+        self.temp.cleanup()
+
     def test_observing_output_is_presented_as_an_active_export(self) -> None:
         task = _export_task_item({
             "id": "attempt-1", "status": "observing_output", "error_code": "", "error_message": "",
