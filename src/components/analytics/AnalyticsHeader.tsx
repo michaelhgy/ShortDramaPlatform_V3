@@ -10,6 +10,7 @@ import {
   Tv2, 
   Film, 
   Grid3X3, 
+  ChartNoAxesCombined,
   DownloadCloud, 
   Layers, 
   Info,
@@ -67,6 +68,7 @@ export const AnalyticsHeader: React.FC<AnalyticsHeaderProps> = ({
   }, [selectedTheater]);
 
   const hasVideoDataInTheater = selectedTheater === 'all' || selectedTheater === 'qingning';
+  const isWechatIndex = activeTab === 'wechat_index';
 
   const tabs: { key: AnalyticsTopTab; label: string; icon: React.ReactNode; countLabel?: string }[] = [
     { key: 'revenue', label: '收益', icon: <DollarSign className="w-4 h-4" /> },
@@ -79,6 +81,7 @@ export const AnalyticsHeader: React.FC<AnalyticsHeaderProps> = ({
       countLabel: hasVideoDataInTheater ? '青柠' : '暂无' 
     },
     { key: 'combinations', label: '组合', icon: <Grid3X3 className="w-4 h-4" />, countLabel: '矩阵' },
+    { key: 'wechat_index', label: '微信指数', icon: <ChartNoAxesCombined className="w-4 h-4" /> },
   ];
 
   const timeRanges: { key: TimeRangeFilter; label: string }[] = [
@@ -148,6 +151,12 @@ export const AnalyticsHeader: React.FC<AnalyticsHeaderProps> = ({
 
           {/* Right Action: Data completeness status (昨日采集情况) & 采集收益 */}
           <div className="flex items-center gap-2">
+            {isWechatIndex ? (
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 border border-indigo-100 text-[11px] text-indigo-800">
+                <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                <span className="font-medium">按关键词保留原始曲线，不自动合并</span>
+              </div>
+            ) : <>
             <div 
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-black/[0.04] text-[11px] text-[#64748B]"
               title="表示昨日收益数据采集与核对情况，采集失败或待补采不按0收益处理"
@@ -162,11 +171,12 @@ export const AnalyticsHeader: React.FC<AnalyticsHeaderProps> = ({
               <DownloadCloud className="w-4 h-4" />
               <span>采集收益</span>
             </button>
+            </>}
           </div>
         </div>
 
         {/* Lower Tier: Global Scope Filters & Data Coverage Badge */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-black/[0.04] text-xs">
+        {!isWechatIndex && <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-black/[0.04] text-xs">
           {/* Left: Time Range & Theater Filter */}
           <div className="flex flex-wrap items-center gap-3">
             {/* Time Range Pills */}
@@ -231,7 +241,7 @@ export const AnalyticsHeader: React.FC<AnalyticsHeaderProps> = ({
             }`} />
             <span>{dataCapabilityHint}</span>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Date Range Modal */}

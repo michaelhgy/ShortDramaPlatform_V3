@@ -20,6 +20,7 @@ datas = [
     (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "sticker_skin_catalog.json"), "server/template_engine/jianying59_template/resources"),
     (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "flower_style_catalog.json"), "server/template_engine/jianying59_template/resources"),
     (str(PROJECT_ROOT / "server" / "final_engine" / "jianying59_final" / "resources" / "real_photo_effect_pool_5_9.json"), "server/final_engine/jianying59_final/resources"),
+    (str(PROJECT_ROOT / "server" / "wechat_index_proxy_addon.py"), "server"),
     (str(FFMPEG_ROOT / "bin" / "ffmpeg.exe"), "tools/ffmpeg/bin"),
     (str(FFMPEG_ROOT / "bin" / "ffprobe.exe"), "tools/ffmpeg/bin"),
     (str(FFMPEG_ROOT / "LICENSE"), "tools/ffmpeg"),
@@ -37,7 +38,7 @@ hiddenimports = [
 # hook.  Do not recursively collect them: that would pull their test/tooling
 # trees into the Portable package.  Only V2's dynamic automation packages need
 # a complete module collection.
-for package in ("uiautomation", "pyJianYingDraft", "rapidocr_onnxruntime"):
+for package in ("uiautomation", "pyJianYingDraft", "rapidocr_onnxruntime", "mitmproxy", "aioquic", "mitmproxy_rs", "mitmproxy_windows"):
     hiddenimports += collect_submodules(package)
     datas += collect_data_files(package)
     binaries += collect_dynamic_libs(package)

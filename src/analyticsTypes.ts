@@ -1,6 +1,6 @@
 // Comprehensive Data Analytics Types for Production Desktop Workspace
 
-export type AnalyticsTopTab = 'revenue' | 'accounts' | 'dramas' | 'videos' | 'combinations';
+export type AnalyticsTopTab = 'revenue' | 'accounts' | 'dramas' | 'videos' | 'combinations' | 'wechat_index';
 
 export type TimeRangeFilter = 'yesterday' | '7days' | '14days' | '30days' | 'this_month' | 'custom';
 

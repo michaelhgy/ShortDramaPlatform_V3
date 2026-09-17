@@ -16,6 +16,7 @@ import { VideoModule } from './VideoModule';
 import { DramaModule } from './DramaModule';
 import { CombinationModule } from './CombinationModule';
 import { RevenueCollectionDrawer } from './RevenueCollectionDrawer';
+import { WechatIndexModule } from './WechatIndexModule';
 import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
 
 interface DataAnalyticsViewProps {
@@ -58,6 +59,7 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
   const [targetAccountId, setTargetAccountId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
+    if (activeTab === 'wechat_index') return undefined;
     let active = true;
     const input = { timeRange, theaterFilter: selectedTheater, customStart: customStartDate, customEnd: customEndDate };
     const needsDetailedData = activeTab === 'accounts' || activeTab === 'videos' || activeTab === 'dramas' || activeTab === 'combinations';
@@ -211,6 +213,8 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
       {activeTab === 'combinations' && videoAnalysis && (
         <CombinationModule timeRange={timeRange} selectedTheater={selectedTheater} customStartDate={customStartDate} customEndDate={customEndDate} onNavigateToTab={handleNavigateToTab} onScheduleToday={onScheduleToday} videoAnalysis={videoAnalysis || undefined} />
       )}
+
+      {activeTab === 'wechat_index' && <WechatIndexModule showToast={showToast} />}
 
 
       {/* 3. Global Revenue Collection Drawer */}

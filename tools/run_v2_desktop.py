@@ -158,6 +158,14 @@ def start_production_server() -> tuple[object, str]:
 
 
 def main() -> None:
+    if "--run-wechat-index-capture" in sys.argv:
+        # The same signed Portable executable is used as a hidden mitmproxy
+        # sidecar. This avoids relying on a separate Python installation on a
+        # new computer. Remaining arguments belong to mitmdump.
+        sys.argv.remove("--run-wechat-index-capture")
+        from mitmproxy.tools.main import mitmdump
+        mitmdump()
+        return
     parser = argparse.ArgumentParser(description="启动 V2 正式桌面运行环境（不使用 Vite）")
     parser.add_argument("--debug", action="store_true", help="启用 pywebview 调试模式")
     parser.add_argument("--runtime-probe", action="store_true", help="仅检查冻结运行时依赖，不启动窗口")

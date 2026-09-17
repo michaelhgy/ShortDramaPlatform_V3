@@ -2,11 +2,15 @@ import tempfile
 import unittest
 import base64
 import json
+import os
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
 from server import v2_file_service as service
+from server import wechat_index_client
+from server import wechat_index_proxy
+from server import wechat_index_proxy_addon
 
 
 class V2FileServiceTests(unittest.TestCase):
@@ -18,6 +22,133 @@ class V2FileServiceTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+
+    def test_connection_initializes_one_workspace_only_once_per_process(self) -> None:
+        service.DATABASE_INITIALIZED_PATH = None
+        first = service.connection()
+        first.close()
+        with patch.object(service, "_initialize_connection", side_effect=AssertionError("schema bootstrap repeated")):
+            second = service.connection()
+            second.close()
+
+    def _create_wechat_index_drama(self) -> dict[str, object]:
+        theater = service.create_theater({"name": "微信指数测试剧场"})
+        return service.create_drama({"current_name": "竹马嫌我杀猪，我转身嫁了个宝", "theater_id": theater["id"]})
+
+    def test_wechat_index_punctuation_variant_is_candidate_not_auto_aggregation(self) -> None:
+        drama = self._create_wechat_index_drama()
+        primary = service.create_wechat_index_keyword({
+            "drama_id": drama["id"], "keyword": "竹马嫌我杀猪，我转身嫁了个宝", "role": "primary",
+        })
+        variant = service.create_wechat_index_keyword({
+            "drama_id": drama["id"], "keyword": "竹马嫌我杀猪我转身嫁了个宝", "role": "candidate",
+        })
+
+        self.assertEqual(primary["normalized_keyword"], variant["normalized_keyword"])
+        self.assertEqual("candidate", variant["role"])
+        self.assertEqual(0, service.list_wechat_index_keywords(str(drama["id"]))["items"][0]["observation_count"])
+
+    def test_wechat_index_history_import_preserves_confirmed_zero_and_updates_same_day(self) -> None:
+        drama = self._create_wechat_index_drama()
+        keyword = service.create_wechat_index_keyword({"drama_id": drama["id"], "keyword": "测试短剧", "role": "primary"})
+        first = {
+            "code": 0,
+            "index": {"resp_list": [{"query": "测试短剧", "status": 0, "indexes": [{"time_indexes": [
+                {"time": 20260901, "score": 0}, {"time": 20260902, "score": 12345},
+            ]}]}]},
+        }
+        result = service.import_wechat_index_history({"keyword_id": keyword["id"], "source_response": first})
+        self.assertEqual(2, result["imported_points"])
+        second = {"code": 0, "index": {"resp_list": [{"query": "测试短剧", "status": 0, "indexes": [{"time_indexes": [
+            {"time": 20260902, "score": 23456}, {"time": 20260903, "score": 7},
+        ]}]}]}}
+        service.import_wechat_index_history({"keyword_id": keyword["id"], "source_response": second})
+        conn = service.connection()
+        try:
+            rows = conn.execute("SELECT ymd,total_score FROM wechat_index_observations WHERE keyword_id=? ORDER BY ymd", (keyword["id"],)).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual([("20260901", 0), ("20260902", 23456), ("20260903", 7)], [(row["ymd"], row["total_score"]) for row in rows])
+
+    def test_wechat_index_suggestion_import_flags_only_punctuation_match(self) -> None:
+        drama = self._create_wechat_index_drama()
+        keyword = service.create_wechat_index_keyword({"drama_id": drama["id"], "keyword": "家养恶犬终为祸", "role": "primary"})
+        response = {"code": 0, "query": "家养恶犬终为祸", "content": ["家养恶犬终为祸", "家养恶犬终为祸短剧", "家养恶犬终为祸第二季"]}
+        result = service.import_wechat_index_suggestions({"keyword_id": keyword["id"], "source_response": response})
+        self.assertEqual(3, result["suggestion_count"])
+        conn = service.connection()
+        try:
+            rows = conn.execute("SELECT suggested_keyword,normalization_match,decision FROM wechat_index_suggestions WHERE keyword_id=? ORDER BY suggested_keyword", (keyword["id"],)).fetchall()
+        finally:
+            conn.close()
+        self.assertIn(("家养恶犬终为祸", 1, "pending"), [(row["suggested_keyword"], row["normalization_match"], row["decision"]) for row in rows])
+        self.assertIn(("家养恶犬终为祸短剧", 0, "pending"), [(row["suggested_keyword"], row["normalization_match"], row["decision"]) for row in rows])
+
+    def test_wechat_index_collector_refuses_unsigned_static_replay(self) -> None:
+        drama = self._create_wechat_index_drama()
+        keyword = service.create_wechat_index_keyword({"drama_id": drama["id"], "keyword": "自动采集测试", "role": "primary"})
+        with self.assertRaisesRegex(ValueError, "不支持静态重放"):
+            service.collect_wechat_index_history({"keyword_id": keyword["id"]})
+
+    def test_wechat_index_connection_template_is_windows_user_encrypted_and_blocks_other_hosts(self) -> None:
+        template = {
+            "url": "https://search.weixin.qq.com/cgi-bin/wxaweb/wxindex",
+            "headers": {"User-Agent": "V2 test", "Content-Type": "application/json"},
+            "body": {"openid": "test-openid", "search_key": "test-search-key", "query": ["自动采集测试"], "action_type": 1},
+        }
+        saved = wechat_index_client.save_connection_template(service.DATA_ROOT, template)
+        self.assertEqual("connected", saved["status"])
+        self.assertEqual("connected", wechat_index_client.connection_status(service.DATA_ROOT)["status"])
+        session_path, _ = wechat_index_client._profile_paths(service.DATA_ROOT)
+        self.assertNotIn(b"test-openid", session_path.read_bytes())
+        self.assertEqual("自动采集测试", wechat_index_client.WechatIndexClient(service.DATA_ROOT)._template()["body"]["query"][0])
+        invalid = dict(template); invalid["url"] = "https://example.com/cgi-bin/wxaweb/wxindex"
+        with self.assertRaisesRegex(ValueError, "只接受微信指数"):
+            wechat_index_client.save_connection_template(service.DATA_ROOT, invalid)
+
+    def test_wechat_index_capture_addon_only_persists_wxindex_requests(self) -> None:
+        class Request:
+            method = "POST"
+            host = "search.weixin.qq.com"
+            path = "/cgi-bin/wxaweb/wxindex"
+            pretty_url = "https://search.weixin.qq.com/cgi-bin/wxaweb/wxindex"
+            headers = {"User-Agent": "capture-test"}
+            @staticmethod
+            def get_text(strict: bool = False) -> str:
+                return json.dumps({"openid": "capture-test-user", "search_key": "capture-test-key", "query": ["初始化测试"], "action_type": 1})
+        class Flow:
+            request = Request()
+            metadata: dict[str, object] = {}
+        previous = os.environ.get("WECHAT_INDEX_DATA_ROOT")
+        os.environ["WECHAT_INDEX_DATA_ROOT"] = str(service.DATA_ROOT)
+        try:
+            wechat_index_proxy_addon.CaptureWechatIndexRequest().request(Flow())
+        finally:
+            if previous is None: os.environ.pop("WECHAT_INDEX_DATA_ROOT", None)
+            else: os.environ["WECHAT_INDEX_DATA_ROOT"] = previous
+        self.assertEqual("connected", wechat_index_client.connection_status(service.DATA_ROOT)["status"])
+        self.assertEqual("stopped", wechat_index_proxy.capture_status(service.DATA_ROOT)["status"])
+
+    def test_wechat_index_capture_uses_simple_existing_proxy_as_upstream(self) -> None:
+        snapshot = {"ProxyEnable": {"exists": True, "value": 1, "kind": 4}, "ProxyServer": {"exists": True, "value": "127.0.0.1:7890", "kind": 1}}
+        self.assertEqual("127.0.0.1:7890", wechat_index_proxy._previous_proxy_server(snapshot))
+        self.assertEqual("", wechat_index_proxy._previous_proxy_server({"ProxyEnable": {"exists": True, "value": 0}, "ProxyServer": {"exists": True, "value": "127.0.0.1:7890"}}))
+
+    def test_wechat_index_signed_capture_response_is_ingested_without_replaying_request(self) -> None:
+        drama = self._create_wechat_index_drama()
+        keyword = service.create_wechat_index_keyword({"drama_id": drama["id"], "keyword": "被动采集测试", "role": "candidate"})
+        response = {"code": 0, "index": {"resp_list": [{"query": "被动采集测试", "status": 0, "indexes": [{"time_indexes": [
+            {"time": 20260907, "score": 24680},
+        ]}]}]}}
+        wechat_index_client.save_captured_response(service.DATA_ROOT, "history", "被动采集测试", response)
+        result = service.ingest_wechat_index_capture_inbox(service.DATA_ROOT)
+        self.assertEqual({"history": 1, "suggestions": 0, "ignored": 0}, result)
+        conn = service.connection()
+        try:
+            row = conn.execute("SELECT total_score FROM wechat_index_observations WHERE keyword_id=?", (keyword["id"],)).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(24680, row["total_score"])
 
     def test_resource_list_queues_new_video_without_waiting_for_probe(self) -> None:
         root = service.WORKSPACE / "生成资源" / "引流视频"

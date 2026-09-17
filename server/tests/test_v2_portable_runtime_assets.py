@@ -39,6 +39,14 @@ class V2PortableRuntimeAssetsTests(unittest.TestCase):
         self.assertIn("sticker_skin_catalog.json", spec)
         self.assertIn("flower_style_catalog.json", spec)
 
+    def test_portable_spec_includes_wechat_index_capture_runtime(self):
+        root = Path(__file__).resolve().parents[2]
+        spec = (root / "packaging" / "v2_portable.spec").read_text(encoding="utf-8")
+        launcher = (root / "tools" / "run_v2_desktop.py").read_text(encoding="utf-8")
+        self.assertIn('"mitmproxy"', spec)
+        self.assertIn("wechat_index_proxy_addon.py", spec)
+        self.assertIn("--run-wechat-index-capture", launcher)
+
     def test_frozen_resource_root_uses_meipass_not_source_checkout(self):
         with patch.object(sys, "frozen", True, create=True), patch.object(sys, "_MEIPASS", r"C:\portable\_internal", create=True):
             self.assertEqual(application_resource_root(), Path(r"C:\portable\_internal"))

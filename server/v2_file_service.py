@@ -18,6 +18,7 @@ import ctypes
 import queue
 import threading
 import shutil
+import unicodedata
 import subprocess
 from datetime import date, datetime, timedelta
 from http import HTTPStatus
@@ -36,6 +37,8 @@ PORT = int(os.environ.get("V2_FILE_SERVICE_PORT", "8782"))
 STANDARD_SYSTEM_ROOT_NAME = "短剧推广运营系统"
 REVENUE_RUN_RECOVERY_LOCK = threading.Lock()
 REVENUE_RUNS_RECOVERED = False
+DATABASE_INITIALIZATION_LOCK = threading.Lock()
+DATABASE_INITIALIZED_PATH: Path | None = None
 
 
 def _bootstrap_settings_path() -> Path:
@@ -159,7 +162,8 @@ def db_path() -> Path:
     return data_root / "database" / "v2_system.db"
 
 
-def connection() -> sqlite3.Connection:
+def _initialize_connection() -> sqlite3.Connection:
+    """Create or migrate one database once for each service process/path."""
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # Background executors and button actions share this SQLite database.
@@ -326,6 +330,47 @@ def connection() -> sqlite3.Connection:
             master_path TEXT NOT NULL,
             cover_path TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS wechat_index_keywords (
+            id TEXT PRIMARY KEY,
+            drama_id TEXT NOT NULL REFERENCES dramas(id) ON DELETE CASCADE,
+            keyword TEXT NOT NULL,
+            normalized_keyword TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('primary', 'equivalent', 'related', 'candidate', 'rejected')),
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            source TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('manual', 'suggestion_import')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(drama_id, keyword)
+        );
+        CREATE TABLE IF NOT EXISTS wechat_index_fetches (
+            id TEXT PRIMARY KEY,
+            keyword_id TEXT NOT NULL REFERENCES wechat_index_keywords(id) ON DELETE CASCADE,
+            source_kind TEXT NOT NULL CHECK(source_kind IN ('history_import', 'collector')),
+            response_json TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS wechat_index_observations (
+            id TEXT PRIMARY KEY,
+            keyword_id TEXT NOT NULL REFERENCES wechat_index_keywords(id) ON DELETE CASCADE,
+            ymd TEXT NOT NULL,
+            total_score INTEGER NOT NULL,
+            source_fetch_id TEXT NOT NULL REFERENCES wechat_index_fetches(id) ON DELETE CASCADE,
+            collected_at TEXT NOT NULL,
+            UNIQUE(keyword_id, ymd)
+        );
+        CREATE TABLE IF NOT EXISTS wechat_index_suggestions (
+            id TEXT PRIMARY KEY,
+            keyword_id TEXT NOT NULL REFERENCES wechat_index_keywords(id) ON DELETE CASCADE,
+            suggested_keyword TEXT NOT NULL,
+            normalized_keyword TEXT NOT NULL,
+            normalization_match INTEGER NOT NULL DEFAULT 0 CHECK(normalization_match IN (0, 1)),
+            decision TEXT NOT NULL DEFAULT 'pending' CHECK(decision IN ('pending', 'adopted', 'rejected')),
+            source_response_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(keyword_id, suggested_keyword)
         );
         CREATE TABLE IF NOT EXISTS v2_settings (
             key TEXT PRIMARY KEY,
@@ -559,6 +604,8 @@ def connection() -> sqlite3.Connection:
         "CREATE INDEX IF NOT EXISTS idx_v2_revenue_video_links_video ON v2_revenue_video_links(account_id, source_video_id);"
         "CREATE INDEX IF NOT EXISTS idx_v2_change_events_id ON v2_change_events(id);"
         "CREATE INDEX IF NOT EXISTS idx_resource_index_identity ON resource_index(file_identity);"
+        "CREATE INDEX IF NOT EXISTS idx_wechat_index_keywords_drama ON wechat_index_keywords(drama_id, role, enabled);"
+        "CREATE INDEX IF NOT EXISTS idx_wechat_index_observations_keyword_date ON wechat_index_observations(keyword_id, ymd);"
     )
     # SQLite triggers make background executors participate in the same
     # change stream as button-driven API operations.  They carry ownership
@@ -670,6 +717,25 @@ def connection() -> sqlite3.Connection:
                 finished_at=?, updated_at=? WHERE status IN ('queued', 'running')""", (now, now))
             REVENUE_RUNS_RECOVERED = True
     conn.commit()
+    return conn
+
+
+def connection() -> sqlite3.Connection:
+    """Open a request connection without repeating schema writes.
+
+    SQLite permits one writer at a time.  Running DDL, index creation and
+    trigger installation for every HTTP request caused concurrently mounted
+    V2 pages to block one another before they could perform ordinary reads.
+    """
+    global DATABASE_INITIALIZED_PATH
+    path = db_path().resolve()
+    with DATABASE_INITIALIZATION_LOCK:
+        if DATABASE_INITIALIZED_PATH != path:
+            conn = _initialize_connection()
+            DATABASE_INITIALIZED_PATH = path
+            return conn
+    conn = sqlite3.connect(path, timeout=30.0)
+    conn.row_factory = sqlite3.Row
     return conn
 
 
@@ -1206,6 +1272,311 @@ def create_dramas_batch(payload: dict[str, object]) -> dict[str, object]:
             if "已被其他剧集使用" in str(exc) or "已存在" in str(exc): skipped.append(str(raw.get("current_name") or ""))
             else: raise
     return {"items": created, "created_count": len(created), "skipped_names": skipped}
+
+
+WECHAT_INDEX_KEYWORD_ROLES = {"primary", "equivalent", "related", "candidate", "rejected"}
+
+
+def normalize_wechat_index_keyword(value: object) -> str:
+    """Create a comparison key only; this never decides that scores can be added."""
+    text = unicodedata.normalize("NFKC", str(value or "")).strip()
+    if not text:
+        raise ValueError("微信指数关键词不能为空")
+    # Chinese titles often differ only by full-/half-width punctuation or spaces.
+    # Retain this key solely for candidate review, never as an aggregation rule.
+    return re.sub(r"[\s\W_]+", "", text, flags=re.UNICODE)
+
+
+def _wechat_index_keyword_row(conn: sqlite3.Connection, keyword_id: str) -> sqlite3.Row:
+    row = conn.execute(
+        """SELECT k.*, d.current_name AS drama_name FROM wechat_index_keywords k
+           JOIN dramas d ON d.id=k.drama_id WHERE k.id=?""",
+        (keyword_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("微信指数关键词不存在")
+    return row
+
+
+def list_wechat_index_keywords(drama_id: str = "") -> dict[str, object]:
+    conn = connection()
+    try:
+        clauses, params = [], []
+        if drama_id:
+            clauses.append("k.drama_id=?")
+            params.append(drama_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = conn.execute(
+            f"""SELECT k.*, d.current_name AS drama_name,
+                (SELECT COUNT(*) FROM wechat_index_observations o WHERE o.keyword_id=k.id) AS observation_count,
+                (SELECT MIN(ymd) FROM wechat_index_observations o WHERE o.keyword_id=k.id) AS first_observed_ymd,
+                (SELECT MAX(ymd) FROM wechat_index_observations o WHERE o.keyword_id=k.id) AS last_observed_ymd
+                FROM wechat_index_keywords k JOIN dramas d ON d.id=k.drama_id
+                {where} ORDER BY d.current_name COLLATE NOCASE, CASE k.role WHEN 'primary' THEN 0 WHEN 'equivalent' THEN 1 WHEN 'related' THEN 2 WHEN 'candidate' THEN 3 ELSE 4 END, k.keyword COLLATE NOCASE""",
+            params,
+        ).fetchall()
+        return {"items": [dict(row) for row in rows]}
+    finally:
+        conn.close()
+
+
+def create_wechat_index_keyword(payload: dict[str, object]) -> dict[str, object]:
+    drama_id = str(payload.get("drama_id") or "").strip()
+    keyword = str(payload.get("keyword") or "").strip()
+    role = str(payload.get("role") or "candidate").strip()
+    if not drama_id:
+        raise ValueError("请选择归属剧集")
+    if role not in WECHAT_INDEX_KEYWORD_ROLES:
+        raise ValueError("微信指数关键词角色无效")
+    normalized = normalize_wechat_index_keyword(keyword)
+    if len(keyword) > 100:
+        raise ValueError("微信指数关键词不能超过 100 个字符")
+    enabled = 1 if bool(payload.get("enabled", True)) else 0
+    source = str(payload.get("source") or "manual")
+    if source not in {"manual", "suggestion_import"}:
+        raise ValueError("微信指数关键词来源无效")
+    conn = connection()
+    try:
+        if not conn.execute("SELECT 1 FROM dramas WHERE id=?", (drama_id,)).fetchone():
+            raise ValueError("归属剧集不存在")
+        stamp = now_text()
+        item = {"id": uuid.uuid4().hex, "drama_id": drama_id, "keyword": keyword, "normalized_keyword": normalized,
+                "role": role, "enabled": enabled, "source": source, "created_at": stamp, "updated_at": stamp}
+        conn.execute(
+            """INSERT INTO wechat_index_keywords(id,drama_id,keyword,normalized_keyword,role,enabled,source,created_at,updated_at)
+               VALUES (:id,:drama_id,:keyword,:normalized_keyword,:role,:enabled,:source,:created_at,:updated_at)""",
+            item,
+        )
+        conn.commit()
+        return item
+    except sqlite3.IntegrityError as exc:
+        raise ValueError("该剧集已经维护了相同的微信指数关键词") from exc
+    finally:
+        conn.close()
+
+
+def update_wechat_index_keyword(keyword_id: str, payload: dict[str, object]) -> dict[str, object]:
+    conn = connection()
+    try:
+        current = _wechat_index_keyword_row(conn, keyword_id)
+        role = str(payload.get("role", current["role"]))
+        if role not in WECHAT_INDEX_KEYWORD_ROLES:
+            raise ValueError("微信指数关键词角色无效")
+        raw_enabled = payload.get("enabled", current["enabled"])
+        if not isinstance(raw_enabled, (bool, int)):
+            raise ValueError("微信指数关键词启用状态无效")
+        enabled = int(bool(raw_enabled))
+        stamp = now_text()
+        conn.execute("UPDATE wechat_index_keywords SET role=?,enabled=?,updated_at=? WHERE id=?", (role, enabled, stamp, keyword_id))
+        conn.commit()
+        return {**dict(current), "role": role, "enabled": enabled, "updated_at": stamp}
+    finally:
+        conn.close()
+
+
+def _reject_wechat_index_secret_fields(value: object) -> None:
+    if isinstance(value, dict):
+        blocked = {"openid", "search_key", "cookie", "authorization", "token"}
+        if blocked.intersection(str(key).casefold() for key in value):
+            raise ValueError("原始响应中不能包含微信会话或认证参数")
+        for nested in value.values():
+            _reject_wechat_index_secret_fields(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            _reject_wechat_index_secret_fields(nested)
+
+
+def _parse_wechat_index_history(response: object, expected_keyword: str) -> list[tuple[str, int]]:
+    if not isinstance(response, dict):
+        raise ValueError("微信指数历史响应不是对象")
+    if response.get("code") != 0:
+        code = response.get("code")
+        message = str(response.get("msg") or response.get("message") or response.get("error") or "").strip().replace("\n", " ")[:160]
+        suffix = f"：{message}" if message else ""
+        raise ValueError(f"微信指数历史请求未成功（code={code}）{suffix}")
+    index = response.get("index")
+    resp_list = index.get("resp_list") if isinstance(index, dict) else None
+    if not isinstance(resp_list, list):
+        raise ValueError("微信指数历史响应缺少 index.resp_list")
+    target = next((item for item in resp_list if isinstance(item, dict) and item.get("query") == expected_keyword), None)
+    if not isinstance(target, dict):
+        raise ValueError("历史响应与当前关键词不一致")
+    if target.get("status") != 0:
+        raise ValueError("微信指数未返回该关键词的可用历史数据")
+    result: dict[str, int] = {}
+    for channel in target.get("indexes", []):
+        if not isinstance(channel, dict):
+            continue
+        for point in channel.get("time_indexes", []):
+            if not isinstance(point, dict):
+                continue
+            raw_date, score = str(point.get("time") or ""), point.get("score")
+            if not re.fullmatch(r"\d{8}", raw_date) or not isinstance(score, int) or score < 0:
+                raise ValueError("微信指数历史数据中存在无效日期或指数")
+            existing = result.get(raw_date)
+            if existing is not None and existing != score:
+                raise ValueError("微信指数历史响应包含冲突的同日指数")
+            result[raw_date] = score
+    if not result:
+        raise ValueError("微信指数历史响应未包含逐日指数")
+    return sorted(result.items())
+
+
+def import_wechat_index_history(payload: dict[str, object], source_kind: str = "history_import") -> dict[str, object]:
+    keyword_id = str(payload.get("keyword_id") or "").strip()
+    response = payload.get("source_response")
+    if not isinstance(response, dict):
+        raise ValueError("需要提供微信指数原始响应对象")
+    _reject_wechat_index_secret_fields(response)
+    conn = connection()
+    try:
+        keyword = _wechat_index_keyword_row(conn, keyword_id)
+        points = _parse_wechat_index_history(response, str(keyword["keyword"]))
+        stamp = now_text()
+        fetch_id = uuid.uuid4().hex
+        conn.execute(
+            "INSERT INTO wechat_index_fetches(id,keyword_id,source_kind,response_json,received_at,created_at) VALUES (?,?,?,?,?,?)",
+            (fetch_id, keyword_id, source_kind, json.dumps(response, ensure_ascii=False, separators=(",", ":")), stamp, stamp),
+        )
+        for ymd, score in points:
+            conn.execute(
+                """INSERT INTO wechat_index_observations(id,keyword_id,ymd,total_score,source_fetch_id,collected_at)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(keyword_id,ymd) DO UPDATE SET total_score=excluded.total_score,
+                       source_fetch_id=excluded.source_fetch_id,collected_at=excluded.collected_at""",
+                (uuid.uuid4().hex, keyword_id, ymd, score, fetch_id, stamp),
+            )
+        conn.commit()
+        return {"keyword_id": keyword_id, "imported_points": len(points), "first_ymd": points[0][0], "last_ymd": points[-1][0], "fetch_id": fetch_id}
+    finally:
+        conn.close()
+
+
+def wechat_index_connection_state() -> dict[str, object]:
+    try:
+        from server.wechat_index_client import connection_status
+    except ModuleNotFoundError:
+        from wechat_index_client import connection_status
+    _, data_root = require_configured_paths()
+    return connection_status(data_root)
+
+
+def initialize_wechat_index_connection(payload: dict[str, object]) -> dict[str, object]:
+    try:
+        from server.wechat_index_client import save_connection_template
+    except ModuleNotFoundError:
+        from wechat_index_client import save_connection_template
+    request_template = payload.get("request_template")
+    _, data_root = require_configured_paths()
+    return save_connection_template(data_root, request_template)
+
+
+def collect_wechat_index_history(payload: dict[str, object]) -> dict[str, object]:
+    # WeChat binds X-Request-Sign to the actual mini-program request. A saved
+    # request cannot safely be replayed for another word. Collection therefore
+    # happens only by ingesting a real, passively captured mini-program reply.
+    raise ValueError("微信指数不支持静态重放采集。请先启动本机捕获，再在微信小程序查询该关键词；成功响应会自动入库。")
+
+
+def wechat_index_capture_status() -> dict[str, object]:
+    try:
+        from server.wechat_index_proxy import capture_status
+    except ModuleNotFoundError:
+        from wechat_index_proxy import capture_status
+    _, data_root = require_configured_paths()
+    state = capture_status(data_root)
+    state["ingested"] = ingest_wechat_index_capture_inbox(data_root)
+    return state
+
+
+def start_wechat_index_capture() -> dict[str, object]:
+    try:
+        from server.wechat_index_proxy import start_capture
+    except ModuleNotFoundError:
+        from wechat_index_proxy import start_capture
+    _, data_root = require_configured_paths()
+    return start_capture(data_root)
+
+
+def stop_wechat_index_capture() -> dict[str, object]:
+    try:
+        from server.wechat_index_proxy import stop_capture
+    except ModuleNotFoundError:
+        from wechat_index_proxy import stop_capture
+    _, data_root = require_configured_paths()
+    return stop_capture(data_root)
+
+
+
+
+def import_wechat_index_suggestions(payload: dict[str, object]) -> dict[str, object]:
+    keyword_id = str(payload.get("keyword_id") or "").strip()
+    response = payload.get("source_response")
+    if not isinstance(response, dict) or response.get("code") != 0 or not isinstance(response.get("content"), list):
+        raise ValueError("不是成功的微信指数联想词响应")
+    _reject_wechat_index_secret_fields(response)
+    conn = connection()
+    try:
+        keyword = _wechat_index_keyword_row(conn, keyword_id)
+        if response.get("query") != keyword["keyword"]:
+            raise ValueError("联想词响应与当前关键词不一致")
+        stamp, inserted = now_text(), 0
+        for value in response["content"]:
+            suggested = str(value or "").strip()
+            if not suggested or len(suggested) > 100:
+                continue
+            normalized = normalize_wechat_index_keyword(suggested)
+            cursor = conn.execute(
+                """INSERT INTO wechat_index_suggestions(id,keyword_id,suggested_keyword,normalized_keyword,normalization_match,source_response_json,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(keyword_id,suggested_keyword) DO UPDATE SET
+                   normalized_keyword=excluded.normalized_keyword,normalization_match=excluded.normalization_match,
+                   source_response_json=excluded.source_response_json,updated_at=excluded.updated_at""",
+                (uuid.uuid4().hex, keyword_id, suggested, normalized, int(normalized == keyword["normalized_keyword"]),
+                 json.dumps(response, ensure_ascii=False, separators=(",", ":")), stamp, stamp),
+            )
+            inserted += int(cursor.rowcount > 0)
+        conn.commit()
+        return {"keyword_id": keyword_id, "suggestion_count": inserted}
+    finally:
+        conn.close()
+
+
+def ingest_wechat_index_capture_inbox(data_root: Path) -> dict[str, int]:
+    """Match passively captured, signed WeChat responses to maintained words."""
+    try:
+        from server.wechat_index_client import capture_inbox_path
+    except ModuleNotFoundError:
+        from wechat_index_client import capture_inbox_path
+    imported_history = imported_suggestions = ignored = 0
+    inbox = capture_inbox_path(data_root)
+    for file_path in sorted(inbox.glob("*.json"))[:50] if inbox.is_dir() else []:
+        try:
+            item = json.loads(file_path.read_text(encoding="utf-8"))
+            if not isinstance(item, dict): raise ValueError("捕获文件无效")
+            query = str(item.get("query") or "")
+            kind = str(item.get("kind") or "")
+            response = item.get("response")
+            conn = connection()
+            try:
+                row = conn.execute("SELECT id FROM wechat_index_keywords WHERE keyword=?", (query,)).fetchone()
+            finally:
+                conn.close()
+            if not row:
+                ignored += 1
+            elif kind == "history":
+                import_wechat_index_history({"keyword_id": str(row["id"]), "source_response": response}, source_kind="collector")
+                imported_history += 1
+            elif kind == "suggestions":
+                import_wechat_index_suggestions({"keyword_id": str(row["id"]), "source_response": response})
+                imported_suggestions += 1
+            else:
+                ignored += 1
+            file_path.unlink()
+        except (OSError, ValueError, json.JSONDecodeError):
+            # Leave malformed or temporarily incomplete captures for diagnosis;
+            # never turn an ingest failure into zero-valued data.
+            continue
+    return {"history": imported_history, "suggestions": imported_suggestions, "ignored": ignored}
 
 
 def upload_drama_cover(drama_id: str, payload: dict[str, object]) -> dict[str, object]:
@@ -3560,6 +3931,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v2/dramas":
             self._json(HTTPStatus.OK, list_dramas())
             return
+        if path == "/api/v2/wechat-index/connection":
+            self._json(HTTPStatus.OK, wechat_index_connection_state())
+            return
+        if path == "/api/v2/wechat-index/capture":
+            self._json(HTTPStatus.OK, wechat_index_capture_status())
+            return
+        if path == "/api/v2/wechat-index/keywords":
+            query = parse_qs(urlparse(self.path).query)
+            self._json(HTTPStatus.OK, list_wechat_index_keywords(str(query.get("drama_id", [""])[0])))
+            return
         match = re.fullmatch(r"/api/v2/dramas/([a-f0-9]+)", path)
         if match:
             try: self._json(HTTPStatus.OK, get_drama(match.group(1)))
@@ -3798,6 +4179,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.CREATED, create_drama(payload)); return
             if path == "/api/v2/dramas/batch":
                 self._json(HTTPStatus.CREATED, create_dramas_batch(payload)); return
+            if path == "/api/v2/wechat-index/keywords":
+                self._json(HTTPStatus.CREATED, create_wechat_index_keyword(payload)); return
+            if path == "/api/v2/wechat-index/connection/initialize":
+                self._json(HTTPStatus.OK, initialize_wechat_index_connection(payload)); return
+            if path == "/api/v2/wechat-index/capture/start":
+                self._json(HTTPStatus.ACCEPTED, start_wechat_index_capture()); return
+            if path == "/api/v2/wechat-index/capture/stop":
+                self._json(HTTPStatus.OK, stop_wechat_index_capture()); return
+            if path == "/api/v2/wechat-index/history/collect":
+                self._json(HTTPStatus.OK, collect_wechat_index_history(payload)); return
+            if path == "/api/v2/wechat-index/history/import":
+                self._json(HTTPStatus.OK, import_wechat_index_history(payload)); return
+            if path == "/api/v2/wechat-index/suggestions/import":
+                self._json(HTTPStatus.OK, import_wechat_index_suggestions(payload)); return
             if path == "/api/v2/open-folder":
                 folder = Path(str(payload.get("path") or ""))
                 if not folder.is_dir(): raise ValueError("目录不存在")
@@ -3924,6 +4319,9 @@ class Handler(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/api/v2/dramas/([a-f0-9]+)", urlparse(self.path).path)
             if match:
                 self._json(HTTPStatus.OK, update_drama(match.group(1), payload)); return
+            match = re.fullmatch(r"/api/v2/wechat-index/keywords/([a-f0-9]+)", urlparse(self.path).path)
+            if match:
+                self._json(HTTPStatus.OK, update_wechat_index_keyword(match.group(1), payload)); return
             self._json(HTTPStatus.NOT_FOUND, {"error": "V2 接口不存在"})
         except (ValueError, RuntimeError, OSError, json.JSONDecodeError) as exc:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
