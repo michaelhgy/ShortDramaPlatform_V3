@@ -9,15 +9,15 @@ import socket
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SERVICE_SCRIPT = (PROJECT_ROOT / "tools" / "run_v2_file_service.py").resolve()
 DESKTOP_SCRIPT = (PROJECT_ROOT / "tools" / "run_v2_desktop_test.py").resolve()
-V2_PORTS = (8782, 3000)
+SERVICE_PORT = 8782
+FRONTEND_PORT = 3000
+V2_PORTS = (SERVICE_PORT, FRONTEND_PORT)
 
 
 def _powershell_quote(value: str) -> str:
@@ -45,7 +45,6 @@ def stop_v2_processes() -> None:
         "$_.ProcessId -ne $PID -and ("
         "($cmd -like ('*' + $service + '*')) -or "
         "($cmd -like ('*' + $desktop + '*')) -or "
-        "($cmd -like ('*' + $project + '*') -and $cmd -match 'vite[\\/]+bin[\\/]+vite\\.js') -or "
         "($_.ProcessId -in $listen -and (($cmd -like '*ShortDramaPlatform_V2*') -or "
         "$_.Name -eq 'ShortDramaPlatform.exe' -or $cmd -like '*run_v2_file_service.py*'))"
         ") "
@@ -83,13 +82,17 @@ def _port_is_free(port: int) -> bool:
 
 
 def wait_for_ports_to_close() -> None:
+    """只等后端端口释放。
+
+    前端开发服务器（Vite）刻意保留：它的热更新会自动把前端改动推给页面，
+    重启它反而要等一次冷编译（那正是"双击后要等一分钟"的主因）。
+    """
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        if all(_port_is_free(port) for port in V2_PORTS):
+        if _port_is_free(SERVICE_PORT):
             return
         time.sleep(0.25)
-    busy = ", ".join(str(port) for port in V2_PORTS if not _port_is_free(port))
-    raise RuntimeError(f"无法释放 V2 端口：{busy}。请关闭残留的 V2 窗口后重试。")
+    raise RuntimeError(f"无法释放 V2 后端端口：{SERVICE_PORT}。请关闭残留的 V2 窗口后重试。")
 
 
 def _runtime_command() -> tuple[str, list[str]]:
@@ -108,27 +111,17 @@ def _runtime_command() -> tuple[str, list[str]]:
     raise RuntimeError("找不到已安装 pywebview 的 Python 运行时；请使用 Python 3.12 环境启动 V2。")
 
 
-def _backend_healthy(timeout: float = 2.0) -> bool:
-    """Quick health probe so a healthy running stack can simply be reused."""
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:8782/api/v2/health", timeout=timeout) as response:
-            return 200 <= response.status < 400
-    except (OSError, urllib.error.URLError, ValueError):
-        return False
-
-
 def main() -> None:
-    # 如果后端和前端都已经在跑（最常见的场景：上次只关了窗口），就直接复用它们、
-    # 只打开窗口——用户双击后一两秒就能看到界面。只有当这一套不完整或后端不健康时
-    # 才清理重建；传 --restart 可强制重启。
-    force_restart = "--restart" in sys.argv
-    fully_running = all(not _port_is_free(port) for port in V2_PORTS)
-    if force_restart or not fully_running or not _backend_healthy():
-        stop_v2_processes()
-        wait_for_ports_to_close()
+    """双击即重启后端，并复用前端。
+
+    后端（8782）**总是被替换**：开发测试时改了 Python 代码，只有重启后端才生效，
+    这是这个入口存在的意义，不能为了"看起来快"而跳过。
+    前端开发服务器（3000）保留不动，交给 Vite 热更新。
+    """
+    stop_v2_processes()
+    wait_for_ports_to_close()
     executable, prefix = _runtime_command()
-    forwarded = [item for item in sys.argv[1:] if item != "--restart"]
-    os.execv(executable, [executable, *prefix, str(DESKTOP_SCRIPT), *forwarded])
+    os.execv(executable, [executable, *prefix, str(DESKTOP_SCRIPT), *sys.argv[1:]])
 
 
 if __name__ == "__main__":
