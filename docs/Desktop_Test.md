@@ -1,8 +1,10 @@
 # V2 Windows 桌面窗口测试
 
-> ⚠️ **启动步骤已过时（2026-09-17 标注）**：下面第一步要求先启动 **V1 的 API（127.0.0.1:8765）**，但 **V1 已停用**、V2 已自建后端。
-> 现行开发启动方式请用 `tools/start_v2_desktop.bat`（V2 服务 8782 + 前端 3000）。
-> 下方的**验收清单仍然有效**（窗口 1440x920 / 最小 1100x720、显示缩放 100/125/150%、顶部导航、独立滚动）。
+> ✅ **启动步骤更正（2026-09-17）**：原文要求先启动 V1 的 API（127.0.0.1:8765），但 **V1 已停用**、V2 已自建后端。现行方式：
+> 1. 推荐：双击 `tools\start_v2_desktop.bat`（V2 服务 8782 + 前端 3000）
+> 2. 手动：终端一 `py -3.12 tools\run_v2_file_service.py`；终端二 `npm run dev`；终端三 `py -3.12 tools\run_v2_desktop_test.py`
+>
+> 下方**验收清单仍然有效**（窗口 1440x920 / 最小 1100x720、显示缩放 100/125/150%、顶部导航、独立滚动）。
 
 此入口仅用于 V2 UI 的 Windows 桌面窗口测试。它复用 V1 当前使用的 `pywebview` 和 Edge WebView2 引擎，以及 V1 的窗口基线：默认 `1440x920`，最小 `1100x720`。
 
@@ -10,11 +12,11 @@
 
 ## 启动
 
-终端一：
+终端一（V2 本地服务）：
 
 ```powershell
-cd D:\ShortDramaPlatform\backend
-python run_v1_api.py --port 8765
+cd D:\ShortDramaPlatform_V2
+py -3.12 tools\run_v2_file_service.py
 ```
 
 终端二：

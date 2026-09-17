@@ -1,5 +1,11 @@
 # V2 独立数据迁移规范
 
+> ✅ **现状更正（2026-09-17 核对代码后修订）**：本文的**核心原则仍然有效**（V2 数据从零建立、V1 不作为 V2 的默认 API/数据库/数据来源、未知状态不得显示为零或已完成）。
+> 但以下三处已作废，请按更正内容理解：
+> 1. **数据源取值**：`VITE_V2_DATA_SOURCE` 现在只有 `v2`（缺省）与 `mock`；原文的 `v1` 取值已不存在（证据：`src/services/dataSource.ts`）。
+> 2. **开发代理**：不再需要启动 V1（8765）。V2 已自建本地服务（`server/v2_file_service.py`，8782），开发用 `tools\start_v2_desktop.bat` 即可。
+> 3. **后端边界**：原文"V2 不创建第二个后端"已不成立——V2 现在拥有自己的后端与数据库（`v2_system.db`）。
+
 ## 关系与边界
 
 V2 的产品流程和数据从零开始建立。V1 保留为不可修改的能力参考，不再作为 V2 的默认 API、数据库或业务数据来源。V2 的本地 Python 服务和 SQLite 只管理 `D:\短剧推广运营系统` 下的 V2 数据。
@@ -7,9 +13,9 @@ V2 的产品流程和数据从零开始建立。V1 保留为不可修改的能�
 ## API 调用
 
 - API 客户端位于 `src/api/client.ts`；默认超时 15 秒，统一解析 V2 的 `{ error }` 错误响应。
-- 生产环境：`VITE_V1_API_BASE_URL` 留空，调用当前 pywebview 页面所在的 `/api/v1/...`。
-- 独立开发：先从 V1 `backend` 运行 `python run_v1_api.py --port 8765`，并保持 `VITE_V1_API_BASE_URL` 为空。V2 开发服务器默认将同源 `/api` 代理到 `http://127.0.0.1:8765`；如需连接其他 V1 实例，可设置 `VITE_V1_API_PROXY_TARGET` 覆盖该地址。Vite 代理可避免 V1 未开启 CORS（跨域访问）时浏览器拦截请求。
-- 连通性检查：`GET /api/v1/health`，预期 `{ "status": "ok", "version": 2 }`。V2 不启动 Express，不创建第二个后端。
+- 生产环境：前端由 V2 本地服务同进程托管，调用同源 `/api/v2/...`。
+- 独立开发：运行 `tools\start_v2_desktop.bat`（V2 服务 8782 + Vite 3000）。**无需启动 V1**；`VITE_V1_API_PROXY_TARGET` 等 V1 代理设置已作废。
+- 遗留：`src/api/*.ts` 仍请求 `/api/v1/*`，疑似死代码，待确认后清理。（原文"连通性检查 `/api/v1/health`""V2 不启动第二个后端"均已作废。）
 
 ## 数据源和转换
 
@@ -29,7 +35,7 @@ V2 的产品流程和数据从零开始建立。V1 保留为不可修改的能�
 
 ## 已接入：数据分析 - 收益
 
-当 `VITE_V2_DATA_SOURCE=v1` 时，收益页通过 `services/revenueAnalyticsService.ts` 调用：
+收益页通过 `services/revenueAnalyticsService.ts` 调用（原文写"当 `VITE_V2_DATA_SOURCE=v1` 时"，该取值已作废）：
 
 - `GET /api/v1/revenue/daily-revenues`：逐账号、逐日、按剧场筛选的规范化日收益；V2 在适配层汇总趋势、账号贡献和剧场贡献。
 - `GET /api/v1/accounts` 与 `GET /api/v1/theaters`：计算当前日期“已有日收益记录”的账号覆盖度，并解析采集目标剧场。
@@ -49,6 +55,6 @@ V2 可通过 `tools/run_v2_desktop_test.py` 使用与 V1 相同的 pywebview/Edg
 
 ## V2 文件服务（第一项真实生产能力）
 
-V2 的素材扫描和重命名使用独立的 `server/v2_file_service.py`，不调用会写入 V1 旧目录的扫描接口。默认工作目录为 `D:\短剧推广运营系统`，系统数据默认保存到 `D:\短剧推广运营系统\系统数据`；运行 `python tools/run_v2_file_service.py` 时会自动创建五个一级目录。开发环境可通过 `V2_WORKSPACE_ROOT` 和 `V2_SYSTEM_DATA_ROOT` 覆盖，但绝不能指向 V1 目录。Vite 将 `/api/v2` 代理到该服务，`/api/v1` 仍代理到 V1。
+V2 的素材扫描和重命名使用独立的 `server/v2_file_service.py`，不调用会写入 V1 旧目录的扫描接口。默认工作目录为 `D:\短剧推广运营系统`，系统数据默认保存到 `D:\短剧推广运营系统\系统数据`；运行 `python tools/run_v2_file_service.py` 时会自动创建五个一级目录。开发环境可通过 `V2_WORKSPACE_ROOT` 和 `V2_SYSTEM_DATA_ROOT` 覆盖，但绝不能指向 V1 目录。Vite 开发时把 `/api/v2` 代理到该服务；`/api/v1` 的代理已随 V1 停用而作废。
 
 当前接口只包含：创建生产任务目录、扫描生产任务的 `素材` 目录、两阶段安全重命名、MD5/SHA-256 记录。生产中心的“重新扫描素材”已接入该接口；它不会自动扫描或迁移现有 V1 目录。
