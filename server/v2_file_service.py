@@ -182,12 +182,18 @@ def _recover_interrupted_revenue_runs(conn: sqlite3.Connection) -> None:
     with REVENUE_RUN_RECOVERY_LOCK:
         if REVENUE_RUNS_RECOVERED:
             return
-        now = datetime.now().isoformat(timespec="seconds")
-        conn.execute(
-            """UPDATE v2_revenue_collection_runs SET status='failed', error_message='软件重启，未完成的收益采集已停止，请重新发起采集',
-                finished_at=?, updated_at=? WHERE status IN ('queued', 'running')""",
-            (now, now),
-        )
+        # 先读一次：没有中断的采集就完全不写库。写操作要抢 SQLite 写锁，
+        # 而"首个请求等写锁"正是设置接口卡 30 秒的原因。
+        pending = conn.execute(
+            "SELECT 1 FROM v2_revenue_collection_runs WHERE status IN ('queued', 'running') LIMIT 1"
+        ).fetchone()
+        if pending is not None:
+            now = datetime.now().isoformat(timespec="seconds")
+            conn.execute(
+                """UPDATE v2_revenue_collection_runs SET status='failed', error_message='软件重启，未完成的收益采集已停止，请重新发起采集',
+                    finished_at=?, updated_at=? WHERE status IN ('queued', 'running')""",
+                (now, now),
+            )
         REVENUE_RUNS_RECOVERED = True
 
 
@@ -197,11 +203,12 @@ def _prune_change_events(conn: sqlite3.Connection, keep: int = CHANGE_EVENT_RETE
     The table is a notification cursor for the UI, not an audit trail; rows the
     UI has already passed are dead weight that slows down every write.
     """
-    row = conn.execute("SELECT MAX(id) FROM v2_change_events").fetchone()
-    if not row or row[0] is None:
+    row = conn.execute("SELECT MIN(id), MAX(id) FROM v2_change_events").fetchone()
+    if not row or row[1] is None:
         return 0
-    cutoff = int(row[0]) - keep
-    if cutoff <= 0:
+    cutoff = int(row[1]) - keep
+    if cutoff < int(row[0]):
+        # 没有需要删除的行：保持这条路径是纯读，绝不无谓地抢写锁。
         return 0
     cursor = conn.execute("DELETE FROM v2_change_events WHERE id <= ?", (cutoff,))
     conn.commit()
@@ -4423,6 +4430,13 @@ def create_v2_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer:
     except ModuleNotFoundError:
         from revenue_auto_scheduler import start_revenue_auto_scheduler
     try:
+        # 在开始接受请求之前先完成一次数据库初始化与维护检查。
+        # 这段原本会被"首个页面请求"触发，而它需要写锁；一旦写锁被占，
+        # 首屏请求就要等 30 秒 SQLite 超时（表现为"界面读不出数据"）。
+        try:
+            connection().close()
+        except Exception:
+            pass
         start_scheduler()
         start_revenue_auto_scheduler()
     except Exception:
