@@ -9,6 +9,8 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 
@@ -106,11 +108,27 @@ def _runtime_command() -> tuple[str, list[str]]:
     raise RuntimeError("找不到已安装 pywebview 的 Python 运行时；请使用 Python 3.12 环境启动 V2。")
 
 
+def _backend_healthy(timeout: float = 2.0) -> bool:
+    """Quick health probe so a healthy running stack can simply be reused."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8782/api/v2/health", timeout=timeout) as response:
+            return 200 <= response.status < 400
+    except (OSError, urllib.error.URLError, ValueError):
+        return False
+
+
 def main() -> None:
-    stop_v2_processes()
-    wait_for_ports_to_close()
+    # 如果后端和前端都已经在跑（最常见的场景：上次只关了窗口），就直接复用它们、
+    # 只打开窗口——用户双击后一两秒就能看到界面。只有当这一套不完整或后端不健康时
+    # 才清理重建；传 --restart 可强制重启。
+    force_restart = "--restart" in sys.argv
+    fully_running = all(not _port_is_free(port) for port in V2_PORTS)
+    if force_restart or not fully_running or not _backend_healthy():
+        stop_v2_processes()
+        wait_for_ports_to_close()
     executable, prefix = _runtime_command()
-    os.execv(executable, [executable, *prefix, str(DESKTOP_SCRIPT), *sys.argv[1:]])
+    forwarded = [item for item in sys.argv[1:] if item != "--restart"]
+    os.execv(executable, [executable, *prefix, str(DESKTOP_SCRIPT), *forwarded])
 
 
 if __name__ == "__main__":
