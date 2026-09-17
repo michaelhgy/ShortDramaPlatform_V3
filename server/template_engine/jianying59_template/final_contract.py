@@ -17,8 +17,6 @@ from .project_base import T00ProjectPlan, VideoProbe, create_native_t00_draft
 from .template_decision import TemplateDecision, build_template_decision
 from .track01 import _attach_native_paths_and_filter, _default_user_data_root, add_track01_to_draft
 from .track02_03 import _attach_photo_walls
-from .track04 import _attach_native_mirror_path, add_track04_to_draft
-from .track05 import _append_track05_to_content
 from .track09_sticker_skin import _append_track09
 from .track10_11_flower_text import (
     BLESSING_TRACK_NAME,
@@ -33,10 +31,6 @@ CORE_TRACK_TYPES = {
     "T01_OUTER_VIDEO": "video",
     "T02_BOTTOM_PHOTO_WALL": "video",
     "T03_TOP_PHOTO_WALL": "video",
-    "T04_MIRROR_VIDEO": "video",
-    "T05_MIRROR_VIDEO": "video",
-    BLESSING_TRACK_NAME: "text",
-    DRAMA_PROMPT_TRACK_NAME: "text",
 }
 
 
@@ -132,23 +126,36 @@ def validate_final_template_draft(*, content_path: Path, duration_seconds: int, 
             raise RuntimeError("written sticker order does not match TemplateDecision")
 
     texts = {str(item.get("id")): item for item in (materials.get("texts") or [])}
+    # 文案轨按需存在：decision 里 text 为 None 的轨，草稿里也不该出现。
+    if decision is not None:
+        expected_text_names = [
+            name for name, text in (
+                (BLESSING_TRACK_NAME, decision.flower_text.blessing_text),
+                (DRAMA_PROMPT_TRACK_NAME, decision.flower_text.drama_prompt_text),
+            ) if text is not None
+        ]
+    else:
+        expected_text_names = [BLESSING_TRACK_NAME, DRAMA_PROMPT_TRACK_NAME]
     flower_ids: dict[str, str] = {}
     for name in (BLESSING_TRACK_NAME, DRAMA_PROMPT_TRACK_NAME):
-        segments = _continuous_full_coverage_segments(named[name], duration_us)
-        if len(segments) != 1:
-            raise RuntimeError(f"{name} needs one full-duration text segment")
-        text = texts.get(str(segments[0].get("material_id") or ""))
-        if text is None:
-            raise RuntimeError(f"{name} text material is missing")
-        if float(text.get("font_size", 0.0)) != 15.0 or int(text.get("text_size", 0)) != 30:
-            raise RuntimeError(f"{name} must keep the completed legacy 15px/30px text material")
-        flower_ids[name] = _flower_effect_id(text, name)
-    if flower_ids[BLESSING_TRACK_NAME] == flower_ids[DRAMA_PROMPT_TRACK_NAME]:
+        if name in expected_text_names:
+            segments = _continuous_full_coverage_segments(named[name], duration_us)
+            if len(segments) != 1:
+                raise RuntimeError(f"{name} needs one full-duration text segment")
+            text = texts.get(str(segments[0].get("material_id") or ""))
+            if text is None:
+                raise RuntimeError(f"{name} text material is missing")
+            if float(text.get("font_size", 0.0)) != 15.0 or int(text.get("text_size", 0)) != 30:
+                raise RuntimeError(f"{name} must keep the completed legacy 15px/30px text material")
+            flower_ids[name] = _flower_effect_id(text, name)
+        elif name in named:
+            raise RuntimeError(f"{name} 的文案池为空时，草稿中不应存在该轨道")
+    if len(flower_ids) == 2 and flower_ids[BLESSING_TRACK_NAME] == flower_ids[DRAMA_PROMPT_TRACK_NAME]:
         raise RuntimeError("blessing and drama-guide text must use two different flower styles")
     if decision is not None:
-        if flower_ids[BLESSING_TRACK_NAME] != decision.flower_text.blessing_style.effect_id:
+        if BLESSING_TRACK_NAME in expected_text_names and flower_ids[BLESSING_TRACK_NAME] != decision.flower_text.blessing_style.effect_id:
             raise RuntimeError("blessing flower style differs from TemplateDecision")
-        if flower_ids[DRAMA_PROMPT_TRACK_NAME] != decision.flower_text.drama_prompt_style.effect_id:
+        if DRAMA_PROMPT_TRACK_NAME in expected_text_names and flower_ids[DRAMA_PROMPT_TRACK_NAME] != decision.flower_text.drama_prompt_style.effect_id:
             raise RuntimeError("drama-guide flower style differs from TemplateDecision")
         expected_text_tracks = {
             BLESSING_TRACK_NAME: (
@@ -162,7 +169,8 @@ def validate_final_template_draft(*, content_path: Path, duration_seconds: int, 
                 decision.flower_text.drama_prompt_rotation,
             ),
         }
-        for name, (position, scale, rotation) in expected_text_tracks.items():
+        for name in expected_text_names:
+            position, scale, rotation = expected_text_tracks[name]
             clip = named[name]["segments"][0].get("clip") or {}
             transform = clip.get("transform") or {}
             written_scale = clip.get("scale") or {}
@@ -186,8 +194,8 @@ def validate_final_template_draft(*, content_path: Path, duration_seconds: int, 
         core_track_count=len(CORE_TRACK_TYPES),
         sticker_track_count=len(sticker_tracks),
         sticker_skin_id=next(iter(sticker_skin_ids)),
-        blessing_flower_effect_id=flower_ids[BLESSING_TRACK_NAME],
-        drama_flower_effect_id=flower_ids[DRAMA_PROMPT_TRACK_NAME],
+        blessing_flower_effect_id=flower_ids.get(BLESSING_TRACK_NAME, ""),
+        drama_flower_effect_id=flower_ids.get(DRAMA_PROMPT_TRACK_NAME, ""),
         no_audio_tracks=no_audio,
         no_real_person_compound_track=no_real_person,
     )
@@ -195,7 +203,7 @@ def validate_final_template_draft(*, content_path: Path, duration_seconds: int, 
 
 def write_template_draft(
     *, draft_root: Path, draft_name: str, decision: TemplateDecision,
-    source01: VideoProbe, source02: VideoProbe, source03: VideoProbe,
+    source01: VideoProbe,
     user_data_root: Path | None = None,
 ) -> None:
     """Write a new draft exactly once from an already complete decision."""
@@ -208,31 +216,31 @@ def write_template_draft(
     add_track01_to_draft(draft=draft, plan=plan, source=source01, decision=decision.track01)
     draft.add_track(TrackType.video, "T02_BOTTOM_PHOTO_WALL", relative_index=2)
     draft.add_track(TrackType.video, "T03_TOP_PHOTO_WALL", relative_index=3)
-    add_track04_to_draft(draft=draft, plan=plan, source=source02, decision=decision.track04)
     draft.save()
     content_path = draft_root / draft_name / "draft_content.json"
     _attach_native_paths_and_filter(content_path=content_path, decision=decision.track01, user_data_root=root)
-    _attach_native_mirror_path(content_path=content_path, user_data_root=root)
     _attach_photo_walls(content_path=content_path, decision=decision.photo_walls, user_data_root=root)
-    _append_track05_to_content(content_path=content_path, plan=plan, source=source03, decision=decision.track05, user_data_root=root)
     _append_track09(content_path=content_path, decision=decision.stickers, user_data_root=root)
     _append_flower_text(content_path=content_path, decision=decision.flower_text, user_data_root=root)
 
 
 def create_final_template_draft(
-    *, draft_root: Path, draft_name: str, plan: T00ProjectPlan, source01: VideoProbe, source02: VideoProbe,
-    source03: VideoProbe, photo_dir: Path, photo_cache_root: Path, user_data_root: Path | None = None,
+    *, draft_root: Path, draft_name: str, plan: T00ProjectPlan, source01: VideoProbe,
+    photo_dir: Path, photo_cache_root: Path, user_data_root: Path | None = None,
     sticker_skin_catalog: Path, flower_style_catalog: Path,
+    blessing_pool: tuple[str, ...] = (),
+    drama_prompt_pool: tuple[str, ...] = (),
 ) -> tuple[TemplateDecision, FinalTemplateValidation]:
     """Plan, write and structurally validate one native template draft."""
     decision = build_template_decision(
-        plan=plan, source01=source01, source02=source02, source03=source03,
+        plan=plan, source01=source01,
         photo_dir=photo_dir, photo_cache_root=photo_cache_root,
         sticker_skin_catalog=sticker_skin_catalog, flower_style_catalog=flower_style_catalog,
+        blessing_pool=blessing_pool, drama_prompt_pool=drama_prompt_pool,
     )
     write_template_draft(
         draft_root=draft_root, draft_name=draft_name, decision=decision,
-        source01=source01, source02=source02, source03=source03, user_data_root=user_data_root,
+        source01=source01, user_data_root=user_data_root,
     )
     validation = validate_final_template_draft(
         content_path=draft_root / draft_name / "draft_content.json", duration_seconds=plan.duration_seconds, decision=decision,

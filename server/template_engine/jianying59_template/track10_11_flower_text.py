@@ -16,11 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .project_base import T00ProjectPlan, VideoProbe
-from .flower_style_library import (
-    FlowerStyleCatalog,
-    choose_flower_style,
-    load_flower_style_catalog,
-)
+from .flower_style_library import load_flower_style_catalog
 from .track09_sticker_skin import (
     StickerSkinDecision,
     _default_user_data_root,
@@ -97,30 +93,13 @@ DRAMA_PROMPT_SCALE_BY_CHAR_COUNT = {
     9: (0.56, 0.64),
 }
 
-BLESSING_COPY = (
-    "愿您身体健康",
-    "愿您平安喜乐",
-    "愿您福气常伴",
-    "愿您万事顺心",
-    "愿您幸福安康",
-    "祝您笑口常开",
-    "愿您每天都开心",
-    "愿您日子越过越好",
-    "愿您一家幸福美满",
-    "祝您日子红红火火",
-)
-DRAMA_PROMPT_COPY = (
-    "左下角免费看全集",
-    "左下角免费看后续",
-    "左下角免费看结局",
-    "左下角免费继续看",
-    "左下角免费接着看",
-    "点免费剧集看全集",
-    "点免费剧集看后续",
-    "免费剧集接着看",
-    "后续请点免费剧集",
-    "结局请点免费剧集",
-)
+
+def _nearest(table: dict[int, Any], count: int) -> Any:
+    """Return the nearest character-count band so arbitrary-length copy works."""
+    return table[min(table, key=lambda key: abs(key - count))]
+
+# 文案池已迁移到 template_copy.py，由用户可编辑的配置文件提供；
+# 默认池为 template_copy.DEFAULT_BLESSING_COPY / DEFAULT_DRAMA_PROMPT_COPY。
 
 
 def _new_id() -> str:
@@ -140,10 +119,10 @@ class FlowerStyleCandidate:
 @dataclass(frozen=True)
 class FlowerTextDecision:
     seed: int
-    blessing_style: FlowerStyleCandidate
-    drama_prompt_style: FlowerStyleCandidate
-    blessing_text: str
-    drama_prompt_text: str
+    blessing_style: FlowerStyleCandidate | None
+    drama_prompt_style: FlowerStyleCandidate | None
+    blessing_text: str | None
+    drama_prompt_text: str | None
     duration_seconds: int
     drama_target_visible_size_px: int
     blessing_target_visible_size_px: int
@@ -157,8 +136,8 @@ class FlowerTextDecision:
     drama_prompt_size: float = 15.0
     blessing_scale: float = 0.60
     drama_prompt_scale: float = 0.62
-    blessing_position: tuple[float, float] = (-0.08, 0.82)
-    drama_prompt_position: tuple[float, float] = (0.22, -0.81)
+    blessing_position: tuple[float, float] | None = (-0.08, 0.82)
+    drama_prompt_position: tuple[float, float] | None = (0.22, -0.81)
     blessing_rotation: float = 0.0
     drama_prompt_rotation: float = 0.0
     composition_pattern: str = "legacy_dynamic_photo_wall_bands"
@@ -207,61 +186,118 @@ def _candidate(style: Any) -> FlowerStyleCandidate:
     )
 
 
-def _catalog_style_pair(*, catalog: FlowerStyleCatalog, seed: int) -> tuple[FlowerStyleCandidate, FlowerStyleCandidate]:
-    """Use the two old curated pools, with current 5.9 catalogue metadata."""
-    blessing_pool = tuple(
-        style for style in catalog.styles if style.effect_id in LEGACY_BLESSING_EFFECT_IDS
-    )
-    if not blessing_pool:
-        raise RuntimeError("当前花字目录没有旧版祝福文字可用花字")
+def _choose_styles(
+    *, seed: int, flower_style_catalog: Path | None, need_blessing: bool, need_drama: bool
+) -> tuple[FlowerStyleCandidate | None, FlowerStyleCandidate | None]:
+    """Pick only the flower styles actually needed; None for an omitted track."""
+    if not need_blessing and not need_drama:
+        return None, None
     rng = random.Random(f"{seed}:legacy-flower-style-pair")
-    blessing = rng.choice(blessing_pool)
-    drama_pool = tuple(
-        style
-        for style in catalog.styles
-        if style.effect_id in LEGACY_DRAMA_PROMPT_EFFECT_IDS
-        and style.effect_id != blessing.effect_id
-    )
-    if not drama_pool:
-        raise RuntimeError("当前花字目录没有与祝福文字不同的旧版剧集引导花字")
-    return _candidate(blessing), _candidate(rng.choice(drama_pool))
+    if flower_style_catalog is not None:
+        catalog = load_flower_style_catalog(flower_style_catalog)
+        blessing = None
+        drama = None
+        if need_blessing:
+            blessing_pool = tuple(
+                style for style in catalog.styles if style.effect_id in LEGACY_BLESSING_EFFECT_IDS
+            )
+            if not blessing_pool:
+                raise RuntimeError("当前花字目录没有旧版祝福文字可用花字")
+            blessing = _candidate(rng.choice(blessing_pool))
+        if need_drama:
+            drama_pool = tuple(
+                style
+                for style in catalog.styles
+                if style.effect_id in LEGACY_DRAMA_PROMPT_EFFECT_IDS
+                and style.effect_id != (blessing.effect_id if blessing else None)
+            )
+            if not drama_pool:
+                raise RuntimeError("当前花字目录没有与祝福文字不同的旧版剧集引导花字")
+            drama = _candidate(rng.choice(drama_pool))
+        return blessing, drama
+    styles = _eligible_styles()
+    pool = list(styles)
+    if need_blessing and need_drama and len(pool) < 2:
+        raise RuntimeError("正式模板必须传入当前花字目录，不能用单一样式回退")
+    blessing = None
+    drama = None
+    if need_blessing:
+        blessing = _candidate(rng.choice(pool))
+        pool = [style for style in pool if style.effect_id != blessing.effect_id]
+    if need_drama:
+        if not pool:
+            raise RuntimeError("正式模板必须传入当前花字目录，不能用单一样式回退")
+        drama = _candidate(rng.choice(pool))
+    return blessing, drama
 
 
 def decide_flower_text(
-    *, seed: int, duration_seconds: int, central_window_boundary_ratio: float, flower_style_catalog: Path | None = None
+    *,
+    seed: int,
+    duration_seconds: int,
+    central_window_boundary_ratio: float,
+    flower_style_catalog: Path | None = None,
+    blessing_pool: tuple[str, ...] = (),
+    drama_prompt_pool: tuple[str, ...] = (),
 ) -> FlowerTextDecision:
     if duration_seconds != 180:
         raise ValueError("花字双轨当前只适用于已确认的 180 秒模板")
     rng = random.Random(f"{seed}:flower-text")
     if not 0.0 < central_window_boundary_ratio < 1.0:
         raise ValueError("central_window_boundary_ratio must be within (0, 1)")
-    if flower_style_catalog is None:
-        styles = _eligible_styles()
-        if len(styles) < 2:
-            raise RuntimeError("正式模板必须传入当前花字目录，不能用单一样式回退")
-        blessing_style, drama_style = rng.sample(list(styles), 2)
-    else:
-        blessing_style, drama_style = _catalog_style_pair(
-            catalog=load_flower_style_catalog(flower_style_catalog), seed=seed,
-        )
+
+    blessing_text = rng.choice(blessing_pool) if blessing_pool else None
+    drama_text = rng.choice(drama_prompt_pool) if drama_prompt_pool else None
+    blessing_style, drama_style = _choose_styles(
+        seed=seed,
+        flower_style_catalog=flower_style_catalog,
+        need_blessing=blessing_text is not None,
+        need_drama=drama_text is not None,
+    )
+
     drama_size = rng.randint(124, 138)
     linked_size_fraction = (drama_size - 124) / (138 - 124)
     wall_band = 1.0 - central_window_boundary_ratio
-    blessing_fraction = rng.uniform(*BLESSING_BAND_FRACTION_RANGE)
-    drama_fraction = rng.uniform(*DRAMA_PROMPT_BAND_FRACTION_RANGE)
-    blessing_position = (
-        round(rng.uniform(*BLESSING_X_RANGE), 6),
-        round(1.0 - blessing_fraction * wall_band, 6),
-    )
-    drama_position = (
-        round(rng.uniform(*DRAMA_PROMPT_X_RANGE), 6),
-        round(-central_window_boundary_ratio - drama_fraction * wall_band, 6),
-    )
-    blessing_text = rng.choice(BLESSING_COPY)
-    drama_text = rng.choice(DRAMA_PROMPT_COPY)
-    drama_width_range = DRAMA_PROMPT_VISIBLE_WIDTH_BY_CHAR_COUNT[len(drama_text)]
-    blessing_scale_range = BLESSING_SCALE_BY_CHAR_COUNT[len(blessing_text)]
-    drama_scale_range = DRAMA_PROMPT_SCALE_BY_CHAR_COUNT[len(drama_text)]
+
+    blessing_position: tuple[float, float] | None = None
+    blessing_scale = 0.60
+    blessing_rotation = 0.0
+    blessing_width = 0
+    if blessing_text is not None:
+        blessing_fraction = rng.uniform(*BLESSING_BAND_FRACTION_RANGE)
+        blessing_position = (
+            round(rng.uniform(*BLESSING_X_RANGE), 6),
+            round(1.0 - blessing_fraction * wall_band, 6),
+        )
+        blessing_scale_range = _nearest(BLESSING_SCALE_BY_CHAR_COUNT, len(blessing_text))
+        blessing_scale = round(
+            blessing_scale_range[0]
+            + linked_size_fraction * (blessing_scale_range[1] - blessing_scale_range[0]),
+            6,
+        )
+        blessing_rotation = round(rng.uniform(*BLESSING_ROTATION_RANGE), 3)
+        blessing_width = rng.randint(*BLESSING_VISIBLE_WIDTH_RANGE_PX)
+
+    drama_position: tuple[float, float] | None = None
+    drama_scale = 0.62
+    drama_rotation = 0.0
+    drama_width = 0
+    if drama_text is not None:
+        drama_fraction = rng.uniform(*DRAMA_PROMPT_BAND_FRACTION_RANGE)
+        drama_position = (
+            round(rng.uniform(*DRAMA_PROMPT_X_RANGE), 6),
+            round(-central_window_boundary_ratio - drama_fraction * wall_band, 6),
+        )
+        drama_width_range = _nearest(DRAMA_PROMPT_VISIBLE_WIDTH_BY_CHAR_COUNT, len(drama_text))
+        drama_scale_range = _nearest(DRAMA_PROMPT_SCALE_BY_CHAR_COUNT, len(drama_text))
+        drama_scale = round(
+            drama_scale_range[0]
+            + linked_size_fraction * (drama_scale_range[1] - drama_scale_range[0]),
+            6,
+        )
+        drama_rotation = round(rng.uniform(*DRAMA_PROMPT_ROTATION_RANGE), 3)
+        drama_width = rng.randint(*drama_width_range)
+
     return FlowerTextDecision(
         seed=seed,
         blessing_style=blessing_style,
@@ -269,26 +305,18 @@ def decide_flower_text(
         blessing_text=blessing_text,
         drama_prompt_text=drama_text,
         duration_seconds=duration_seconds,
-        drama_target_visible_size_px=drama_size,
-        blessing_target_visible_size_px=drama_size - 10,
-        blessing_target_visible_width_px=rng.randint(*BLESSING_VISIBLE_WIDTH_RANGE_PX),
-        drama_prompt_target_visible_width_px=rng.randint(*drama_width_range),
+        drama_target_visible_size_px=drama_size if drama_text is not None else 0,
+        blessing_target_visible_size_px=(drama_size - 10) if blessing_text is not None else 0,
+        blessing_target_visible_width_px=blessing_width,
+        drama_prompt_target_visible_width_px=drama_width,
         blessing_size=15.0,
         drama_prompt_size=15.0,
-        blessing_scale=round(
-            blessing_scale_range[0]
-            + linked_size_fraction * (blessing_scale_range[1] - blessing_scale_range[0]),
-            6,
-        ),
-        drama_prompt_scale=round(
-            drama_scale_range[0]
-            + linked_size_fraction * (drama_scale_range[1] - drama_scale_range[0]),
-            6,
-        ),
+        blessing_scale=blessing_scale,
+        drama_prompt_scale=drama_scale,
         blessing_position=blessing_position,
         drama_prompt_position=drama_position,
-        blessing_rotation=round(rng.uniform(*BLESSING_ROTATION_RANGE), 3),
-        drama_prompt_rotation=round(rng.uniform(*DRAMA_PROMPT_ROTATION_RANGE), 3),
+        blessing_rotation=blessing_rotation,
+        drama_prompt_rotation=drama_rotation,
     )
 
 
@@ -377,21 +405,28 @@ def _append_flower_text(*, content_path: Path, decision: FlowerTextDecision, use
     if any(track.get("name") in {BLESSING_TRACK_NAME, DRAMA_PROMPT_TRACK_NAME} for track in document.get("tracks", [])):
         raise RuntimeError("目标草稿已经有花字双轨，拒绝重复写入")
     materials = document.setdefault("materials", {})
-    blessing_effect = _effect_material(decision.blessing_style, user_data_root)
-    drama_effect = _effect_material(decision.drama_prompt_style, user_data_root)
     animation = {"animations": [], "id": _new_id(), "multi_language_current": "none", "type": "sticker_animation"}
-    blessing = _text_material(text=decision.blessing_text, size=decision.blessing_size, style=decision.blessing_style, user_data_root=user_data_root)
-    drama = _text_material(text=decision.drama_prompt_text, size=decision.drama_prompt_size, style=decision.drama_prompt_style, user_data_root=user_data_root)
-    materials.setdefault("effects", []).extend((blessing_effect, drama_effect))
-    materials.setdefault("material_animations", []).append(animation)
-    materials.setdefault("texts", []).extend((blessing, drama))
-    blessing_refs = [animation["id"], blessing_effect["id"], blessing_effect["id"]]
-    drama_refs = [animation["id"], drama_effect["id"], drama_effect["id"]]
-    document.setdefault("tracks", []).extend((
-        {"attribute": 0, "flag": 0, "id": _new_id(), "is_default_name": False, "name": BLESSING_TRACK_NAME, "type": "text", "segments": [_segment(material_id=blessing["id"], refs=blessing_refs, transform_x=decision.blessing_position[0], transform_y=decision.blessing_position[1], scale=decision.blessing_scale, rotation=decision.blessing_rotation, ordinal=1)]},
-        {"attribute": 0, "flag": 0, "id": _new_id(), "is_default_name": False, "name": DRAMA_PROMPT_TRACK_NAME, "type": "text", "segments": [_segment(material_id=drama["id"], refs=drama_refs, transform_x=decision.drama_prompt_position[0], transform_y=decision.drama_prompt_position[1], scale=decision.drama_prompt_scale, rotation=decision.drama_prompt_rotation, ordinal=2)]},
-    ))
-    document["render_index_track_mode_on"] = True
+    if decision.blessing_text is not None:
+        blessing_effect = _effect_material(decision.blessing_style, user_data_root)
+        blessing = _text_material(text=decision.blessing_text, size=decision.blessing_size, style=decision.blessing_style, user_data_root=user_data_root)
+        materials.setdefault("effects", []).append(blessing_effect)
+        materials.setdefault("texts", []).append(blessing)
+        blessing_refs = [animation["id"], blessing_effect["id"], blessing_effect["id"]]
+        document.setdefault("tracks", []).append(
+            {"attribute": 0, "flag": 0, "id": _new_id(), "is_default_name": False, "name": BLESSING_TRACK_NAME, "type": "text", "segments": [_segment(material_id=blessing["id"], refs=blessing_refs, transform_x=decision.blessing_position[0], transform_y=decision.blessing_position[1], scale=decision.blessing_scale, rotation=decision.blessing_rotation, ordinal=1)]}
+        )
+    if decision.drama_prompt_text is not None:
+        drama_effect = _effect_material(decision.drama_prompt_style, user_data_root)
+        drama = _text_material(text=decision.drama_prompt_text, size=decision.drama_prompt_size, style=decision.drama_prompt_style, user_data_root=user_data_root)
+        materials.setdefault("effects", []).append(drama_effect)
+        materials.setdefault("texts", []).append(drama)
+        drama_refs = [animation["id"], drama_effect["id"], drama_effect["id"]]
+        document.setdefault("tracks", []).append(
+            {"attribute": 0, "flag": 0, "id": _new_id(), "is_default_name": False, "name": DRAMA_PROMPT_TRACK_NAME, "type": "text", "segments": [_segment(material_id=drama["id"], refs=drama_refs, transform_x=decision.drama_prompt_position[0], transform_y=decision.drama_prompt_position[1], scale=decision.drama_prompt_scale, rotation=decision.drama_prompt_rotation, ordinal=2)]}
+        )
+    if decision.blessing_text is not None or decision.drama_prompt_text is not None:
+        materials.setdefault("material_animations", []).append(animation)
+        document["render_index_track_mode_on"] = True
     content_path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
 
 

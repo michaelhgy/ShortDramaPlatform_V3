@@ -149,7 +149,7 @@ def run_template_job(job_id: str) -> None:
         draft_path = draft_root / str(row["draft_name"])
         reserved = json.loads(str(row["reserved_videos_json"] or "[]"))
         videos = [Path(str(item.get("reserved_path") or "")) for item in reserved]
-        if len(videos) != 3 or any(not path.is_file() for path in videos):
+        if len(videos) != 1 or any(not path.is_file() for path in videos):
             service.record_executor_trace(executor_id="template_generator", run_id=job_id, production_task_id=task_id,
                                           phase="素材检查失败", message="已领取的真人视频不完整")
             _fail(job_id, row, "模板生成所领取的真人视频不存在，任务已释放")
@@ -157,11 +157,13 @@ def run_template_job(job_id: str) -> None:
 
         command = worker_command("server.template_engine.generate_v2_template", Path(__file__).with_name("generate_v2_template.py"), [
             "--stage", "final", "--seed", str(row["seed"]), "--draft-root", str(draft_root),
-            "--name", str(row["draft_name"]), "--video", str(videos[0]), "--video-2", str(videos[1]),
-            "--video-3", str(videos[2]), "--viral-account-day-dir", str(row["material_path"]),
+            "--name", str(row["draft_name"]), "--video", str(videos[0]),
+            "--viral-account-day-dir", str(row["material_path"]),
             "--photo-prep-output-dir", str(photos), "--photo-cache-root", str(photo_cache),
             "--user-data-root", str(runtime_paths.user_data_root),
         ])
+        if service.DATA_ROOT is not None:
+            command.extend(["--template-copy", str(service.DATA_ROOT / "模板文案.json")])
         worker_trace = attempt_root / "执行过程.jsonl"
         worker_trace.unlink(missing_ok=True)
         command.extend(["--trace-path", str(worker_trace)])

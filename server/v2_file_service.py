@@ -3507,8 +3507,8 @@ def queue_template_job(task_id: str, *, regenerate: bool = False, retry: bool = 
                  if item.is_file() and item.suffix.lower() in VIDEO_EXTENSIONS and not item.name.startswith("已使用")),
                 key=lambda item: natural_key(item.name),
             )
-            if len(candidates) < 3:
-                raise ValueError(f"真人视频不足 3 条，当前可领取 {len(candidates)} 条")
+            if len(candidates) < 1:
+                raise ValueError(f"真人视频不足，当前可领取 {len(candidates)} 条")
             current_status = str(current["status"]) if current else ""
             # 失败/超时是同一次尝试的重新执行，继续使用 R01；只有成功
             # 的模板被用户主动重新生成时，才创建 R02、R03 新版本。
@@ -3527,7 +3527,7 @@ def queue_template_job(task_id: str, *, regenerate: bool = False, retry: bool = 
             attempt_root.mkdir(parents=True, exist_ok=True)
             reserved: list[dict[str, str]] = []
             try:
-                for index, source in enumerate(candidates[:3], start=1):
+                for index, source in enumerate(candidates[:1], start=1):
                     # 每个模板版本都保留独立的领取记录，避免重新生成时覆盖上一版本。
                     target = source.with_name(f"已使用-{stem}-R{version:02d}-{index:02d}{source.suffix.lower()}")
                     if target.exists():

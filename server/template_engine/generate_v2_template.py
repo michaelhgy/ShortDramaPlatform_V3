@@ -18,6 +18,7 @@ from server.template_engine.jianying59_template.final_contract import create_fin
 from server.template_engine.jianying59_template.flower_style_library import resolve_flower_style_catalog_path
 from server.template_engine.jianying59_template.sticker_skin_library import resolve_sticker_skin_catalog_path
 from server.template_engine.jianying59_template.text_visual import create_text_visual_draft
+from server.template_engine.jianying59_template.template_copy import load_template_copy
 
 
 def _trace(path: Path | None, phase: str, message: str) -> None:
@@ -66,6 +67,10 @@ def main() -> int:
         help="优先使用本机更新的花字库；否则使用 V2 内置的已验证基础清单",
     )
     parser.add_argument("--source-draft-name", help="text-visual 阶段要复制的已验收原生草稿名")
+    parser.add_argument(
+        "--template-copy", type=Path,
+        help="可选：模板文案配置文件（blessing / drama_prompt 字符串数组；空数组=不要该轨道）",
+    )
     parser.add_argument("--trace-path", type=Path, help="仅供上层任务诊断读取的过程记录")
     args = parser.parse_args()
     _trace(args.trace_path, "准备模板方案", "正在生成本次模板随机方案")
@@ -102,22 +107,27 @@ def main() -> int:
         _trace(args.trace_path, "剧照准备完成", "模板剧照已准备完成")
     if not args.draft_root or not args.name or not args.video:
         parser.error("非 t00 阶段需要 --draft-root、--name 和 --video")
-    if args.stage in ("final", "t02-03", "t05"):
+    if args.stage in ("t02-03", "t05"):
         if not args.video_2 or not photo_dir or not args.photo_cache_root:
             parser.error("--stage t02-03 还需要 --video-2、剧照来源（--drama-image-dir 或 --viral-account-day-dir）和 --photo-cache-root")
-    if args.stage in ("final", "t05"):
+    if args.stage == "t05":
         if not args.video_3:
-            parser.error("--stage t05/t06 还需要 --video-3")
+            parser.error("--stage t05 还需要 --video-3")
     if args.stage == "final":
-        _trace(args.trace_path, "检查视频素材", "正在读取三条真人视频的时长和参数")
-        source01, source02, source03 = probe_video(args.video), probe_video(args.video_2), probe_video(args.video_3)
+        if not photo_dir or not args.photo_cache_root:
+            parser.error("--stage final 需要剧照来源（--drama-image-dir 或 --viral-account-day-dir）和 --photo-cache-root")
+    if args.stage == "final":
+        _trace(args.trace_path, "检查视频素材", "正在读取真人视频的时长和参数")
+        source01 = probe_video(args.video)
+        blessing_pool, drama_prompt_pool = load_template_copy(path=args.template_copy)
         _trace(args.trace_path, "写入模板草稿", "正在生成剪映模板草稿和轨道内容")
         decision, validation = create_final_template_draft(
             draft_root=args.draft_root, draft_name=args.name, plan=plan,
-            source01=source01, source02=source02, source03=source03,
+            source01=source01,
             photo_dir=photo_dir, photo_cache_root=args.photo_cache_root, user_data_root=args.user_data_root,
             sticker_skin_catalog=args.sticker_skin_catalog,
             flower_style_catalog=args.flower_style_catalog,
+            blessing_pool=blessing_pool, drama_prompt_pool=drama_prompt_pool,
         )
         _trace(args.trace_path, "模板草稿完成", "剪映模板草稿和结构检查均已完成")
         print("{" + f'"templateDecision":{decision.to_json()},"structuralValidation":{validation.to_json()}' + "}")

@@ -17,8 +17,6 @@ from .project_base import T00ProjectPlan, VideoProbe
 from .sticker_skin_library import StickerSkinCatalog, load_sticker_skin_catalog
 from .track01 import Track01Decision, decide_track01
 from .track02_03 import PhotoWallDecision, normalize_three_four_photos, decide_photo_walls
-from .track04 import Track04Decision, decide_track04
-from .track05 import Track05Decision, decide_track05
 from .track09_sticker_skin import StickerSkinDecision, decide_track09_sticker_skin
 from .track10_11_flower_text import FlowerTextDecision, decide_flower_text
 from .visual_composition import VisualComposition, decide_visual_composition
@@ -31,9 +29,7 @@ class TemplateDecision:
     plan: T00ProjectPlan
     composition: VisualComposition
     track01: Track01Decision
-    track04: Track04Decision
     photo_walls: PhotoWallDecision
-    track05: Track05Decision
     stickers: StickerSkinDecision
     flower_text: FlowerTextDecision
 
@@ -45,12 +41,12 @@ def build_template_decision(
     *,
     plan: T00ProjectPlan,
     source01: VideoProbe,
-    source02: VideoProbe,
-    source03: VideoProbe,
     photo_dir: Path,
     photo_cache_root: Path,
     sticker_skin_catalog: Path,
     flower_style_catalog: Path,
+    blessing_pool: tuple[str, ...] = (),
+    drama_prompt_pool: tuple[str, ...] = (),
 ) -> TemplateDecision:
     """Resolve every decision before a native draft is created or changed."""
     if plan.duration_seconds != 180:
@@ -59,14 +55,14 @@ def build_template_decision(
     flowers_catalog: FlowerStyleCatalog = load_flower_style_catalog(flower_style_catalog)
     photos = normalize_three_four_photos(photo_dir=photo_dir, cache_root=photo_cache_root)
     track01 = decide_track01(seed=plan.seed, source=source01)
-    track04 = decide_track04(seed=plan.seed, source=source02, track01=track01)
     walls = decide_photo_walls(seed=plan.seed, track01=track01, photos=photos)
-    track05 = decide_track05(seed=plan.seed, source=source03, track01=track01, track04=track04)
     flower_text = decide_flower_text(
         seed=plan.seed,
         duration_seconds=plan.duration_seconds,
         central_window_boundary_ratio=track01.canvas_height_ratio,
         flower_style_catalog=flower_style_catalog,
+        blessing_pool=blessing_pool,
+        drama_prompt_pool=drama_prompt_pool,
     )
     stickers = decide_track09_sticker_skin(
         seed=plan.seed,
@@ -85,9 +81,7 @@ def build_template_decision(
         plan=plan,
         composition=decide_visual_composition(seed=plan.seed),
         track01=track01,
-        track04=track04,
         photo_walls=walls,
-        track05=track05,
         stickers=stickers,
         flower_text=flower_text,
     )
