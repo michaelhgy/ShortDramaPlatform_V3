@@ -224,6 +224,13 @@ def _initialize_connection() -> sqlite3.Connection:
     # with ``database is locked`` while a task is being retried.
     conn = sqlite3.connect(path, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    # 用 WAL 让读和写并发。默认的 delete 模式下，一个长时间未提交的写事务会把
+    # **所有读取**一起堵死——2026-09-17 的"界面读不出数据"正是如此：写锁被占，
+    # 连只读查询都进不去。WAL 下读走自己的一致性快照，不再被写阻塞。
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+    except sqlite3.OperationalError:
+        pass
     if int(conn.execute("PRAGMA user_version").fetchone()[0]) == SCHEMA_VERSION:
         # 结构已是最新：只读一个版本号就返回，绝不重跑那套 DDL。
         _recover_interrupted_revenue_runs(conn)
