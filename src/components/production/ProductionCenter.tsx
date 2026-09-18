@@ -7,13 +7,14 @@ import {
 } from '../../productionTypes';
 import { listV2ProductionTasks, listV2ProductionTaskSummaries, getV2ProductionTaskDetails, openV2FinishedVideoDraft, openV2TemplateDraft, queueV2Template, scanV2ProductionTask, submitV2FinishedVideos, registerV2Release, revokeV2Release, listV2ReleaseAddresses, previewV2Cleanup, executeV2Cleanup, updateV2TaskManualCheck, type V2ReleaseAddress } from '../../api/v2Production';
 import { getV2ProductionResources, openV2File, openV2Folder } from '../../api/v2Catalog';
-import { loadV2TaskCenter, reExportV2Task } from '../../api/v2TaskCenter';
+import { reExportV2Task } from '../../api/v2TaskCenter';
 import type { ExecutorInfo } from '../taskcenter/taskCenterTypes';
 import { toProductionUnit } from '../../adapters/production';
 import { formatElapsedSeconds } from '../../utils/duration';
 import { areaList } from '@vant/area-data';
 import { calculateResourceMetrics } from '../../utils/resourceMetrics';
 import { getCachedProductionSummary, loadProductionSummary } from '../../services/productionService';
+import { loadSharedTaskCenter } from '../../services/taskCenterService';
 import { useDataArea } from '../../hooks/useDataArea';
 import { reuseUnchanged, reuseUnchangedRecord } from '../../utils/reuseUnchanged';
 import { 
@@ -200,7 +201,12 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
   // 「什么时候刷」交给 dataHub（每 3 秒）；「数据怎么合并」仍是下面原来的逻辑，一个字没改。
   // 旧实现是"60 秒兜底 + 变更事件"，而事件还带 2.5 秒抑制窗口、会吞掉真实变更。
   const summaryArea = useDataArea<ProductionUnit[]>('production', () => loadProductionSummary(true));
-  const taskCenterArea = useDataArea<Awaited<ReturnType<typeof loadV2TaskCenter>>>('taskCenter', loadV2TaskCenter);
+  // ⚠️ 顶栏、任务中心、生产中心订阅的是**同一个区域**，所以必须用**同一个取数方法**，
+  // 否则谁最后注册谁生效、三处拿到的就不是同一份快照（数字会对不上）。
+  const taskCenterArea = useDataArea<Awaited<ReturnType<typeof loadSharedTaskCenter>>>(
+    'taskCenter',
+    () => loadSharedTaskCenter(true),
+  );
 
   // 首次挂载：先用本地缓存秒开；再拉一次生产资源容量（决定"生成模板"能不能点）
   useEffect(() => {

@@ -25,10 +25,10 @@ import { ExecutorsOverview } from './ExecutorsOverview';
 import { DramaPriorityBanner } from './DramaPriorityBanner';
 import { TaskListSection } from './TaskListSection';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
-import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, refreshSharedTaskCenterProductionTask, storeSharedTaskCenterSnapshot } from '../../services/taskCenterService';
+import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, storeSharedTaskCenterSnapshot } from '../../services/taskCenterService';
 import { cleanupV2OrphanTask, regenerateV2Template, retryV2Template, reExportV2Task, setV2ExecutorPaused, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
 import { dataSource } from '../../services/dataSource';
-import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
+import { useDataArea } from '../../hooks/useDataArea';
 
 interface TaskCenterModalProps {
   isOpen: boolean;
@@ -78,35 +78,26 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
     return Number.isFinite(started) ? { ...executor, runningSeconds: Math.max(0, Math.floor((clockNow - started) / 1000)) } : executor;
   }), [executors, liveTasks, clockNow]);
 
+  // ── 统一数据层接入（刷新大修 · 第 2 步）──────────────────────────────
+  // 与顶栏、生产中心**共用同一份任务快照**（数据层每 3 秒统一拉一次），
+  // 不再各自 loadSharedTaskCenter + 各自订阅变更事件 —— 那正是三处数字偶尔对不上的原因。
+  // 「更新于」改用数据层的 updatedAt：只在成功时前进，不会再显示上次会话的时间。
+  const taskCenterArea = useDataArea<Awaited<ReturnType<typeof loadSharedTaskCenter>>>(
+    'taskCenter',
+    () => loadSharedTaskCenter(true),
+  );
+
   useEffect(() => {
-    if (!isOpen || dataSource === 'mock') return;
-    let active = true;
-    const refresh = () => loadSharedTaskCenter(true).then((snapshot) => {
-      if (!active) return;
-      setExecutors(snapshot.executors);
-      tasksRef.current = snapshot.tasks;
-      setTasks(snapshot.tasks);
-      setDramaPriorities(snapshot.dramaPriorities);
-      setLastRefreshAt(new Date());
-      if (typeof snapshot.isQueuePaused === 'boolean') setIsQueuePaused(snapshot.isQueuePaused);
-    }).catch(() => {
-      // Keep the last confirmed snapshot. A transient local-service request
-      // failure must not make the entire task center appear empty.
-    });
-    refresh();
-    const refreshForChange = async (detail?: import('../../services/dataChangeEvents').V2DataChangeDetail) => {
-      if (detail?.productionTaskId) {
-        await refreshSharedTaskCenterProductionTask(detail.productionTaskId).then((changed) => {
-          if (!active) return;
-          setTasks((previous) => [...previous.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed]);
-          tasksRef.current = [...tasksRef.current.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed];
-          setLastRefreshAt(new Date());
-        });
-      } else { await refresh(); }
-    };
-    const unsubscribe = subscribeV2DataRefresh('task_center', ({ detail }) => refreshForChange(detail).catch(() => undefined));
-    return () => { active = false; unsubscribe(); };
-  }, [isOpen]);
+    if (dataSource === 'mock') return;
+    const snapshot = taskCenterArea.data;
+    if (!snapshot) return;
+    setExecutors(snapshot.executors);
+    tasksRef.current = snapshot.tasks;
+    setTasks(snapshot.tasks);
+    setDramaPriorities(snapshot.dramaPriorities);
+    setLastRefreshAt(taskCenterArea.updatedAt ? new Date(taskCenterArea.updatedAt) : null);
+    if (typeof snapshot.isQueuePaused === 'boolean') setIsQueuePaused(snapshot.isQueuePaused);
+  }, [taskCenterArea.data, taskCenterArea.updatedAt]);
 
   if (!isOpen) return null;
 

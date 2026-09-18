@@ -14,10 +14,10 @@ import {
 import { TaskCenterPreviewPopover } from './taskcenter/TaskCenterPreviewPopover';
 import { ExecutorId, ExecutorInfo, TaskItem } from './taskcenter/taskCenterTypes';
 import { regenerateV2Template, reExportV2Task, retryV2Template, setV2ExecutorPaused, setV2TaskCenterPaused } from '../api/v2TaskCenter';
-import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, refreshSharedTaskCenterProductionTask, storeSharedTaskCenterSnapshot } from '../services/taskCenterService';
+import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, storeSharedTaskCenterSnapshot } from '../services/taskCenterService';
 import { getTaskCenterActions } from './taskcenter/taskCenterActionPolicy';
 import { changeAffects, eventDetail } from '../services/dataChangeEvents';
-import { subscribeV2DataRefresh } from '../services/dataRefreshCoordinator';
+import { useDataArea } from '../hooks/useDataArea';
 import { dataSource } from '../services/dataSource';
 import { getV2Accounts, getV2ProductionResources } from '../api/v2Catalog';
 import { listV2ProductionTaskSummaries } from '../api/v2Production';
@@ -107,32 +107,23 @@ export const Header: React.FC<HeaderProps> = ({
     return () => { active = false; window.removeEventListener('v2-data-changed', onDataChanged); };
   }, []);
 
+  // ── 统一数据层接入（刷新大修 · 第 2 步）──────────────────────────────
+  // 这份「任务快照」现在由数据层每 3 秒统一拉一次，顶栏 / 任务中心 / 生产中心**共用同一份**。
+  // 旧实现是三处各自 loadSharedTaskCenter + 各自订阅变更事件 —— 那正是三处数字偶尔对不上的原因。
+  // 失败时数据层保留旧快照（不清空、不弹提示），与原来注释的意图一致。
+  const taskCenterArea = useDataArea<Awaited<ReturnType<typeof loadSharedTaskCenter>>>(
+    'taskCenter',
+    () => loadSharedTaskCenter(true),
+  );
+
   useEffect(() => {
-    let active = true;
-    const refresh = () => loadSharedTaskCenter(true).then((snapshot) => {
-      if (active) {
-        tasksRef.current = snapshot.tasks;
-        setTasks(snapshot.tasks);
-        setExecutors(snapshot.executors);
-        setIsQueuePaused(snapshot.isQueuePaused === true);
-      }
-    }).catch(() => {
-      // Keep the last confirmed snapshot; the header must not create a toast
-      // every second while the local service is restarting.
-    });
-    refresh();
-    const refreshForChange = async (detail?: import('../services/dataChangeEvents').V2DataChangeDetail) => {
-      if (detail?.productionTaskId) {
-        await refreshSharedTaskCenterProductionTask(detail.productionTaskId).then((changed) => {
-          if (!active) return;
-          setTasks((previous) => [...previous.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed]);
-          tasksRef.current = [...tasksRef.current.filter((item) => item.productionTaskId !== detail.productionTaskId), ...changed];
-        });
-      } else { await refresh(); }
-    };
-    const unsubscribe = subscribeV2DataRefresh('task_center', ({ detail }) => refreshForChange(detail).catch(() => undefined));
-    return () => { active = false; unsubscribe(); };
-  }, []);
+    const snapshot = taskCenterArea.data;
+    if (!snapshot) return;
+    tasksRef.current = snapshot.tasks;
+    setTasks(snapshot.tasks);
+    setExecutors(snapshot.executors);
+    setIsQueuePaused(snapshot.isQueuePaused === true);
+  }, [taskCenterArea.data]);
 
   // Counts come from the backend snapshot. The header never turns a task into
   // a running task locally, because the executor is the source of truth.
