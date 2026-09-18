@@ -105,7 +105,14 @@ def _runtime_command() -> tuple[str, list[str]]:
         return sys.executable, []
     launcher = shutil.which("py.exe") or shutil.which("py")
     if launcher:
-        candidate = subprocess.run([launcher, "-3.12", *probe], check=False, capture_output=True)
+        # 以前这里写的是未定义变量 `probe`（只在 _port_is_free 里是局部变量）：
+        # 当前解释器没有 pywebview 时会抛 NameError，而旧服务已在前面被强杀，
+        # 结果是"双击后什么都没发生"。改成真正的探测命令。
+        candidate = subprocess.run(
+            [launcher, "-3.12", "-c", "import webview"],
+            check=False,
+            capture_output=True,
+        )
         if candidate.returncode == 0:
             return launcher, ["-3.12"]
     raise RuntimeError("找不到已安装 pywebview 的 Python 运行时；请使用 Python 3.12 环境启动 V2。")

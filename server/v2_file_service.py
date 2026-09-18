@@ -28,6 +28,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from server.tool_resolver import ToolResolutionError, resolve_ffmpeg, resolve_ffprobe
 from server.runtime_process import no_window_kwargs
+from server.runtime_guard import assert_port_available, start_write_lock_watchdog
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
@@ -4427,6 +4428,10 @@ def create_v2_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer:
     """Initialize V2 background services and return its local HTTP server."""
     if WORKSPACE is not None:
         ensure_v2_root_layout()
+    # 只允许一个实例：Windows 上第二个实例抢同一个端口**不会报错**（HTTPServer 默认
+    # allow_reuse_address=1，实测第二个进程 bind+listen 成功），结果就是两个后端同时写
+    # 同一个数据库——那正是"界面卡住 / database is locked"的成因之一。
+    assert_port_available(host, port)
     server = ThreadingHTTPServer((host, port), Handler)
     try:
         from server.task_center_service import start_scheduler
@@ -4446,6 +4451,9 @@ def create_v2_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer:
             pass
         start_scheduler()
         start_revenue_auto_scheduler()
+        # 写锁监视器：平时零输出；写锁被连续占住时把各线程调用栈写进日志（便于定位根因）。
+        if WORKSPACE is not None:
+            start_write_lock_watchdog(db_path())
     except Exception:
         server.server_close()
         raise
@@ -4453,7 +4461,12 @@ def create_v2_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer:
 
 
 def main() -> None:
-    server = create_v2_server()
+    try:
+        server = create_v2_server()
+    except RuntimeError as exc:
+        # 端口被占用（已有实例在跑）之类的问题：给一句人话，不要甩一堆栈。
+        print(f"V2 文件服务启动失败：{exc}", file=sys.stderr, flush=True)
+        raise SystemExit(1) from exc
     state = "V2 文件服务已启动" if WORKSPACE is not None else "V2 文件服务已启动：需要配置数据盘"
     print(f"{state}，http://{HOST}:{PORT}", flush=True)
     try:
