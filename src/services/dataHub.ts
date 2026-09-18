@@ -25,7 +25,7 @@
  */
 
 /** 数据区域。按"数据种类"分，不按页面分。 */
-export type DataArea = 'production' | 'taskCenter' | 'catalog' | 'resourceIndex' | 'revenue';
+export type DataArea = 'production' | 'taskCenter' | 'catalog' | 'resourceIndex' | 'revenue' | 'engineParameters' | 'settings';
 
 /**
  * **每个区域各自的自动刷新间隔（毫秒）。0 = 不自动刷，只在打开 / 改完后按需刷。**
@@ -42,6 +42,8 @@ export const AREA_INTERVAL_MS: Record<DataArea, number> = {
   catalog: 0,
   resourceIndex: 30_000,
   revenue: 0,
+  engineParameters: 0, // 参数中心：设一次就不动 → 打开读一次 + 改完立刻刷
+  settings: 0,         // 设置页：同上
 };
 
 /** 统一心跳：每 1 秒检查一次"哪个区域该刷了"。**全局只有这一个定时器。** */

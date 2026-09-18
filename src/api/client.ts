@@ -65,6 +65,9 @@ function areasForChange(changeType: V2DataChangeType): DataArea[] {
       return ['production', 'taskCenter', 'revenue'];
     case 'revenue_changed':
       return ['revenue'];
+    case 'settings_changed':
+      // 参数中心保存走 /engine-parameters，设置页保存走 /settings，两者都归 settings_changed
+      return ['settings', 'engineParameters'];
     default:
       return [];
   }

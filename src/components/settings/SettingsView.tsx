@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { downloadLocalVisionAiModel, getLocalVisionAiStatus, getV2Drives, getV2Settings, LocalVisionAiStatus, updateV2Settings } from '../../api/v2Catalog';
 import { selectV2Path } from '../../api/v2Settings';
+import { useDataArea } from '../../hooks/useDataArea';
 import { 
   Settings, 
   HardDrive, 
@@ -104,25 +105,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null);
   const [selectingPath, setSelectingPath] = useState<'file' | 'draft' | 'userData' | null>(null);
 
+  // ── 统一数据层接入（刷新大修 · 第 4 步）────────────────────────────
+  // 设置属于"装完机基本不动"的配置类：**打开读一次 + 改完立刻刷**（间隔 0）。
+  const settingsArea = useDataArea<Awaited<ReturnType<typeof getV2Settings>>>(
+    'settings',
+    () => getV2Settings(),
+  );
+
   useEffect(() => {
-    getV2Settings().then((settings) => {
-      setDataDrive(settings.data_drive || '');
-      setRawMaterialRetentionDays(settings.raw_material_retention_days);
-      setShortTermCleanupHours(settings.short_term_cleanup_hours);
-      setPublishPresets(settings.publish_presets);
-      setPublishDateOffsetDays(settings.publish_date_offset_days);
-      setJianyingExePath(settings.jianying_executable || '');
-      setCapcutDraftPath(settings.jianying_draft_root || '');
-      setJianyingUserDataPath(settings.jianying_user_data_root || '');
-      setTemplateTimeoutMin(settings.template_timeout_min);
-      setVideoGenTimeoutMin(settings.final_generation_timeout_min);
-      setExportTimeoutMin(settings.video_export_timeout_min);
-      setDefaultCheckMode(settings.final_video_manual_check);
-      setRawMaterialProcess(settings.final_raw_material_process ?? true);
-      setAutoSyncRevenue(settings.revenue_auto_collection_enabled);
-      setSyncTimeSlots(settings.revenue_auto_collection_times);
-      setLocalVisionAiMode(settings.local_vision_ai_mode);
-    }).catch(() => showToast('基础设置读取失败，请稍后重试。'));
+    const settings = settingsArea.data;
+    if (!settings) return;
+    setDataDrive(settings.data_drive || '');
+    setRawMaterialRetentionDays(settings.raw_material_retention_days);
+    setShortTermCleanupHours(settings.short_term_cleanup_hours);
+    setPublishPresets(settings.publish_presets);
+    setPublishDateOffsetDays(settings.publish_date_offset_days);
+    setJianyingExePath(settings.jianying_executable || '');
+    setCapcutDraftPath(settings.jianying_draft_root || '');
+    setJianyingUserDataPath(settings.jianying_user_data_root || '');
+    setTemplateTimeoutMin(settings.template_timeout_min);
+    setVideoGenTimeoutMin(settings.final_generation_timeout_min);
+    setExportTimeoutMin(settings.video_export_timeout_min);
+    setDefaultCheckMode(settings.final_video_manual_check);
+    setRawMaterialProcess(settings.final_raw_material_process ?? true);
+    setAutoSyncRevenue(settings.revenue_auto_collection_enabled);
+    setSyncTimeSlots(settings.revenue_auto_collection_times);
+    setLocalVisionAiMode(settings.local_vision_ai_mode);
+  }, [settingsArea.data]);
+
+  useEffect(() => {
+    if (settingsArea.error) showToast('基础设置读取失败，请稍后重试。');
+  }, [settingsArea.error]);
+
+  useEffect(() => {
     getV2Drives().then(({ items }) => setAvailableDrives(items.map((drive) => drive.replace(/[\\/]$/, ''))))
       .catch(() => showToast('可用数据盘读取失败，请稍后重试。'));
     void refreshLocalVisionAiStatus();

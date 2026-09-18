@@ -10,6 +10,8 @@ import { getV2ProductionResources } from '../../api/v2Catalog';
 import type { ProductionResourceItem } from '../../assetsTypes';
 import { naturalCompare } from '../../utils/naturalCompare';
 import { CopyPoolEditor } from './CopyPoolEditor';
+import { useDataArea } from '../../hooks/useDataArea';
+import { refreshArea } from '../../services/dataHub';
 
 interface ParameterCenterViewProps {
   showToast: (message: string) => void;
@@ -73,35 +75,35 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
     setInsertionConfigured(parameters.midroll_endroll.configured);
   };
 
-  const loadParameters = async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      applyParameters(await getV2EngineParameters());
-    } catch (error) {
-      setLoadError(error instanceof Error && error.message ? error.message : '参数读取失败，请稍后重试。');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadPromotionVideos = async () => {
-    setVideosLoading(true);
-    try {
-      const { items } = await getV2ProductionResources();
-      setPromotionVideos(items.filter((item) => item.category === 'lead_video'));
-    } catch {
-      // 素材清单读不到不是致命问题：保存时后端还会再校验一次指定的文件。
-      setPromotionVideos([]);
-    } finally {
-      setVideosLoading(false);
-    }
-  };
+  // ── 统一数据层接入（刷新大修 · 第 4 步）────────────────────────────
+  // 参数中心属于"设一次就不动"的配置类：**打开读一次 + 改完立刻刷**（间隔 0）。
+  // 素材清单与资料中心**共用 resourceIndex 区域** —— 同一份数据，30 秒节奏，
+  // 绝不因为参数中心而多扫一次素材盘。
+  const parametersArea = useDataArea<Awaited<ReturnType<typeof getV2EngineParameters>>>(
+    'engineParameters',
+    () => getV2EngineParameters(),
+  );
+  const videosArea = useDataArea<ProductionResourceItem[]>(
+    'resourceIndex',
+    async () => (await getV2ProductionResources()).items as ProductionResourceItem[],
+  );
 
   useEffect(() => {
-    void loadParameters();
-    void loadPromotionVideos();
-  }, []);
+    if (!parametersArea.data) {
+      if (parametersArea.error) setLoadError(parametersArea.error);
+      setLoading(parametersArea.loading);
+      return;
+    }
+    applyParameters(parametersArea.data);
+    setLoadError(parametersArea.error);
+    setLoading(false);
+  }, [parametersArea.data, parametersArea.error, parametersArea.loading]);
+
+  useEffect(() => {
+    setVideosLoading(videosArea.loading);
+    if (!videosArea.data) return;
+    setPromotionVideos(videosArea.data.filter((item) => item.category === 'lead_video'));
+  }, [videosArea.data, videosArea.loading]);
 
   useEffect(() => {
     if (!toastMessage) return;
@@ -211,7 +213,7 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
             </div>
             <button
               type="button"
-              onClick={() => { void loadParameters(); void loadPromotionVideos(); }}
+              onClick={() => { void refreshArea('engineParameters'); void refreshArea('resourceIndex'); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-[#1A1D2E] transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading || videosLoading ? 'animate-spin' : ''}`} />
