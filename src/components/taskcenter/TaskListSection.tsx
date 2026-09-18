@@ -422,8 +422,8 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
         {filteredTasks.length === 0 ? (
           <div className="py-12 px-4 bg-white rounded-2xl border border-black/[0.06] text-center text-xs text-[#64748B] space-y-2">
             <Info className="w-6 h-6 text-slate-300 mx-auto" />
-            <p className="font-bold text-[#1A1D2E]">未找到匹配的任务卡片</p>
-            <p className="text-[11px] text-slate-400">请尝试切换筛选条件或清除搜索关键字</p>
+            <p className="font-bold text-[#1A1D2E]">当前没有可显示的任务</p>
+            <p className="text-[11px] text-slate-400">可能是筛选条件没有匹配，也可能是本地服务暂时读不到数据</p>
           </div>
         ) : (
           filteredTasks.map((task) => {

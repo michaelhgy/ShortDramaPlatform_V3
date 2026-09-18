@@ -372,9 +372,9 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
             )}
           </div>
 
+          {/* 这里原来写死"剪映 IPC 通信：在线 (端口 49152)"——永远绿色、跟真实状态无关，已删除。
+             保留下来的"调度算法"是真实配置（不是状态），所以留着。 */}
           <div className="text-[11px] text-[#64748B] flex items-center gap-3">
-            <span>剪映 IPC 通信：<strong className="text-emerald-700">在线 (端口 49152)</strong></span>
-            <span>·</span>
             <span>调度算法：<strong className="text-[#1A1D2E]">动态剧集优先级 + 模板最高优先</strong></span>
           </div>
         </div>
@@ -404,22 +404,9 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 bg-white border-t border-black/[0.06] flex items-center justify-between text-xs text-[#64748B] shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              模板生成器：就绪
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              成片生成器：就绪
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              视频导出器：就绪
-            </span>
-          </div>
-
+        {/* 这里原来写死"三个执行器：就绪"——即使执行器报错暂停也照样显示绿色，与上面的真实状态自相矛盾。
+            真实的执行器状态就在 ExecutorsOverview 里，所以直接删掉。 */}
+        <div className="px-6 py-3.5 bg-white border-t border-black/[0.06] flex items-center justify-end text-xs text-[#64748B] shrink-0">
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}

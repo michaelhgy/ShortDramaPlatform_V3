@@ -48,7 +48,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // ==========================================
   const [dataDrive, setDataDrive] = useState('');
   const [availableDrives, setAvailableDrives] = useState<string[]>([]);
-  const [dataRootDirStatus, setDataRootDirStatus] = useState<'normal' | 'missing' | 'inaccessible'>('normal');
   const [isChangingDataDrive, setIsChangingDataDrive] = useState(false);
   const [jianyingExePath, setJianyingExePath] = useState('');
   const [capcutDraftPath, setCapcutDraftPath] = useState('');
@@ -150,6 +149,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }, [localVisionAiStatus?.download.status]);
 
   const dataRootDir = dataDrive ? `${dataDrive}\\短剧推广运营系统` : '';
+
+  // 数据盘是否**真的**还在：拿"你设置的数据盘"和"系统实际可用盘符"对比。
+  // ⚠️ 以前这里是 useState('normal')，而且 **setter 全文从未被调用** —— 所以永远显示"正常"，
+  // 数据盘拔了也不会变。属于"看着对其实是写死的"，改为真实判断（刷新大修 · 第 7 步）。
+  const dataRootDirStatus: 'normal' | 'missing' | 'inaccessible' = (() => {
+    const configured = dataDrive.replace(/[\\/]+$/, '').toUpperCase();
+    if (!configured) return 'inaccessible';
+    return availableDrives.some((drive) => drive.replace(/[\\/]+$/, '').toUpperCase() === configured)
+      ? 'normal'
+      : 'missing';
+  })();
 
   // ---------------- Handlers ----------------
 
@@ -296,19 +306,16 @@ File Cleanup:
   - Raw Material Retention: ${rawMaterialRetentionDays} days
   - Short-term Artifacts Cleanup: ${shortTermCleanupHours} hours
 Publish Presets: ${publishPresets.join(', ')}
-Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + ')' : 'Disabled'}
-IPC Status: Port 49152 Active, Latency 3ms
-Database Version: SQLite 3.42 (Encrypted Local Store)`;
+Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + ')' : 'Disabled'}`;
     navigator.clipboard?.writeText(report);
     showToast('📋 已将系统运行诊断报告复制到剪贴板');
   };
 
+  // ⚠️ 原实现是"等 600 毫秒后**无条件**报'全部通过'"——不管实际情况如何，属于骗人。
+  // 已改为如实说明（刷新大修 · 第 7 步）。真正的自检要等后端提供检查接口后再接。
   const handleRunDiagnosticTest = () => {
-    showToast('⚡ 正在测试数据根目录、剪映进程通道与任务调度器...');
-    setTimeout(() => {
-      setDiagnosticResult('✅ 诊断测试通过：数据根目录可写、剪映程序路径校验正确、草稿目录通信正常（延迟 3ms）。');
-      showToast('✅ 基础诊断测试全部通过');
-    }, 600);
+    setDiagnosticResult('⚠️ 尚未实现真正的自检：这里不会做任何检查，也不会改动任何数据。');
+    showToast('该功能尚未实现');
   };
 
   return (
@@ -1047,7 +1054,7 @@ Database Version: SQLite 3.42 (Encrypted Local Store)`;
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => showToast('已在系统文件管理器中打开：C:\\Users\\Administrator\\AppData\\Roaming\\DramaMaster\\logs\\')}
+              onClick={() => showToast('该功能尚未实现：日志目录位置需要后端提供，目前没有这个接口。')}
               className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-[#1A1D2E] cursor-pointer"
             >
               <FolderOpen className="w-3.5 h-3.5" />

@@ -233,11 +233,9 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
         </div>
 
         {/* Modal Footer with Contextual Actions */}
-        <div className="px-6 py-3.5 bg-[#F8FAFC] border-t border-black/[0.06] flex items-center justify-between gap-3">
-          <span className="text-[11px] text-[#64748B]">
-            剪映自动化服务：监听端口 49152
-          </span>
-
+        {/* 这里原来写死一句"剪映自动化服务：监听端口 49152"——永远显示、跟真实状态无关，
+            属于"看着对其实是写死的"，已删除（刷新大修 · 第 7 步）。 */}
+        <div className="px-6 py-3.5 bg-[#F8FAFC] border-t border-black/[0.06] flex items-center justify-end gap-3">
           <div className="flex items-center gap-2">
             {task.isOrphan && (
               <button
