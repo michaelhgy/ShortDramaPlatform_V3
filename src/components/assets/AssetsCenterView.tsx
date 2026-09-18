@@ -10,7 +10,7 @@ import {
   ViralAssetItem,
 } from '../../assetsTypes';
 import { calculateResourceMetrics } from '../../utils/resourceMetrics';
-import { getCachedAssetsCenterSeed, loadAssetsCenterSeed } from '../../services/assetsCenterService';
+import { fetchAssetsCenterSeedForDataHub, getCachedAssetsCenterSeed, loadAssetsCenterSeed } from '../../services/assetsCenterService';
 import { BusinessDataTab } from './BusinessDataTab';
 import { DramaLibraryTab } from './DramaLibraryTab';
 import { ProductionResourcesTab } from './ProductionResourcesTab';
@@ -63,7 +63,7 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
   //      → 30 秒一次（用户 2026-09-18 选定）。绝不能跟着 3 秒跑。
   const catalogArea = useDataArea<Awaited<ReturnType<typeof loadAssetsCenterSeed>>>(
     'catalog',
-    () => loadAssetsCenterSeed(true),
+    () => fetchAssetsCenterSeedForDataHub(),
   );
   const resourceArea = useDataArea<ProductionResourceItem[]>(
     'resourceIndex',

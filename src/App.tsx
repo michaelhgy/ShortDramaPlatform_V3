@@ -28,7 +28,7 @@ import { ScheduleModal } from './components/ScheduleModal';
 import { EditTimePopover } from './components/EditTimePopover';
 import { CheckCircle2 } from 'lucide-react';
 import { createV2ProductionTask } from './api/v2Production';
-import { createBusinessDrama, loadAssetsCenterSeed } from './services/assetsCenterService';
+import { createBusinessDrama, fetchAssetsCenterSeedForDataHub, loadAssetsCenterSeed } from './services/assetsCenterService';
 import { getV2Accounts, getV2Settings, type V2AccountRecord } from './api/v2Catalog';
 import { loadV2DailyAccountRevenueSummary, type V2DailyAccountRevenueSummary } from './api/v2Revenue';
 import { eventDetail } from './services/dataChangeEvents';
@@ -99,7 +99,7 @@ export default function App() {
   // 那边一改，这边自动跟上。
   const catalogArea = useDataArea<Awaited<ReturnType<typeof loadAssetsCenterSeed>>>(
     'catalog',
-    () => loadAssetsCenterSeed(),
+    () => fetchAssetsCenterSeedForDataHub(),
   );
 
   useEffect(() => {

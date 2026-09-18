@@ -101,6 +101,23 @@ export async function refreshCachedAssetsItem(change: {
  * V2 mode loads only the V2 catalog. Modules without an implemented V2 contract
  * remain empty; mock content remains opt-in only.
  */
+/**
+ * 统一数据层 `catalog` 区域**唯一**的取数方法。
+ *
+ * ⚠️ **必须总是拉新的**（`force = true`）。原因：
+ *   - 数据层自己就是缓存层（带 `updatedAt` 与 "改完立刻刷"）
+ *   - `cachedAssetsSeed` 是**第二层缓存**
+ *   - 两层叠加会导致：**刚新建的剧集在"安排今天"里搜不到，重开软件才出现**
+ *     （用户 2026-09-18 报的间歇性 bug；资料中心因为用的是 force=true，所以那边看得到）
+ *
+ * ⚠️ **所有订阅 `catalog` 区域的组件都必须用这个函数。**
+ *   dataHub 的一个区域**只保留一个 fetcher，谁后注册谁生效** ——
+ *   用不同的取数方法就会表现成"时好时坏"。
+ */
+export function fetchAssetsCenterSeedForDataHub() {
+  return loadAssetsCenterSeed(true);
+}
+
 export async function loadAssetsCenterSeed(force = false) {
   if (dataSource === 'mock') {
     return {
