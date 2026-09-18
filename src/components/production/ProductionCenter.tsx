@@ -15,6 +15,7 @@ import { areaList } from '@vant/area-data';
 import { calculateResourceMetrics } from '../../utils/resourceMetrics';
 import { getCachedProductionSummary, loadProductionSummary } from '../../services/productionService';
 import { useDataArea } from '../../hooks/useDataArea';
+import { reuseUnchanged, reuseUnchangedRecord } from '../../utils/reuseUnchanged';
 import { 
   Layers, 
   Scan, 
@@ -231,7 +232,9 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
     // 用 dataHub 的 updatedAt：它**只在成功时前进**，所以这个时间不会骗人。
     // （旧实现无论成功失败都写 new Date()，这正是"更新于 HH:mm 不可信"的来源。）
     setLastRefreshAt(summaryArea.updatedAt ? new Date(summaryArea.updatedAt) : null);
-    setUnits(realUnits);
+    // 让"内容没变的条目"沿用旧引用：没变化时整块列表不重画（用户要求"不卡、不闪"）。
+    // 详见 src/utils/reuseUnchanged.ts 顶部说明。
+    setUnits((previous) => reuseUnchanged(previous, realUnits));
     setDetailUnits((previous) => {
       const next: Record<string, ProductionUnit> = {};
       realUnits.forEach((unit) => {
@@ -262,8 +265,10 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
           next[unit.id] = unit;
         }
       });
-      cachedProductionDetails = next;
-      return next;
+      // 同理：详情字典里没变的条目也沿用旧引用，避免右侧详情区被无谓重画
+      const merged = reuseUnchangedRecord(previous, next);
+      cachedProductionDetails = merged;
+      return merged;
     });
     setSelectedUnitId((current) => {
       const next = current && realUnits.some((unit) => unit.id === current) ? current : realUnits[0]?.id || '';
