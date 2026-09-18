@@ -17,8 +17,9 @@ import {
   readArea,
   refreshArea,
   resetDataHubForTests,
+  setDataHubAreaIntervalForTests,
   setDataHubClockForTests,
-  setDataHubIntervalForTests,
+  setDataHubTickForTests,
   subscribeArea,
   subscriberCount,
 } from './dataHub.ts';
@@ -87,7 +88,8 @@ test('有数据之后再次订阅：直接给缓存，不重复请求', async ()
 // --------------------------------------------------------- 有人看才刷、没人停
 
 test('有订阅者时按间隔自动刷新', async () => {
-  setDataHubIntervalForTests(20);
+  setDataHubTickForTests(20);
+  setDataHubAreaIntervalForTests('production', 20);
   let calls = 0;
   const stop = subscribeArea('production', async () => {
     calls += 1;
@@ -99,7 +101,8 @@ test('有订阅者时按间隔自动刷新', async () => {
 });
 
 test('最后一个订阅者退订后：定时器停掉、不再发请求', async () => {
-  setDataHubIntervalForTests(20);
+  setDataHubTickForTests(20);
+  setDataHubAreaIntervalForTests('production', 20);
   let calls = 0;
   const stop = subscribeArea('production', async () => {
     calls += 1;
@@ -120,7 +123,8 @@ test('最后一个订阅者退订后：定时器停掉、不再发请求', async
 });
 
 test('多个订阅者共享同一份请求', async () => {
-  setDataHubIntervalForTests(20);
+  setDataHubTickForTests(20);
+  setDataHubAreaIntervalForTests('production', 20);
   let calls = 0;
   const fetcher = async () => {
     calls += 1;
@@ -258,4 +262,47 @@ test('不同区域各自独立：一个失败不影响另一个', async () => {
 
   stopA();
   stopB();
+});
+
+// --------------------------------------------- 每个区域有自己的刷新节奏（第 3 步）
+
+test('间隔为 0 的区域：不会自动刷新，但可以按需手动刷', async () => {
+  setDataHubTickForTests(20);
+  let calls = 0;
+  const stop = subscribeArea('catalog', async () => {
+    calls += 1;
+    return calls;
+  }, () => {});
+
+  await waitFor(() => calls === 1); // 首次订阅会拉一次
+  const frozen = calls;
+  await sleep(100);
+  assert.equal(calls, frozen, 'catalog 的间隔是 0，心跳不该触发它（手填资料几天才改一次）');
+
+  await refreshArea('catalog'); // "改完资料立刻刷"走这条路
+  assert.equal(calls, frozen + 1, '手动刷必须有效');
+  stop();
+});
+
+test('不同区域各自独立：慢的区域不被快的带跑', async () => {
+  setDataHubTickForTests(20);
+  setDataHubAreaIntervalForTests('production', 20);
+  setDataHubAreaIntervalForTests('resourceIndex', 100_000); // 真实值是 30 秒
+
+  let fast = 0;
+  let slow = 0;
+  const stopFast = subscribeArea('production', async () => {
+    fast += 1;
+    return fast;
+  }, () => {});
+  const stopSlow = subscribeArea('resourceIndex', async () => {
+    slow += 1;
+    return slow;
+  }, () => {});
+
+  await waitFor(() => fast >= 3);
+  assert.equal(slow, 1, '慢区域只该在首次订阅时拉一次 —— 素材盘扫描很贵，绝不能跟着 3 秒跑');
+
+  stopFast();
+  stopSlow();
 });

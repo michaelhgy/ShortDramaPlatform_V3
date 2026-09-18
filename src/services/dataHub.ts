@@ -24,11 +24,28 @@
  *   （这正是现在"更新于 HH:mm:ss"骗人的原因 —— 见结构全景 §4 问题 5）
  */
 
-/** 数据区域。第 1 步只接 `production`；其余在第 2~4 步逐个接。 */
-export type DataArea = 'production' | 'taskCenter' | 'catalog' | 'revenue';
+/** 数据区域。按"数据种类"分，不按页面分。 */
+export type DataArea = 'production' | 'taskCenter' | 'catalog' | 'resourceIndex' | 'revenue';
 
-/** 用户明确"几秒内变就行"，所以统一 3 秒（见 `docs/数据与功能全景.md` §4）。 */
-export const REFRESH_INTERVAL_MS = 3000;
+/**
+ * **每个区域各自的自动刷新间隔（毫秒）。0 = 不自动刷，只在打开 / 改完后按需刷。**
+ *
+ * ⚠️ 这里**故意不是一刀切**（依据 `docs/数据与功能全景.md` §4 的时效表）：
+ * - `production` / `taskCenter`：用户明确"几秒内变就行"
+ * - `catalog`（你手填的资料）：几天才改一次，给它做实时机制纯属浪费
+ * - `resourceIndex`（磁盘上的素材）：**读一次要遍历整个素材盘**，绝不能高频
+ * - `revenue`：一天采集几次
+ */
+export const AREA_INTERVAL_MS: Record<DataArea, number> = {
+  production: 3000,
+  taskCenter: 3000,
+  catalog: 0,
+  resourceIndex: 30_000,
+  revenue: 0,
+};
+
+/** 统一心跳：每 1 秒检查一次"哪个区域该刷了"。**全局只有这一个定时器。** */
+export const TICK_MS = 1000;
 
 /** 一个区域当前的样子。页面拿到的就是这个。 */
 export type AreaSnapshot<T> = {
@@ -47,12 +64,15 @@ type Entry = {
   fetcher: (() => Promise<unknown>) | null;
   listeners: Set<() => void>;
   inFlight: Promise<void> | null;
+  /** 上次发起请求的时间：用来判断"距上次够不够这个区域自己的间隔" */
+  lastAttemptAt: number;
 };
 
 const entries = new Map<DataArea, Entry>();
 let timer: ReturnType<typeof setInterval> | null = null;
-let intervalMs = REFRESH_INTERVAL_MS;
+let tickMs = TICK_MS;
 let clock: () => number = () => Date.now();
+const areaIntervals: Record<string, number> = { ...AREA_INTERVAL_MS };
 
 function emptySnapshot(): AreaSnapshot<unknown> {
   return { data: null, updatedAt: null, error: null, loading: false };
@@ -61,7 +81,7 @@ function emptySnapshot(): AreaSnapshot<unknown> {
 function entryOf(area: DataArea): Entry {
   let entry = entries.get(area);
   if (!entry) {
-    entry = { snapshot: emptySnapshot(), fetcher: null, listeners: new Set(), inFlight: null };
+    entry = { snapshot: emptySnapshot(), fetcher: null, listeners: new Set(), inFlight: null, lastAttemptAt: 0 };
     entries.set(area, entry);
   }
   return entry;
@@ -87,6 +107,7 @@ function loadArea(area: DataArea): Promise<void> {
   if (!fetcher) return Promise.resolve();
   if (entry.inFlight) return entry.inFlight;
 
+  entry.lastAttemptAt = clock();
   entry.snapshot = { ...entry.snapshot, loading: true };
   notify(entry);
 
@@ -110,10 +131,16 @@ function loadArea(area: DataArea): Promise<void> {
 function ensureTimer(): void {
   if (timer !== null) return;
   timer = setInterval(() => {
+    const now = clock();
     for (const [area, entry] of entries) {
-      if (entry.listeners.size > 0) void loadArea(area);
+      if (entry.listeners.size === 0) continue;      // 没人看就不刷
+      if (entry.inFlight) continue;                   // 上一个请求还没回来，别叠
+      const interval = areaIntervals[area] ?? 0;
+      if (interval <= 0) continue;                    // 0 = 不自动刷（只在打开 / 改完后按需刷）
+      if (now - entry.lastAttemptAt < interval) continue;
+      void loadArea(area);
     }
-  }, intervalMs);
+  }, tickMs);
 }
 
 function stopTimerIfIdle(): void {
@@ -185,18 +212,25 @@ export function resetDataHubForTests(): void {
     timer = null;
   }
   entries.clear();
-  intervalMs = REFRESH_INTERVAL_MS;
+  tickMs = TICK_MS;
+  for (const key of Object.keys(areaIntervals)) delete areaIntervals[key];
+  Object.assign(areaIntervals, AREA_INTERVAL_MS);
   clock = () => Date.now();
 }
 
-/** 改自动刷新间隔（**只给测试用**，让测试不用真等 3 秒）。 */
-export function setDataHubIntervalForTests(ms: number): void {
-  intervalMs = ms;
+/** 改心跳间隔（**只给测试用**，让测试不用真等 1 秒）。 */
+export function setDataHubTickForTests(ms: number): void {
+  tickMs = ms;
   if (timer !== null) {
     clearInterval(timer);
     timer = null;
     ensureTimer();
   }
+}
+
+/** 改某个区域的自动刷新间隔（**只给测试用**；传 0 = 不自动刷）。 */
+export function setDataHubAreaIntervalForTests(area: DataArea, ms: number): void {
+  areaIntervals[area] = ms;
 }
 
 /** 换一个假时钟（**只给测试用**），用来验证 `updatedAt` 的语义。 */

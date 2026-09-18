@@ -1,4 +1,5 @@
 import { publishV2DataChange, type V2DataChangeType } from '../services/dataChangeEvents';
+import { refreshArea, type DataArea } from '../services/dataHub';
 
 export class ApiError extends Error {
   constructor(
@@ -34,6 +35,39 @@ function changeTypeForPath(path: string): V2DataChangeType {
   if (path.includes('/accounts')) return 'account_changed';
   if (path.includes('/dramas')) return 'drama_changed';
   return 'unknown';
+}
+
+/**
+ * 写操作成功后要**立刻**刷新的区域 —— 这是"点完按钮马上看到结果"的落地。
+ *
+ * 不需要通知、不需要事件：统一数据层自己就是唯一的缓存持有者，直接刷它就行。
+ * 没有订阅者的区域不会真的发请求（dataHub 里没注册 fetcher 就跳过），所以这里是安全的。
+ */
+function areasForChange(changeType: V2DataChangeType): DataArea[] {
+  switch (changeType) {
+    case 'account_changed':
+    case 'drama_changed':
+    case 'theater_changed':
+    case 'sub_theater_changed':
+    case 'profile_changed':
+      return ['catalog'];
+    case 'resource_changed':
+      return ['resourceIndex'];
+    case 'production_task_changed':
+    case 'material_changed':
+    case 'template_changed':
+    case 'video_changed':
+      return ['production'];
+    case 'video_export_changed':
+    case 'task_changed':
+      return ['production', 'taskCenter'];
+    case 'release_changed':
+      return ['production', 'taskCenter', 'revenue'];
+    case 'revenue_changed':
+      return ['revenue'];
+    default:
+      return [];
+  }
 }
 
 function idFromPath(path: string, segment: string): string | undefined {
@@ -120,6 +154,8 @@ export class ApiClient {
           updatedAt: typeof body.updated_at === 'string' ? body.updated_at : new Date().toISOString(),
         };
         publishV2DataChange({ ...detail, origin: 'client' });
+        // 同时让统一数据层立刻刷一次（旧的事件通道保留，供还没迁移的页面使用）
+        for (const area of areasForChange(changeType)) void refreshArea(area);
       }
       return payload as T;
     } catch (error) {

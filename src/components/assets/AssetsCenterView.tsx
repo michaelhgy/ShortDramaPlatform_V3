@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AssetsCenterTab,
   AccountBusinessItem,
@@ -10,14 +10,14 @@ import {
   ViralAssetItem,
 } from '../../assetsTypes';
 import { calculateResourceMetrics } from '../../utils/resourceMetrics';
-import { getCachedAssetsCenterSeed, loadAssetsCenterSeed, refreshCachedAssetsItem } from '../../services/assetsCenterService';
+import { getCachedAssetsCenterSeed, loadAssetsCenterSeed } from '../../services/assetsCenterService';
 import { BusinessDataTab } from './BusinessDataTab';
 import { DramaLibraryTab } from './DramaLibraryTab';
 import { ProductionResourcesTab } from './ProductionResourcesTab';
 import { ViralAssetsTab } from './ViralAssetsTab';
 import { openV2Folder } from '../../api/v2Catalog';
 import { getV2ProductionResources } from '../../api/v2Catalog';
-import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
+import { useDataArea } from '../../hooks/useDataArea';
 import {
   Building2,
   Film,
@@ -55,56 +55,42 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  // Newer requests own the screen. A late full-seed response must never
-  // overwrite a targeted update that arrived after it was started.
-  const refreshGeneration = useRef(0);
+
+  // ── 统一数据层接入（刷新大修 · 第 3a 步）────────────────────────────
+  // 资料中心的数据分两种，**新鲜度要求正好相反**，所以用两个区域分开处理：
+  //   ① catalog（你手填的资料）：几天才改一次 → 间隔 0，**打开读一次 + 改完立刻刷**
+  //   ② resourceIndex（磁盘上的素材）：会变，但**读一次要遍历整个素材盘**
+  //      → 30 秒一次（用户 2026-09-18 选定）。绝不能跟着 3 秒跑。
+  const catalogArea = useDataArea<Awaited<ReturnType<typeof loadAssetsCenterSeed>>>(
+    'catalog',
+    () => loadAssetsCenterSeed(true),
+  );
+  const resourceArea = useDataArea<ProductionResourceItem[]>(
+    'resourceIndex',
+    async () => (await getV2ProductionResources()).items as ProductionResourceItem[],
+  );
 
   useEffect(() => {
-    let active = true;
-    const applySeed = (seed: Awaited<ReturnType<typeof loadAssetsCenterSeed>>, generation: number) => {
-      if (!active || generation !== refreshGeneration.current) return;
-      setAccounts(seed.accounts);
-      setTheaters(seed.theaters);
-      setSubTheaters(seed.subTheaters);
-      setDramas(seed.dramas);
-      setProfiles(seed.profiles);
-      setProductionResources(seed.productionResources);
-      setViralAssets(seed.viralAssets);
-      setLastRefreshAt(new Date());
-      if (seed.warnings.length) {
-        setToastMessage(`部分资料暂未更新：${seed.warnings.join('、')}。其他资料仍可正常使用。`);
-      }
-    };
-    const refresh = () => {
-      const generation = ++refreshGeneration.current;
-      return loadAssetsCenterSeed(true).then((seed) => applySeed(seed, generation)).catch(() => {
-      if (active) setToastMessage('资料数据更新失败，已保留上次数据。');
-      });
-    };
-    void refresh();
-    const refreshForChange = async (detail?: import('../../services/dataChangeEvents').V2DataChangeDetail) => {
-      if (!detail) { await refresh(); return; }
-      if (detail.accountId || detail.dramaId || ['theater_changed', 'sub_theater_changed', 'profile_changed'].includes(detail.changeType || '')) {
-        const generation = ++refreshGeneration.current;
-        await refreshCachedAssetsItem(detail).then((changed) => {
-          if (!active || generation !== refreshGeneration.current || !changed) return;
-          if (changed.accounts) setAccounts(changed.accounts);
-          if (changed.theaters) setTheaters(changed.theaters);
-          if (changed.subTheaters) setSubTheaters(changed.subTheaters);
-          if (changed.dramas) setDramas(changed.dramas);
-          if (changed.profiles) setProfiles(changed.profiles);
-          setLastRefreshAt(new Date());
-        });
-      } else if (detail.changeType === 'resource_changed') {
-        await getV2ProductionResources().then((response) => {
-          if (!active) return;
-          setProductionResources(response.items); setLastRefreshAt(new Date());
-        });
-      } else { await refresh(); }
-    };
-    const unsubscribe = subscribeV2DataRefresh('assets', ({ detail }) => refreshForChange(detail).catch(() => undefined));
-    return () => { active = false; unsubscribe(); };
-  }, []);
+    const seed = catalogArea.data;
+    if (!seed) return;
+    setAccounts(seed.accounts);
+    setTheaters(seed.theaters);
+    setSubTheaters(seed.subTheaters);
+    setDramas(seed.dramas);
+    setProfiles(seed.profiles);
+    setViralAssets(seed.viralAssets);
+    setLastRefreshAt(catalogArea.updatedAt ? new Date(catalogArea.updatedAt) : null);
+    if (seed.warnings.length) {
+      setToastMessage(`部分资料暂未更新：${seed.warnings.join('、')}。其他资料仍可正常使用。`);
+    }
+    if (catalogArea.error) setToastMessage('资料数据更新失败，已保留上次数据。');
+  }, [catalogArea.data, catalogArea.updatedAt, catalogArea.error]);
+
+  useEffect(() => {
+    if (!resourceArea.data) return;
+    setProductionResources(resourceArea.data);
+    setLastRefreshAt(resourceArea.updatedAt ? new Date(resourceArea.updatedAt) : null);
+  }, [resourceArea.data, resourceArea.updatedAt]);
 
   const showToast = (msg: string) => {
     if (externalShowToast) {
