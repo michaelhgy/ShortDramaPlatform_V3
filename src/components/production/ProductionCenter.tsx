@@ -14,7 +14,7 @@ import { formatElapsedSeconds } from '../../utils/duration';
 import { areaList } from '@vant/area-data';
 import { calculateResourceMetrics } from '../../utils/resourceMetrics';
 import { getCachedProductionSummary, loadProductionSummary } from '../../services/productionService';
-import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
+import { useDataArea } from '../../hooks/useDataArea';
 import { 
   Layers, 
   Scan, 
@@ -195,6 +195,13 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
     setUnits(nextUnits);
   };
 
+  // ── 统一数据层接入（刷新大修 · 第 1b 步）──────────────────────────────
+  // 「什么时候刷」交给 dataHub（每 3 秒）；「数据怎么合并」仍是下面原来的逻辑，一个字没改。
+  // 旧实现是"60 秒兜底 + 变更事件"，而事件还带 2.5 秒抑制窗口、会吞掉真实变更。
+  const summaryArea = useDataArea<ProductionUnit[]>('production', () => loadProductionSummary(true));
+  const taskCenterArea = useDataArea<Awaited<ReturnType<typeof loadV2TaskCenter>>>('taskCenter', loadV2TaskCenter);
+
+  // 首次挂载：先用本地缓存秒开；再拉一次生产资源容量（决定"生成模板"能不能点）
   useEffect(() => {
     let active = true;
     if (cachedProductionUnits) setUnits(cachedProductionUnits);
@@ -205,89 +212,72 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
         setUnits(persistedUnits);
       }
     }
-    let refreshing = false;
-    const refresh = (): Promise<void> => {
-      if (refreshing) return Promise.resolve();
-      refreshing = true;
-      const summaryRequest = loadProductionSummary(true).then((summaryUnits) => {
-        if (!active) return;
-        const realUnits = summaryUnits;
-        // 摘要接口只包含统计与模板/导出状态，素材和成片明细有意留空。
-        // 已打开任务若继续直接优先使用旧详情缓存，就会永远看不到导出完成。
-        // 因此把摘要的新状态合并进去；若本轮退回到完整接口，则以完整详情整体替换。
-        const isSummaryResponse = true;
-        cachedProductionUnits = realUnits;
-        saveCachedProductionUnits(realUnits);
-        setLastRefreshAt(new Date());
-        setUnits(realUnits);
-        setDetailUnits((previous) => {
-          const next: Record<string, ProductionUnit> = {};
-          realUnits.forEach((unit) => {
-            const previousDetail = previous[unit.id];
-            if (previousDetail && isSummaryResponse) {
-              // 摘要接口故意不做文件探测，因此没有正式模板视频名、大小、
-              // 时长和阶段耗时。不能用这些空字段覆盖已加载详情，否则页面会
-              // 在“草稿名/无耗时”和“正式视频/真实耗时”之间来回跳。
-              const sameTemplateVersion = previousDetail.templateDraftName === unit.templateDraftName;
-              next[unit.id] = {
-                ...unit,
-                scannedMaterials: previousDetail.scannedMaterials,
-                videos: previousDetail.videos,
-                ...(sameTemplateVersion ? {
-                  templateVideoUrl: unit.templateVideoUrl || previousDetail.templateVideoUrl,
-                  templateVideoName: unit.templateVideoName || previousDetail.templateVideoName,
-                  templateDurationSec: unit.templateDurationSec ?? previousDetail.templateDurationSec,
-                  templateDurationText: unit.templateDurationText || previousDetail.templateDurationText,
-                  templateFileSizeText: unit.templateFileSizeText || previousDetail.templateFileSizeText,
-                  templateDraftDuration: unit.templateDraftDuration || previousDetail.templateDraftDuration,
-                  templateDraftDurationSeconds: unit.templateDraftDurationSeconds ?? previousDetail.templateDraftDurationSeconds,
-                  templateExportDuration: unit.templateExportDuration || previousDetail.templateExportDuration,
-                  templateExportDurationSeconds: unit.templateExportDurationSeconds ?? previousDetail.templateExportDurationSeconds,
-                  templateTotalDuration: unit.templateTotalDuration || previousDetail.templateTotalDuration,
-                } : {}),
-              };
-            } else if (!isSummaryResponse) {
-              next[unit.id] = unit;
-            }
-          });
-          cachedProductionDetails = next;
-          return next;
-        });
-        setSelectedUnitId((current) => {
-          const next = current && realUnits.some((unit) => unit.id === current) ? current : realUnits[0]?.id || '';
-          cachedSelectedProductionTaskId = next;
-          return next;
-        });
-      }).catch(() => undefined);
-      // 任务中心只负责顶部执行器状态，不能阻塞生产任务卡首屏显示。
-      const executorRequest = loadV2TaskCenter().then((center) => {
-        if (active) setVideoExporter(center.executors.find((executor) => executor.id === 'video_exporter') || null);
-      }).catch(() => undefined);
-      return Promise.all([summaryRequest, executorRequest]).then(() => undefined).finally(() => { refreshing = false; });
-    };
-    refresh();
-    const refreshOne = (taskId: string): Promise<void> => {
-      if (!taskId) return Promise.resolve();
-      if (detailRequests.current[taskId]) return detailRequests.current[taskId];
-      const request = getV2ProductionTaskDetails(taskId).then((task) => {
-        if (!active) return;
-        const updated = toProductionUnit(task);
-        setUnits((previous) => {
-          const next = previous.map((unit) => unit.id === taskId ? { ...unit, ...updated } : unit);
-          cachedProductionUnits = next; saveCachedProductionUnits(next); return next;
-        });
-        setDetailUnits((previous) => {
-          const next = { ...previous, [taskId]: updated }; cachedProductionDetails = next; return next;
-        });
-        setLastRefreshAt(new Date());
-      }).catch(() => undefined).finally(() => { delete detailRequests.current[taskId]; });
-      detailRequests.current[taskId] = request;
-      return request;
-    };
-    const unsubscribe = subscribeV2DataRefresh('production', ({ detail }) => detail?.productionTaskId ? refreshOne(detail.productionTaskId) : refresh());
-    void getV2ProductionResources().then((resources) => { if (active) setSupportableDramas(calculateResourceMetrics(resources.items).supportableDramas); }).catch(() => undefined);
-    return () => { active = false; unsubscribe(); };
+    void getV2ProductionResources()
+      .then((resources) => { if (active) setSupportableDramas(calculateResourceMetrics(resources.items).supportableDramas); })
+      .catch(() => undefined);
+    return () => { active = false; };
   }, []);
+
+  // 摘要数据回来后执行合并（原逻辑原样搬过来）
+  useEffect(() => {
+    const realUnits = summaryArea.data;
+    if (!realUnits) return;
+    // 摘要接口只包含统计与模板/导出状态，素材和成片明细有意留空。
+    // 已打开任务若继续直接优先使用旧详情缓存，就会永远看不到导出完成。
+    // 因此把摘要的新状态合并进去；若本轮退回到完整接口，则以完整详情整体替换。
+    const isSummaryResponse = true;
+    cachedProductionUnits = realUnits;
+    saveCachedProductionUnits(realUnits);
+    // 用 dataHub 的 updatedAt：它**只在成功时前进**，所以这个时间不会骗人。
+    // （旧实现无论成功失败都写 new Date()，这正是"更新于 HH:mm 不可信"的来源。）
+    setLastRefreshAt(summaryArea.updatedAt ? new Date(summaryArea.updatedAt) : null);
+    setUnits(realUnits);
+    setDetailUnits((previous) => {
+      const next: Record<string, ProductionUnit> = {};
+      realUnits.forEach((unit) => {
+        const previousDetail = previous[unit.id];
+        if (previousDetail && isSummaryResponse) {
+          // 摘要接口故意不做文件探测，因此没有正式模板视频名、大小、
+          // 时长和阶段耗时。不能用这些空字段覆盖已加载详情，否则页面会
+          // 在“草稿名/无耗时”和“正式视频/真实耗时”之间来回跳。
+          const sameTemplateVersion = previousDetail.templateDraftName === unit.templateDraftName;
+          next[unit.id] = {
+            ...unit,
+            scannedMaterials: previousDetail.scannedMaterials,
+            videos: previousDetail.videos,
+            ...(sameTemplateVersion ? {
+              templateVideoUrl: unit.templateVideoUrl || previousDetail.templateVideoUrl,
+              templateVideoName: unit.templateVideoName || previousDetail.templateVideoName,
+              templateDurationSec: unit.templateDurationSec ?? previousDetail.templateDurationSec,
+              templateDurationText: unit.templateDurationText || previousDetail.templateDurationText,
+              templateFileSizeText: unit.templateFileSizeText || previousDetail.templateFileSizeText,
+              templateDraftDuration: unit.templateDraftDuration || previousDetail.templateDraftDuration,
+              templateDraftDurationSeconds: unit.templateDraftDurationSeconds ?? previousDetail.templateDraftDurationSeconds,
+              templateExportDuration: unit.templateExportDuration || previousDetail.templateExportDuration,
+              templateExportDurationSeconds: unit.templateExportDurationSeconds ?? previousDetail.templateExportDurationSeconds,
+              templateTotalDuration: unit.templateTotalDuration || previousDetail.templateTotalDuration,
+            } : {}),
+          };
+        } else if (!isSummaryResponse) {
+          next[unit.id] = unit;
+        }
+      });
+      cachedProductionDetails = next;
+      return next;
+    });
+    setSelectedUnitId((current) => {
+      const next = current && realUnits.some((unit) => unit.id === current) ? current : realUnits[0]?.id || '';
+      cachedSelectedProductionTaskId = next;
+      return next;
+    });
+  }, [summaryArea.data, summaryArea.updatedAt]);
+
+  // 任务中心的执行器状态（决定"打开草稿"按钮能不能点）
+  useEffect(() => {
+    const center = taskCenterArea.data;
+    if (!center) return;
+    setVideoExporter(center.executors.find((executor) => executor.id === 'video_exporter') || null);
+  }, [taskCenterArea.data]);
 
   const loadProductionDetails = (taskId: string, force = false) => {
     if (!taskId || (!force && cachedProductionDetails[taskId]) || detailRequests.current[taskId]) return;
