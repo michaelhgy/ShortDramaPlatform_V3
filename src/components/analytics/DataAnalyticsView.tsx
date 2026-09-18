@@ -4,7 +4,7 @@ import {
   TimeRangeFilter, 
   TheaterFilter
 } from '../../analyticsTypes';
-import { getCachedRevenuePageData, loadRevenueOverviewData, loadRevenuePageData, requestRevenueCollection, type RevenueCollectionProgress } from '../../services/revenueAnalyticsService';
+import { getCachedRevenuePageData, loadRevenueOverviewData, loadRevenuePageData, loadRevenueSignal, requestRevenueCollection, type RevenueCollectionProgress } from '../../services/revenueAnalyticsService';
 import type { V2RevenuePayload } from '../../adapters/revenue';
 import type { RevenueCollectionLog } from '../../analyticsTypes';
 import type { CalculatedAccountItem } from '../../utils/accountEngine';
@@ -17,7 +17,7 @@ import { DramaModule } from './DramaModule';
 import { CombinationModule } from './CombinationModule';
 import { RevenueCollectionDrawer } from './RevenueCollectionDrawer';
 import { WechatIndexModule } from './WechatIndexModule';
-import { subscribeV2DataRefresh } from '../../services/dataRefreshCoordinator';
+import { useDataArea } from '../../hooks/useDataArea';
 
 interface DataAnalyticsViewProps {
   onScheduleToday: (dramaId?: string, accountId?: string) => void;
@@ -64,6 +64,14 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
   const [linkRefreshToken, setLinkRefreshToken] = useState(0);
   const handleVideoLinked = () => setLinkRefreshToken((token) => token + 1);
 
+  // 收益数据的「变化信号」：最新一条采集日志的 id。
+  // 替代旧的"采集完成广播" —— 效果一样（采集完自动更新），但走统一数据层的路。
+  const [revenueSignal, setRevenueSignal] = useState('');
+  const revenueSignalArea = useDataArea<string>('revenue', loadRevenueSignal);
+  useEffect(() => {
+    if (revenueSignalArea.data) setRevenueSignal(revenueSignalArea.data);
+  }, [revenueSignalArea.data]);
+
   useEffect(() => {
     if (activeTab === 'wechat_index') return undefined;
     let active = true;
@@ -100,9 +108,8 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
         .catch(() => { if (active) setRevenueError('收益数据加载失败'); })
         .finally(() => { if (active) setIsRevenueRefreshing(false); });
     }
-    const unsubscribe = subscribeV2DataRefresh('analytics', () => refreshVisibleData());
-    return () => { active = false; unsubscribe(); };
-  }, [activeTab, timeRange, selectedTheater, customStartDate, customEndDate, linkRefreshToken]);
+    return () => { active = false; };
+  }, [activeTab, timeRange, selectedTheater, customStartDate, customEndDate, linkRefreshToken, revenueSignal]);
 
   const handleTriggerCollect = async (scope: string, mode: 'immediate' | 'backfill', startDate: string, endDate: string, targets?: { theaters?: string[]; accountIds?: string[] }, onProgress?: (progress: RevenueCollectionProgress) => void) => {
     await requestRevenueCollection(scope, mode, startDate, endDate, targets, onProgress);

@@ -60,6 +60,16 @@ export function eventDetail(event: Event): V2DataChangeDetail {
   return detail && typeof detail === 'object' ? detail : {};
 }
 
+/**
+ * ⚠️ **2026-09-18（刷新大修 · 第 5b 步）之后已无调用者。**
+ *
+ * 它原来是"哪种变化该唤醒哪个页面"的路由表，由 `dataRefreshCoordinator` 使用；
+ * 那套机制已删除 —— 现在由统一数据层 `dataHub.ts` 按区域统一刷新。
+ *
+ * **保留原因**：① 它记录了"哪种变化属于哪个页面"的业务规则；
+ * ② 它是 `dataChangeEvents.test.ts` 的锚点 —— 将来若要做真正的"精准更新"，
+ * 这张表是现成的起点。**改它之前先看测试。**
+ */
 export function changeAffects(detail: V2DataChangeDetail, area: 'analytics' | 'assets' | 'production' | 'task_center'): boolean {
   if (detail.changeType) {
     if (area === 'analytics') return detail.changeType === 'revenue_changed' || detail.changeType === 'release_changed';

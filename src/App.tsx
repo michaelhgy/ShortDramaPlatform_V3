@@ -31,8 +31,6 @@ import { createV2ProductionTask } from './api/v2Production';
 import { createBusinessDrama, loadAssetsCenterSeed } from './services/assetsCenterService';
 import { getV2Accounts, getV2Settings, type V2AccountRecord } from './api/v2Catalog';
 import { loadV2DailyAccountRevenueSummary, type V2DailyAccountRevenueSummary } from './api/v2Revenue';
-import { startV2DataChangeFeed } from './services/dataChangeFeed';
-import { startV2DataRefreshCoordinator } from './services/dataRefreshCoordinator';
 import { eventDetail } from './services/dataChangeEvents';
 
 function yesterdayDateValue(): string {
@@ -75,11 +73,9 @@ export default function App() {
     setAccounts(response.items.filter((account) => account.status === '正常').map((account) => toScheduleAccount(account, byAccountId.get(account.id))));
   };
 
-  useEffect(() => {
-    const stopChangeFeed = startV2DataChangeFeed();
-    const stopRefreshCoordinator = startV2DataRefreshCoordinator();
-    return () => { stopRefreshCoordinator(); stopChangeFeed(); };
-  }, []);
+  // 旧的「每 1.5 秒轮询变更表」和「每 60 秒把所有页面全量重刷」已删除
+  //（刷新大修 · 第 5b 步）：两者的作用已由 src/services/dataHub.ts 的统一数据层接管。
+  // 写操作后的即时通知（publishV2DataChange）**保留** —— 它不轮询，开销为零。
 
   // Modal / Interaction states
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);

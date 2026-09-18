@@ -127,6 +127,17 @@ export async function loadRevenuePageData(input: { timeRange: TimeRangeFilter; t
   } finally { revenuePageRequests.delete(key); }
 }
 
+/**
+ * 「收益数据变了没有」的轻量信号：最新一条采集日志的 id。
+ *
+ * 页面拿它当"该重新拉数据了"的提示 —— **替代旧的"采集完成广播"**。
+ * 这正是统一数据层里的 `revenue` 区域（间隔 0：不自动刷，只按需）。
+ */
+export async function loadRevenueSignal(): Promise<string> {
+  const logs = await loadV2RevenueCollectionLogs();
+  return logs.items[0]?.id ?? '';
+}
+
 export type RevenueCollectionProgress = Pick<V2RevenueCollectionRun, 'status' | 'total_units' | 'completed_units' | 'success_units' | 'no_data_units' | 'failed_units' | 'current_theater' | 'current_account' | 'error_message'>;
 
 export async function requestRevenueCollection(scopeName: string, mode: 'immediate' | 'backfill', startDate: string, endDate: string, targets?: { theaters?: string[]; accountIds?: string[] }, onProgress?: (progress: RevenueCollectionProgress) => void): Promise<void> {
