@@ -58,6 +58,14 @@ function toScheduleAccount(account: V2AccountRecord, daily?: V2DailyAccountReven
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('workbench');
   const [workbenchMode, setWorkbenchMode] = useState<'standard' | 'explore'>('explore'); // Default to Explore version
+  // 刷新大修 · 第 6 步：记住"已经打开过的页签"。
+  // 第一次切到某个页签才挂载它，之后**只藏起来、不拆掉** —— 这样筛选、选中的剧都还在。
+  // （以前是切走就销毁、切回来重建，靠"重建"顺带刷新；现在刷新由统一数据层负责，不再需要。
+  //   不能一上来就把所有页面都挂载 —— 那样开软件要等半天，所以用懒挂载。）
+  const [mountedTabs, setMountedTabs] = useState<Set<NavTab>>(() => new Set<NavTab>(['workbench']));
+  useEffect(() => {
+    setMountedTabs((previous) => (previous.has(activeTab) ? previous : new Set(previous).add(activeTab)));
+  }, [activeTab]);
   const [tasks, setTasks] = useState<ScheduleTask[]>(INITIAL_SCHEDULE_TASKS);
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [dramas, setDramas] = useState<DramaItem[]>([]);
@@ -235,99 +243,98 @@ export default function App() {
 
       {/* Main View Area */}
       <main className="flex-1 px-6 sm:px-8 py-6 max-w-[1780px] w-full mx-auto">
-        {activeTab === 'production' ? (
-          /* =========================================================
-             1. 生产中心 (Production Center)
-             ========================================================= */
-          <ProductionCenter
-            onBackToWorkbench={() => setActiveTab('workbench')}
-            showToast={showToast}
-          />
-        ) : activeTab === 'analytics' ? (
-          /* =========================================================
-             2. 数据分析与决策支持 (Data Analytics & Decision Support)
-             ========================================================= */
-          <DataAnalyticsView
-            onScheduleToday={(dramaId, accountId) => {
-              if (dramaId || accountId) {
-                handleScheduleFromDramaModal(dramaId || 'drama-1', accountId);
-              } else {
-                handleOpenGlobalSchedule();
-              }
-            }}
-            showToast={showToast}
-          />
-        ) : activeTab === 'assets' ? (
-          /* =========================================================
-             3. 资料中心 (Assets & Resource Center)
-             ========================================================= */
-          <AssetsCenterView
-            showToast={showToast}
-          />
-        ) : activeTab === 'parameters' ? (
-          /* =========================================================
-             4. 参数中心 (Engine Parameters)
-             只放经常要调的生产参数；规则见 docs/V2参数中心规则.md
-             ========================================================= */
-          <ParameterCenterView
-            showToast={showToast}
-          />
-        ) : activeTab === 'settings' ? (
-          /* =========================================================
-             5. 系统设置 (Settings)
-             ========================================================= */
-          <SettingsView
-            showToast={showToast}
-          />
-        ) : workbenchMode === 'explore' ? (
-          /* =========================================================
-             EXPLORE MODE: Decision Briefing + Radar & Intelligence Flow
-             ========================================================= */
-          <WorkbenchExplore
-            tasks={tasks}
-            accounts={accounts}
-            dramas={dramas}
-            onAddDramaToAccount={handleAddDramaToAccount}
-            onAddNewAccountSchedule={handleOpenGlobalSchedule}
-            onEditTime={(task) => setEditingTimeTask(task)}
-            onDeleteTask={handleDeleteTask}
-            onOpenProduction={() => setActiveTab('production')}
-            onSaveNewSchedule={handleSaveNewSchedule}
-            showToast={showToast}
-            onScheduleFromDramaModal={handleScheduleFromDramaModal}
-          />
-        ) : (
-          /* =========================================================
-             STANDARD MODE: Original 3-panel Clean Desktop Layout
-             ========================================================= */
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left Area: 今日安排 (Today's Schedule Workspace) */}
-            <div className="lg:col-span-7 xl:col-span-7">
-              <TodayScheduleSection
+        {mountedTabs.has('production') && (
+          <div style={{ display: activeTab === 'production' ? undefined : 'none' }}>
+            <ProductionCenter
+              onBackToWorkbench={() => setActiveTab('workbench')}
+              showToast={showToast}
+            />
+          </div>
+        )}
+
+        {mountedTabs.has('analytics') && (
+          <div style={{ display: activeTab === 'analytics' ? undefined : 'none' }}>
+            <DataAnalyticsView
+              onScheduleToday={(dramaId, accountId) => {
+                if (dramaId || accountId) {
+                  handleScheduleFromDramaModal(dramaId || 'drama-1', accountId);
+                } else {
+                  handleOpenGlobalSchedule();
+                }
+              }}
+              showToast={showToast}
+            />
+          </div>
+        )}
+
+        {mountedTabs.has('assets') && (
+          <div style={{ display: activeTab === 'assets' ? undefined : 'none' }}>
+            <AssetsCenterView
+              showToast={showToast}
+            />
+          </div>
+        )}
+
+        {mountedTabs.has('parameters') && (
+          <div style={{ display: activeTab === 'parameters' ? undefined : 'none' }}>
+            <ParameterCenterView
+              showToast={showToast}
+            />
+          </div>
+        )}
+
+        {mountedTabs.has('settings') && (
+          <div style={{ display: activeTab === 'settings' ? undefined : 'none' }}>
+            <SettingsView
+              showToast={showToast}
+            />
+          </div>
+        )}
+
+        {mountedTabs.has('workbench') && (
+          <div style={{ display: activeTab === 'workbench' ? undefined : 'none' }}>
+            {/* 工作台内部的"探索版 / 标准版"切换仍保持互斥挂载（工作台是未完成的模块，不投入）。 */}
+            {workbenchMode === 'explore' ? (
+              <WorkbenchExplore
                 tasks={tasks}
+                accounts={accounts}
+                dramas={dramas}
                 onAddDramaToAccount={handleAddDramaToAccount}
                 onAddNewAccountSchedule={handleOpenGlobalSchedule}
                 onEditTime={(task) => setEditingTimeTask(task)}
                 onDeleteTask={handleDeleteTask}
                 onOpenProduction={() => setActiveTab('production')}
+                onSaveNewSchedule={handleSaveNewSchedule}
+                showToast={showToast}
+                onScheduleFromDramaModal={handleScheduleFromDramaModal}
               />
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <div className="lg:col-span-7 xl:col-span-7">
+                  <TodayScheduleSection
+                    tasks={tasks}
+                    onAddDramaToAccount={handleAddDramaToAccount}
+                    onAddNewAccountSchedule={handleOpenGlobalSchedule}
+                    onEditTime={(task) => setEditingTimeTask(task)}
+                    onDeleteTask={handleDeleteTask}
+                    onOpenProduction={() => setActiveTab('production')}
+                  />
+                </div>
 
-            {/* Right Area: Decision Support & Opportunities */}
-            <div className="lg:col-span-5 xl:col-span-5 flex flex-col gap-6">
-              {/* 1. 昨日账号表现 (Clean list style) */}
-              <YesterdayAccountsSection
-                accounts={accounts}
-                arrangedAccountIds={arrangedAccountIds}
-                onScheduleAccount={handleScheduleFromAccount}
-              />
+                <div className="lg:col-span-5 xl:col-span-5 flex flex-col gap-6">
+                  <YesterdayAccountsSection
+                    accounts={accounts}
+                    arrangedAccountIds={arrangedAccountIds}
+                    onScheduleAccount={handleScheduleFromAccount}
+                  />
 
-              {/* 2. 近期剧集表现 (Hierarchical opportunities list) */}
-              <RecentDramasSection
-                predictions={predictions}
-                onScheduleDrama={handleScheduleFromDrama}
-              />
-            </div>
+                  <RecentDramasSection
+                    predictions={predictions}
+                    onScheduleDrama={handleScheduleFromDrama}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
