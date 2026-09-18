@@ -16,8 +16,11 @@ export interface RevenuePageData {
 }
 
 const revenuePageCache = new Map<string, RevenuePageData>();
-let revenuePageRequest: Promise<RevenuePageData> | null = null;
-let revenueOverviewRequest: Promise<RevenuePageData> | null = null;
+// ⚠️ 必须**按筛选条件分开**，不能只留一个"当前请求"。
+// 旧写法是单个变量：A 时间段的请求还在飞时切到 B 时间段，B 会**直接复用 A 的结果** ——
+// 于是"筛选项写着 30 天、眼睛看到的却是 7 天的数字"（用户报的毛病）。
+const revenuePageRequests = new Map<string, Promise<RevenuePageData>>();
+const revenueOverviewRequests = new Map<string, Promise<RevenuePageData>>();
 const REVENUE_CACHE_KEY = 'v2-revenue-page-cache-v1';
 
 function revenueCacheKey(input: { timeRange: TimeRangeFilter; theaterFilter: TheaterFilter; customStart?: string; customEnd?: string }): string {
@@ -58,9 +61,10 @@ export function loadRevenueOverviewData(input: { timeRange: TimeRangeFilter; the
   const key = revenueCacheKey(input);
   const cached = getCachedRevenuePageData(input);
   if (cached && !force) return Promise.resolve(cached);
-  if (revenueOverviewRequest) return revenueOverviewRequest;
+  const overviewInFlight = revenueOverviewRequests.get(key);
+  if (overviewInFlight) return overviewInFlight;
   const yesterday = resolveV1RevenueRange('yesterday').currentEnd;
-  revenueOverviewRequest = Promise.all([loadV2RevenueSourceData(), loadV2RevenueCollectionLogs(), loadV2DailyAccountRevenueSummary(yesterday)]).then(([source, logs, collectionSummary]) => {
+  const overviewRequest = Promise.all([loadV2RevenueSourceData(), loadV2RevenueCollectionLogs(), loadV2DailyAccountRevenueSummary(yesterday)]).then(([source, logs, collectionSummary]) => {
     const analytics = toRevenueAnalytics(source.rows, source.accounts, source.theaters, input.timeRange, input.theaterFilter, input.customStart, input.customEnd, collectionSummary);
     return {
       source: 'v2' as const,
@@ -74,18 +78,20 @@ export function loadRevenueOverviewData(input: { timeRange: TimeRangeFilter; the
   }).then((data) => {
     revenuePageCache.set(key, data);
     return data;
-  }).finally(() => { revenueOverviewRequest = null; });
-  return revenueOverviewRequest;
+  }).finally(() => { revenueOverviewRequests.delete(key); });
+  revenueOverviewRequests.set(key, overviewRequest);
+  return overviewRequest;
 }
 
 export async function loadRevenuePageData(input: { timeRange: TimeRangeFilter; theaterFilter: TheaterFilter; customStart?: string; customEnd?: string }, force = false): Promise<RevenuePageData> {
   const key = revenueCacheKey(input);
   const cached = getCachedRevenuePageData(input);
   if (cached && !force) return cached;
-  if (revenuePageRequest) return revenuePageRequest;
+  const pageInFlight = revenuePageRequests.get(key);
+  if (pageInFlight) return pageInFlight;
   const range = resolveV1RevenueRange(input.timeRange, input.customStart, input.customEnd);
   const yesterday = resolveV1RevenueRange('yesterday').currentEnd;
-  revenuePageRequest = Promise.all([loadV2RevenueSourceData(), loadV2RevenueCollectionLogs(), loadV2RevenueVideoDetails(range.currentStart, range.currentEnd), loadV2DailyAccountRevenueSummary(yesterday)]).then(([source, logs, videoDetails, collectionSummary]) => {
+  const pageRequest = Promise.all([loadV2RevenueSourceData(), loadV2RevenueCollectionLogs(), loadV2RevenueVideoDetails(range.currentStart, range.currentEnd), loadV2DailyAccountRevenueSummary(yesterday)]).then(([source, logs, videoDetails, collectionSummary]) => {
     const videoAnalysis = toQingningVideoAnalysis(videoDetails.items, input.theaterFilter);
     const directDrama = toQingningDramaContributions(videoAnalysis);
     const baseAnalytics = toRevenueAnalytics(source.rows, source.accounts, source.theaters, input.timeRange, input.theaterFilter, input.customStart, input.customEnd, collectionSummary);
@@ -112,12 +118,13 @@ export async function loadRevenuePageData(input: { timeRange: TimeRangeFilter; t
       dramas: toQingningDramaAnalytics(videoAnalysis),
     };
   });
+  revenuePageRequests.set(key, pageRequest);
   try {
-    const data = await revenuePageRequest;
+    const data = await pageRequest;
     revenuePageCache.set(key, data);
     persistRevenuePageData(input, data);
     return data;
-  } finally { revenuePageRequest = null; }
+  } finally { revenuePageRequests.delete(key); }
 }
 
 export type RevenueCollectionProgress = Pick<V2RevenueCollectionRun, 'status' | 'total_units' | 'completed_units' | 'success_units' | 'no_data_units' | 'failed_units' | 'current_theater' | 'current_account' | 'error_message'>;

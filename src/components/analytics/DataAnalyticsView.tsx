@@ -58,6 +58,12 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
   // Cross-module targeted navigation state
   const [targetAccountId, setTargetAccountId] = useState<string | undefined>(undefined);
 
+  // 视频人工关联成功 → 让数据重新拉一次。
+  // 旧实现：VideoModule 只改自己本地的 linkOverrides，父组件根本不知道
+  //（根因是这里从未传 onLinkVideo），于是下次刷新就被后端数据盖掉。
+  const [linkRefreshToken, setLinkRefreshToken] = useState(0);
+  const handleVideoLinked = () => setLinkRefreshToken((token) => token + 1);
+
   useEffect(() => {
     if (activeTab === 'wechat_index') return undefined;
     let active = true;
@@ -96,7 +102,7 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
     }
     const unsubscribe = subscribeV2DataRefresh('analytics', () => refreshVisibleData());
     return () => { active = false; unsubscribe(); };
-  }, [activeTab, timeRange, selectedTheater, customStartDate, customEndDate]);
+  }, [activeTab, timeRange, selectedTheater, customStartDate, customEndDate, linkRefreshToken]);
 
   const handleTriggerCollect = async (scope: string, mode: 'immediate' | 'backfill', startDate: string, endDate: string, targets?: { theaters?: string[]; accountIds?: string[] }, onProgress?: (progress: RevenueCollectionProgress) => void) => {
     await requestRevenueCollection(scope, mode, startDate, endDate, targets, onProgress);
@@ -191,6 +197,7 @@ export const DataAnalyticsView: React.FC<DataAnalyticsViewProps> = ({
             customEndDate={customEndDate}
             onNavigateToTab={handleNavigateToTab}
             analysisOverride={videoAnalysis}
+            onLinkVideo={handleVideoLinked}
           />
         </>
       )}
