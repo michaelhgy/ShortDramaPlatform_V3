@@ -54,14 +54,23 @@ DEFAULT_DRAMA_PROMPT_COPY = (
 )
 
 
+def clean_copy_items(value: object, field: str) -> list[str]:
+    """把界面或配置文件里的一条文案池整理成字符串列表。
+
+    空白项被丢弃（用户多敲的空行不该变成一条空文案）。**非数组必须明确报错**，
+    不能静默当成空池——否则用户会以为"改了没生效"，实际是"填错了被吞掉"。
+    """
+    if not isinstance(value, list):
+        raise ValueError(f"模板文案配置的 {field} 必须是字符串数组")
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
 def _pool(payload: dict, key: str, default: tuple[str, ...]) -> tuple[str, ...]:
     """Return the configured pool, the default, or () when explicitly emptied."""
     value = payload.get(key)
     if value is None:
         return default
-    if not isinstance(value, list):
-        raise ValueError(f"模板文案配置的 {key} 必须是字符串数组")
-    return tuple(str(item).strip() for item in value if str(item).strip())
+    return tuple(clean_copy_items(value, key))
 
 
 def load_template_copy(*, path: Path | None) -> tuple[tuple[str, ...], tuple[str, ...]]:

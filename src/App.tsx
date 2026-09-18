@@ -21,6 +21,7 @@ import { WorkbenchExplore } from './components/explore/WorkbenchExplore';
 import { ProductionCenter } from './components/production/ProductionCenter';
 import { DataAnalyticsView } from './components/analytics/DataAnalyticsView';
 import { AssetsCenterView } from './components/assets/AssetsCenterView';
+import { ParameterCenterView } from './components/parameters/ParameterCenterView';
 import { SettingsView } from './components/settings/SettingsView';
 import { TaskCenterModal } from './components/taskcenter/TaskCenterModal';
 import { ScheduleModal } from './components/ScheduleModal';
@@ -265,6 +266,14 @@ export default function App() {
              3. 资料中心 (Assets & Resource Center)
              ========================================================= */
           <AssetsCenterView
+            showToast={showToast}
+          />
+        ) : activeTab === 'parameters' ? (
+          /* =========================================================
+             4. 参数中心 (Engine Parameters)
+             只放经常要调的生产参数；规则见 docs/V2参数中心规则.md
+             ========================================================= */
+          <ParameterCenterView
             showToast={showToast}
           />
         ) : activeTab === 'settings' ? (

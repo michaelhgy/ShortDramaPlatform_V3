@@ -1,4 +1,4 @@
-export type NavTab = 'workbench' | 'production' | 'analytics' | 'assets' | 'settings';
+export type NavTab = 'workbench' | 'production' | 'analytics' | 'assets' | 'parameters' | 'settings';
 
 export type ManualAccountStatus = '正常' | '观察' | '暂停' | '实名' | '封号' | '其他';
 

@@ -66,8 +66,6 @@ def main() -> int:
         raise SystemExit("Missing required input(s): " + "; ".join(missing))
     if args.bgm and not args.bgm.is_file():
         raise SystemExit(f"BGM does not exist: {args.bgm}")
-    if (args.midroll is None) != (args.endroll is None):
-        raise SystemExit("--midroll and --endroll must be supplied together")
     for path in (args.midroll, args.endroll):
         if path is not None and not path.is_file():
             raise SystemExit(f"Insertion media does not exist: {path}")
@@ -103,8 +101,10 @@ def main() -> int:
     ])
     if args.bgm:
         compose_command.extend(["--bgm", str(args.bgm), "--bgm-id", args.bgm_id, "--bgm-title", args.bgm_title])
-    if args.midroll:
-        compose_command.extend(["--midroll", str(args.midroll), "--endroll", str(args.endroll)])
+    # 只给一条是合法组合（见 docs/V2参数中心规则.md §3.2）。
+    for flag, path in (("--midroll", args.midroll), ("--endroll", args.endroll)):
+        if path is not None:
+            compose_command.extend([flag, str(path)])
     run(compose_command)
 
     clean = read_json(args.clean_proxy_report)

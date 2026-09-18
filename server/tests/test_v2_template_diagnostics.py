@@ -46,7 +46,9 @@ class TemplateDiagnosticsTests(unittest.TestCase):
                 return photo_prep.FrameCandidate(source=source, time_seconds=time_seconds, width=1080, height=1920,
                                                  sharpness=1.0, exposure_penalty=0.0, perceptual_key=(1,))
 
-            def crop(_source: Path, target: Path) -> None:
+            # 2026-09-18 起 _crop_three_four 多了 face（人脸感知裁切）与 variant（保底凑数）两个关键字参数，
+            # 桩函数必须跟着改，否则这条测试会因为签名不匹配而失败。
+            def crop(_source: Path, target: Path, *, face: object = None, variant: bool = False) -> None:
                 target.write_bytes(target.name.encode("utf-8"))
 
             with patch.object(photo_prep, "account_day_video_sources", return_value=((), (video,))), \
@@ -63,8 +65,14 @@ class TemplateDiagnosticsTests(unittest.TestCase):
             self.assertIn("剧集素材已就绪", phases)
             self.assertIn("抽取候选画面", phases)
             self.assertIn("分析候选画面", phases)
+            self.assertIn("裁切剧照", phases)
             self.assertIn("OCR 字幕处理", phases)
             self.assertIn("剧照处理完成", phases)
+            # 裁切这一步必须说明是"以人脸为中心"还是"按画面中心"，
+            # 否则任务日志里看不出这一张到底走的是哪条路。
+            crop_messages = [message for phase, message in events if phase == "裁切剧照"]
+            self.assertTrue(crop_messages)
+            self.assertTrue(all("人脸" in message or "中心裁切" in message for message in crop_messages))
             completed = [message for phase, message in events if phase == "剧照处理完成"]
             self.assertEqual(10, len(completed))
             self.assertTrue(all("抽帧" in message and "OCR" in message and "本张合计" in message for message in completed))

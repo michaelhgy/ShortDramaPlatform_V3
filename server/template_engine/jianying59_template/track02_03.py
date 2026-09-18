@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .project_base import CANVAS_HEIGHT, CANVAS_WIDTH, T00ProjectPlan, VideoProbe, create_native_t00_draft
+from . import drama_face
 from .track01 import (
     MICROSECONDS,
     Track01Decision,
@@ -122,25 +123,18 @@ def normalize_three_four_photos(*, photo_dir: Path, cache_root: Path) -> tuple[P
     for index, source in enumerate(sources, start=1):
         digest = hashlib.sha256(source.read_bytes()).hexdigest()
         target = cache_root / f"照片墙_3x4_{index:02d}_{digest[:12]}.jpg"
-        with Image.open(source) as image:
-            image = image.convert("RGB")
-            width, height = image.size
-            if width <= 0 or height <= 0:
-                raise ValueError(f"人物图尺寸无效：{source.name}")
-            if width / height > 3 / 4:
-                crop_width = round(height * 3 / 4)
-                left = (width - crop_width) // 2
-                box = (left, 0, left + crop_width, height)
-            else:
-                crop_height = round(width / (3 / 4))
-                top = (height - crop_height) // 2
-                box = (0, top, width, top + crop_height)
-            if not target.is_file():
-                image.crop(box).save(target, format="JPEG", quality=95, subsampling=0)
+        # A cache hit must be **verified**, not trusted: an older run could have
+        # written a file whose size is off by a pixel, and reusing it blindly
+        # makes every later attempt fail on the same filename forever.
+        if not _is_exact_three_four(target):
+            _write_exact_three_four(source, target)
         with Image.open(target) as normalized:
             normalized_width, normalized_height = normalized.size
         if normalized_width * 4 != normalized_height * 3:
-            raise RuntimeError(f"T03/T04标准化后不是3:4：{target.name}")
+            raise RuntimeError(
+                f"T03/T04标准化后不是3:4：{target.name}"
+                f"（源 {source.name} 读到的尺寸 {normalized_width}x{normalized_height}）"
+            )
         results.append(
             PhotoInput(
                 source_path=str(source.resolve()),
@@ -151,6 +145,44 @@ def normalize_three_four_photos(*, photo_dir: Path, cache_root: Path) -> tuple[P
             )
         )
     return tuple(results)
+
+
+def _is_exact_three_four(path: Path) -> bool:
+    """True only when the file exists and is already an exact 3:4 image."""
+    from PIL import Image
+
+    if not path.is_file():
+        return False
+    try:
+        with Image.open(path) as image:
+            width, height = image.size
+    except Exception:
+        return False
+    return width > 0 and height > 0 and width * 4 == height * 3
+
+
+def _write_exact_three_four(source: Path, target: Path) -> None:
+    """Crop ``source`` to a 3:4 image whose size satisfies ``width * 4 == height * 3``.
+
+    The short side is derived by **integer** maths.  The previous version used
+    ``round(<float>)``, which lands one pixel off for roughly two thirds of all
+    frame sizes and then fails the strict ratio check above.
+    """
+    from PIL import Image
+
+    with Image.open(source) as image:
+        image = image.convert("RGB")
+        width, height = image.size
+        if width <= 0 or height <= 0:
+            raise ValueError(f"人物图尺寸无效：{source.name}")
+        box = drama_face.center_crop_box(image_width=width, image_height=height)
+        cropped = image.crop(box)
+        cropped_width, cropped_height = cropped.size
+        if cropped_width * 4 != cropped_height * 3:
+            raise RuntimeError(
+                f"人物图裁切后不是精确3:4：{source.name} 源 {width}x{height}，结果 {cropped_width}x{cropped_height}"
+            )
+        cropped.save(target, format="JPEG", quality=95, subsampling=0)
 
 
 def _aligned_start(*, index: int, interval_frames: int) -> int:

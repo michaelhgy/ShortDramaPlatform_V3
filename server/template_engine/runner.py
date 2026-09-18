@@ -164,6 +164,11 @@ def run_template_job(job_id: str) -> None:
         ])
         if service.DATA_ROOT is not None:
             command.extend(["--template-copy", str(service.DATA_ROOT / "模板文案.json")])
+            # 剧照缓存按「账号|剧集」隔离并复用；素材变了由文件指纹自动失效。
+            command.extend([
+                "--photo-cache-identity", f"{row['account_name']}|{row['drama_name']}",
+                "--photo-cache-data-root", str(service.DATA_ROOT),
+            ])
         worker_trace = attempt_root / "执行过程.jsonl"
         worker_trace.unlink(missing_ok=True)
         command.extend(["--trace-path", str(worker_trace)])

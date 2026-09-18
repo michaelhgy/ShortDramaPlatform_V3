@@ -5,6 +5,7 @@ import {
   Layers, 
   BarChart3, 
   FolderGit2, 
+  SlidersHorizontal,
   Settings, 
   Zap, 
   Sparkles, 
@@ -280,6 +281,19 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <FolderGit2 className="w-3.5 h-3.5" />
             资料中心
+          </button>
+
+          <button
+            id="nav-parameters"
+            onClick={() => onTabChange('parameters')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
+              activeTab === 'parameters'
+                ? 'bg-white text-[#1A1D2E] shadow-xs font-bold'
+                : 'text-[#64748B] hover:text-[#1A1D2E] hover:bg-white/40'
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            参数中心
           </button>
         </nav>
 

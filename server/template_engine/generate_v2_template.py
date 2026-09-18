@@ -56,6 +56,11 @@ def main() -> int:
     parser.add_argument("--drama-image-dir", type=Path)
     parser.add_argument("--viral-account-day-dir", type=Path, help="可选：从 爆款/账号日 下按种子选一部剧，准备10张照片墙剧照")
     parser.add_argument("--photo-prep-output-dir", type=Path, help="使用 --viral-account-day-dir 时，写入新的10张剧照目录")
+    parser.add_argument(
+        "--photo-cache-identity",
+        help="剧照缓存的身份键，格式「账号|剧集」；与 --photo-cache-data-root 一起启用按单位复用剧照",
+    )
+    parser.add_argument("--photo-cache-data-root", help="剧照缓存根目录（通常是 <系统数据>）")
     parser.add_argument("--photo-cache-root", type=Path)
     parser.add_argument("--user-data-root", type=Path)
     parser.add_argument(
@@ -95,13 +100,36 @@ def main() -> int:
     if args.viral_account_day_dir:
         if not args.photo_prep_output_dir:
             parser.error("使用 --viral-account-day-dir 还需要 --photo-prep-output-dir（必须是一个尚不存在的新目录）")
-        from server.template_engine.jianying59_template.photo_prep import prepare_drama_photos
+        from pathlib import Path as _Path
+
+        from server.template_engine.jianying59_template.photo_prep import (
+            material_fingerprint,
+            photo_cache_root,
+            prepare_drama_photos,
+        )
         _trace(args.trace_path, "准备剧照", "正在从真人素材中准备模板剧照")
+        # 剧照缓存按"账号+剧集"隔离（用户确认：账号a+剧集a 与 账号b+剧集a 不能共用）。
+        # 指纹包含素材路径/大小/修改时间，素材一变就自动重做，不会用错图。
+        cache_directory = None
+        if args.photo_cache_identity and args.photo_cache_data_root:
+            try:
+                from server.template_engine.jianying59_template.photo_prep import account_day_video_sources
+
+                _dramas, sources = account_day_video_sources(account_day_dir=args.viral_account_day_dir)
+                account, drama = (args.photo_cache_identity.split("|", 1) + [""])[:2]
+                cache_directory = (
+                    photo_cache_root(_Path(args.photo_cache_data_root), account=account, drama=drama)
+                    / material_fingerprint(sources)
+                )
+            except Exception as exc:  # 缓存不是必需能力，失败就当没有缓存
+                _trace(args.trace_path, "剧照缓存不可用", f"本次将重新准备剧照：{exc}")
+                cache_directory = None
         prepared = prepare_drama_photos(
             account_day_dir=args.viral_account_day_dir,
             output_dir=args.photo_prep_output_dir,
             seed=args.seed,
             progress=lambda phase, message: _trace(args.trace_path, phase, message),
+            cache_directory=cache_directory,
         )
         photo_dir = Path(prepared.output_directory)
         _trace(args.trace_path, "剧照准备完成", "模板剧照已准备完成")

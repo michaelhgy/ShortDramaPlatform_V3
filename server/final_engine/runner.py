@@ -139,6 +139,8 @@ def _run_is_current(video_id: str, token: object) -> bool:
 def _numbered(root: Path, prefix: str) -> Path | None:
     # Use the same accepted-video set as the V2 resource service.  Otherwise
     # a newer numbered .mov insertion is invisible and an older .mp4 wins.
+    if not root.is_dir():
+        return None
     candidates = sorted(
         (p for p in root.iterdir()
          if p.is_file() and p.name.startswith(prefix) and p.suffix.lower() in service.VIDEO_EXTENSIONS),
@@ -147,13 +149,74 @@ def _numbered(root: Path, prefix: str) -> Path | None:
     return candidates[-1] if candidates else None
 
 
+def _pick_insertion(*, root: Path, setting: dict[str, object], label: str) -> Path | None:
+    """按参数中心的插片设置挑一条素材。
+
+    ``label`` 既是给人看的中文名（"中插" / "尾插"），也是素材文件名前缀。
+    规则见 docs/V2参数中心规则.md §3.2：
+    - 关掉的那一条 → 返回 None（本次成片不要它），**不再报错**。
+    - ``latest`` → 每次生成时重新挑序号最大的一条。
+    - ``locked`` → 锁定用户指定的那一条；文件没了就**明确报错**，绝不静默换别的。
+    """
+    if not bool(setting.get("enabled", True)):
+        return None
+    if str(setting.get("mode") or "latest") == "locked":
+        name = Path(str(setting.get("file") or "")).name
+        if not name:
+            raise RuntimeError(f"{label}已设置为指定某一条素材，但没有选具体文件。请在参数中心重新选择。")
+        locked = root / name
+        if not locked.is_file():
+            raise RuntimeError(f"{label}指定的素材不存在：{name}。请在参数中心重新选择。")
+        return locked
+    latest = _numbered(root, label)
+    if latest is None:
+        raise RuntimeError(f"V2 生成资源/引流视频 缺少可用的{label}视频（已设置为「要{label}」）。")
+    return latest
+
+
+def resolve_insertion_media(*, task_row: object, settings: dict[str, object]) -> tuple[Path | None, Path | None]:
+    """解析本次成片要用的中插 / 尾插素材。
+
+    任务级覆盖优先于参数中心的全局默认；任务上为空 = 跟随全局。
+    从未设置过时保持历史行为：中插、尾插都要，各取序号最新的一条。
+    """
+    task_strategy = None
+    try:
+        raw = task_row["midroll_endroll_strategy"]  # type: ignore[index]
+    except (KeyError, IndexError, TypeError):
+        raw = ""
+    if str(raw or "").strip():
+        try:
+            task_strategy = json.loads(str(raw))
+        except ValueError:
+            # 存储值坏了不能让整条任务卡死：退回全局默认，并在诊断里留痕。
+            service.record_executor_trace(
+                executor_id="final_generator", run_id="", production_task_id="",
+                phase="插片设置", message="任务级插片设置无法解析，已改用参数中心的全局默认",
+            )
+            task_strategy = None
+    strategy = task_strategy if isinstance(task_strategy, dict) else service.resolve_midroll_endroll_strategy(
+        settings.get(service.ENGINE_PARAMETER_KEY)
+    )
+    promotion = Path(service.require_configured_paths()[0]) / "生成资源" / "引流视频"
+    midroll_setting = strategy.get("midroll") if isinstance(strategy.get("midroll"), dict) else {}
+    endroll_setting = strategy.get("endroll") if isinstance(strategy.get("endroll"), dict) else {}
+    midroll = _pick_insertion(root=promotion, setting=midroll_setting, label="中插")
+    endroll = _pick_insertion(root=promotion, setting=endroll_setting, label="尾插")
+    return midroll, endroll
+
+
 def _processed_composition_command(*, source: Path, template_video: Path, pairing: Path,
                                    draft_root: Path, user_data_root: Path, jianying_app_root: Path, real_photo_dir: Path,
-                                   draft_prefix: str, account_id: str, midroll: Path, endroll: Path,
+                                   draft_prefix: str, account_id: str,
+                                   midroll: Path | None, endroll: Path | None,
                                    bgm: Path, work_dir: Path, real_photo_files: list[Path] | None = None,
                                    local_vision_ai_mode: str = "compatibility",
                                    skip_raw_processing: bool = False) -> list[str]:
-    """Build the V1-equivalent single-source processing command for V2."""
+    """Build the V1-equivalent single-source processing command for V2.
+
+    ``midroll`` / ``endroll`` 为 ``None`` = 本次成片不要那一条，参数直接不传。
+    """
     command = worker_command("server.final_engine.scripts.run_jianying_composition_batch", FINAL_SCRIPT, [
         "--source-file", str(source),
         "--template-video", str(template_video), "--pairing", str(pairing),
@@ -162,11 +225,14 @@ def _processed_composition_command(*, source: Path, template_video: Path, pairin
         "--real-photo-dir", str(real_photo_dir),
         "--real-photo-files", json.dumps([str(path) for path in (real_photo_files or [])], ensure_ascii=False),
         "--draft-prefix", draft_prefix, "--account-id", account_id,
-        "--midroll", str(midroll), "--endroll", str(endroll),
         "--work-dir", str(work_dir), "--bgm", str(bgm),
         "--no-bgm-auto-replenish",
         "--local-vision-ai-mode", local_vision_ai_mode,
     ])
+    if midroll is not None:
+        command.extend(["--midroll", str(midroll)])
+    if endroll is not None:
+        command.extend(["--endroll", str(endroll)])
     if skip_raw_processing:
         command.append("--skip-raw-processing")
     return command
@@ -208,24 +274,27 @@ def run_finished_video(video_id: str) -> None:
         if not getattr(sys, "frozen", False) and not FINAL_SCRIPT.is_file():
             raise RuntimeError(f"成片生成引擎不存在：{FINAL_SCRIPT}")
         workspace, _ = service.require_configured_paths()
-        promotion = workspace / "生成资源" / "引流视频"
-        midroll = _numbered(promotion, "中插")
-        endroll = _numbered(promotion, "尾插")
-        if not midroll or not endroll:
-            raise RuntimeError("V2 生成资源/引流视频 缺少可用的中插或尾插视频")
         real_photo_dir = workspace / "生成资源" / "真人图片"
         real_photo_files = service.ensure_final_photo_reservation(str(row["task_id"]))
         music_root = workspace / "生成资源" / "BGM"
         music = [path for path in music_root.iterdir() if path.is_file() and path.suffix.lower() in BGM_EXTENSIONS]
         if not music:
             raise RuntimeError("V2 生成资源/BGM 缺少可用音乐")
+        # 中插/尾插按参数中心的设置解析：不要的那一条直接不参与检查，
+        # 素材本来就缺也不会再让整条任务失败（旧行为是缺任一条就报错）。
+        settings = service.get_v2_settings()
+        midroll, endroll = resolve_insertion_media(task_row=row, settings=settings)
+        service.record_executor_trace(
+            executor_id="final_generator", run_id=video_id, production_task_id=task_id,
+            phase="插片素材已选定",
+            message=f"中插：{midroll.name if midroll else '本次不用'}；尾插：{endroll.name if endroll else '本次不用'}",
+        )
         service.record_executor_trace(executor_id="final_generator", run_id=video_id, production_task_id=task_id,
                                       phase="输入检查完成",
                                       message=f"模板、素材、真人图片和背景音乐均已准备好，耗时 {time.monotonic() - input_started:.1f} 秒")
         _set_video(video_id, "generating", started_at=service.now_text())
         # The configured limit covers the complete generation attempt, not
         # only the final communicate() call.
-        settings = service.get_v2_settings()
         timeout_seconds = int(settings.get("final_generation_timeout_min", 30)) * 60
         deadline = time.monotonic() + timeout_seconds
         runtime_started = time.monotonic()

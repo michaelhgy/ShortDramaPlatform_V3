@@ -23,8 +23,8 @@ def main() -> int:
     parser.add_argument("--real-photo-files", default="", help="JSON array of the six reserved image paths")
     parser.add_argument("--draft-name", required=True)
     parser.add_argument("--account-id", required=True)
-    parser.add_argument("--midroll", required=True, type=Path)
-    parser.add_argument("--endroll", required=True, type=Path)
+    parser.add_argument("--midroll", type=Path, help="中插素材；不传 = 本次成片不插中插（见 docs/V2参数中心规则.md §3.2）")
+    parser.add_argument("--endroll", type=Path, help="尾插素材；不传 = 本次成片不接尾插")
     parser.add_argument("--bgm", required=True, type=Path)
     parser.add_argument("--bgm-id", default="")
     parser.add_argument("--bgm-title", default="")
@@ -33,7 +33,7 @@ def main() -> int:
     if not args.draft_name or any(character in args.draft_name for character in '<>:"/\\|?*'):
         raise ValueError("成片草稿名称为空或含非法Windows路径字符")
     for path in (args.viral, args.template_video, args.pairing, args.midroll, args.endroll, args.bgm):
-        if not path.is_file():
+        if path is not None and not path.is_file():
             raise FileNotFoundError(path)
     if not args.user_data_root.is_dir():
         raise NotADirectoryError(f"剪映User Data目录不存在：{args.user_data_root}")
@@ -45,7 +45,9 @@ def main() -> int:
     real_photo_files = [Path(str(item)) for item in json.loads(args.real_photo_files or "[]")]
     plan = build_plan(
         viral=probe_media(args.viral), template=probe_media(args.template_video), pairing=pairing,
-        account_id=args.account_id, midroll=probe_media(args.midroll), endroll=probe_media(args.endroll),
+        account_id=args.account_id,
+        midroll=probe_media(args.midroll) if args.midroll is not None else None,
+        endroll=probe_media(args.endroll) if args.endroll is not None else None,
         bgm=probe_media(args.bgm, audio_only=True), bgm_id=args.bgm_id, bgm_title=args.bgm_title,
         real_photo_dir=args.real_photo_dir, real_photo_files=real_photo_files or None,
     )

@@ -205,26 +205,35 @@ def _viral_rectangle_geometry(
 
 def _main_sections(
     viral: Media,
-    midroll: Media,
-    endroll: Media,
+    midroll: Media | None,
+    endroll: Media | None,
     *,
     window_px: dict[str, float],
     source_rectangle: dict[str, float],
 ) -> list[dict[str, Any]]:
-    if viral.duration_us <= MIDROLL_INSERT_US:
-        # A shorter cleaned source has no valid 120-second insertion point.
-        # Keep its full plot content and append only the required end-roll.
-        sections = [
-            ("viral", viral, 0, viral.duration_us),
-            ("endroll", endroll, 0, endroll.duration_us),
-        ]
+    """按用户选择的插片组合生成成片主轨。
+
+    四种组合（见 docs/V2参数中心规则.md §3.2）：
+    - 中插 + 尾插：``爆款 0–120s → 中插 → 爆款剩余 → 尾插``
+    - 只要尾插：``爆款整条 → 尾插``（不在 120 秒处拆段）
+    - 只要中插：``爆款 0–120s → 中插 → 爆款剩余``
+    - 两个都不要：``爆款整条``
+
+    爆款被拆成两段，唯一的理由是**中间要塞中插**；不插中插就没有拆段的理由。
+    """
+    sections: list[tuple[str, Media, int, int]] = []
+    inserts_midroll = midroll is not None and viral.duration_us > MIDROLL_INSERT_US
+    if inserts_midroll:
+        sections.append(("viral", viral, 0, MIDROLL_INSERT_US))
+        assert midroll is not None
+        sections.append(("midroll", midroll, 0, midroll.duration_us))
+        sections.append(("viral", viral, MIDROLL_INSERT_US, viral.duration_us - MIDROLL_INSERT_US))
     else:
-        sections = [
-            ("viral", viral, 0, MIDROLL_INSERT_US),
-            ("midroll", midroll, 0, midroll.duration_us),
-            ("viral", viral, MIDROLL_INSERT_US, viral.duration_us - MIDROLL_INSERT_US),
-            ("endroll", endroll, 0, endroll.duration_us),
-        ]
+        # 不插中插（用户不要，或素材短于 120 秒没有合法插入点）→ 爆款整条保留。
+        sections.append(("viral", viral, 0, viral.duration_us))
+    if endroll is not None:
+        sections.append(("endroll", endroll, 0, endroll.duration_us))
+
     cursor = 0
     result = []
     for role, media, source_start, duration in sections:
@@ -280,7 +289,7 @@ def _disclaimer_positions(window: dict[str, float]) -> dict[str, dict[str, float
     }
 
 
-def build_plan(*, viral: Media, template: Media, pairing: dict[str, Any], account_id: str, midroll: Media, endroll: Media, bgm: Media, bgm_id: str, bgm_title: str, real_photo_dir: Path | None = None, real_photo_files: list[Path] | None = None, visual_seed: int | None = None) -> dict[str, Any]:
+def build_plan(*, viral: Media, template: Media, pairing: dict[str, Any], account_id: str, midroll: Media | None, endroll: Media | None, bgm: Media, bgm_id: str, bgm_title: str, real_photo_dir: Path | None = None, real_photo_files: list[Path] | None = None, visual_seed: int | None = None) -> dict[str, Any]:
     """Calculate the fixed finished-video timeline without a donor draft."""
     if not account_id.strip():
         raise ValueError("账号ID不能为空")
@@ -325,7 +334,13 @@ def build_plan(*, viral: Media, template: Media, pairing: dict[str, Any], accoun
         "duration_us": total_us,
         "decisions": {
             "midroll": {
-                "status": "inserted" if midroll_inserted else "skipped_short_source",
+                # inserted = 已插入；disabled_by_user = 用户明确不要；
+                # skipped_short_source = 素材短于 120 秒，没有合法插入点。
+                "status": (
+                    "inserted" if midroll_inserted
+                    else "skipped_short_source" if viral.duration_us <= MIDROLL_INSERT_US
+                    else "disabled_by_user"
+                ),
                 "threshold_seconds": MIDROLL_INSERT_US // US,
                 "cleaned_viral_duration_seconds": round(viral.duration_us / US, 6),
             },
@@ -360,12 +375,25 @@ def validate_plan(plan: dict[str, Any]) -> None:
     main = list(tracks.get("main") or [])
     template = list(tracks.get("template") or [])
     roles = [item.get("role") for item in main]
-    if roles not in (["viral", "midroll", "viral", "endroll"], ["viral", "endroll"]):
-        raise ValueError("成片主轨必须是爆款-中插-爆款-尾插，或短素材的爆款-尾插")
+    # 四种合法主轨结构：见 docs/V2参数中心规则.md §3.2。
+    # 注意「爆款-尾插」可能有两种来源：用户明确不要中插，或素材短于 120 秒自动跳过中插。
+    allowed_roles = (
+        ["viral", "midroll", "viral", "endroll"],
+        ["viral", "endroll"],
+        ["viral", "midroll", "viral"],
+        ["viral"],
+    )
+    if roles not in allowed_roles:
+        raise ValueError("成片主轨只能是：爆款-中插-爆款-尾插、爆款-尾插、爆款-中插-爆款，或只有爆款")
     midroll = (plan.get("decisions") or {}).get("midroll")
     if not isinstance(midroll, dict):
         raise ValueError("成片缺少中插决定记录")
-    expected_midroll_status = "inserted" if "midroll" in roles else "skipped_short_source"
+    viral_seconds = float(midroll.get("cleaned_viral_duration_seconds") or 0)
+    expected_midroll_status = (
+        "inserted" if "midroll" in roles
+        else "skipped_short_source" if viral_seconds * US <= MIDROLL_INSERT_US
+        else "disabled_by_user"
+    )
     if midroll.get("status") != expected_midroll_status:
         raise ValueError("成片中插决定与主轨不一致")
     main_mask = (plan.get("geometry") or {}).get("main_mask")

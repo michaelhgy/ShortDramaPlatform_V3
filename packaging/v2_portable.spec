@@ -19,6 +19,10 @@ datas = [
     (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "track07_08_effect_pool_5_9.json"), "server/template_engine/jianying59_template/resources"),
     (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "sticker_skin_catalog.json"), "server/template_engine/jianying59_template/resources"),
     (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "flower_style_catalog.json"), "server/template_engine/jianying59_template/resources"),
+    # 照片墙选人用的人脸检测模型（YuNet，MIT）。必须随包分发：目标机器可能长期离线，
+    # 而缺了它只会退化成"按画面中心裁"，效果明显变差。
+    (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "face_detection_yunet_2023mar.onnx"), "server/template_engine/jianying59_template/resources"),
+    (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "YuNet-LICENSE.txt"), "server/template_engine/jianying59_template/resources"),
     (str(PROJECT_ROOT / "server" / "final_engine" / "jianying59_final" / "resources" / "real_photo_effect_pool_5_9.json"), "server/final_engine/jianying59_final/resources"),
     (str(PROJECT_ROOT / "server" / "wechat_index_proxy_addon.py"), "server"),
     (str(FFMPEG_ROOT / "bin" / "ffmpeg.exe"), "tools/ffmpeg/bin"),

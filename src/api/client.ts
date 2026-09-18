@@ -30,7 +30,7 @@ function changeTypeForPath(path: string): V2DataChangeType {
   if (path.includes('/sub-theaters')) return 'sub_theater_changed';
   if (path.includes('/theaters')) return 'theater_changed';
   if (path.includes('/drama-profiles') || path.includes('/cover')) return 'profile_changed';
-  if (path.includes('/settings')) return 'settings_changed';
+  if (path.includes('/settings') || path.includes('/engine-parameters')) return 'settings_changed';
   if (path.includes('/accounts')) return 'account_changed';
   if (path.includes('/dramas')) return 'drama_changed';
   return 'unknown';

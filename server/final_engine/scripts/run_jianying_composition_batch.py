@@ -305,6 +305,20 @@ def raw_trim_proxy(*, source: Path, output: Path, budget_seconds: float) -> Path
     raise RuntimeError(f"无法按上限截断原素材：{failure}")
 
 
+def insertion_arguments(midroll: Path | None, endroll: Path | None) -> list[str]:
+    """把中插/尾插素材转成命令行参数；不传的那一条 = 本次成片不要它。
+
+    只给一条是合法组合（见 docs/V2参数中心规则.md §3.2），
+    所以这里不能沿用"两条必须同时提供"的老约束。
+    """
+    arguments: list[str] = []
+    if midroll is not None:
+        arguments.extend(["--midroll", str(midroll)])
+    if endroll is not None:
+        arguments.extend(["--endroll", str(endroll)])
+    return arguments
+
+
 def raw_source_compose_command(*, args: argparse.Namespace, viral: Path, draft_name: str,
                               report: Path, selected_bgm: dict[str, Any] | None) -> list[str]:
     """Build the native composition command for an unprocessed source."""
@@ -319,7 +333,7 @@ def raw_source_compose_command(*, args: argparse.Namespace, viral: Path, draft_n
         "--real-photo-files", args.real_photo_files,
         "--draft-name", draft_name,
         "--account-id", args.account_id,
-        "--midroll", str(args.midroll), "--endroll", str(args.endroll),
+        *insertion_arguments(args.midroll, args.endroll),
         "--report", str(report),
     ])
     if args.bgm:
@@ -367,8 +381,8 @@ def main() -> int:
     parser.add_argument("--draft-prefix", required=True)
     parser.add_argument("--draft-suffix", default="_成片草稿", help="Suffix after the source ordinal; use a unique test suffix only for disposable drafts")
     parser.add_argument("--account-id", required=True)
-    parser.add_argument("--midroll", required=True, type=Path)
-    parser.add_argument("--endroll", required=True, type=Path)
+    parser.add_argument("--midroll", type=Path, help="中插素材；不传 = 本次成片不插中插")
+    parser.add_argument("--endroll", type=Path, help="尾插素材；不传 = 本次成片不接尾插")
     parser.add_argument("--work-dir", required=True, type=Path)
     parser.add_argument("--trace-path", type=Path, help="仅供上层任务诊断读取的过程记录")
     parser.add_argument("--local-vision-ai-mode", choices=("compatibility", "quality", "disabled"), default="compatibility")
@@ -401,7 +415,7 @@ def main() -> int:
         raise SystemExit("Specify --source-file or --viral-dir")
     for path in (args.template_video, args.pairing, args.draft_root, args.user_data_root,
                  args.jianying_app_root, args.real_photo_dir, args.midroll, args.endroll):
-        if not path.exists():
+        if path is not None and not path.exists():
             raise SystemExit(f"Required path missing: {path}")
     if args.bgm and not args.bgm.is_file():
         raise SystemExit(f"BGM missing: {args.bgm}")
@@ -423,8 +437,11 @@ def main() -> int:
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    source_budget = MAX_FINISHED_SECONDS - probe_duration(args.midroll) - probe_duration(args.endroll)
-    if source_budget <= 120:
+    # 成片总长上限：只扣掉本次真要用的插片素材。不用的那一条不再占用预算，
+    # 否则"不要中插"反而会让爆款被多截掉一截。
+    inserted_seconds = sum(probe_duration(path) for path in (args.midroll, args.endroll) if path is not None)
+    source_budget = MAX_FINISHED_SECONDS - inserted_seconds
+    if source_budget <= 60:
         raise SystemExit("Insertion media leave no usable viral budget")
     args.work_dir.mkdir(parents=True, exist_ok=True)
     # The batch is also a supported manual entry point, so it cannot rely on
@@ -506,7 +523,7 @@ def main() -> int:
                     "--jianying-app-root", str(args.jianying_app_root),
                     "--real-photo-dir", str(args.real_photo_dir),
                     "--real-photo-files", args.real_photo_files,
-                    "--midroll", str(args.midroll), "--endroll", str(args.endroll), "--report", str(draft_report),
+                    *insertion_arguments(args.midroll, args.endroll), "--report", str(draft_report),
                 ])
                 if args.bgm:
                     command.extend(["--bgm", str(args.bgm), "--bgm-id", args.bgm_id, "--bgm-title", args.bgm_title])

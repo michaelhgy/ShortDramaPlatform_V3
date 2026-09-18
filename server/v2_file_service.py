@@ -44,7 +44,7 @@ DATABASE_INITIALIZATION_LOCK = threading.Lock()
 # 版本一致时 _initialize_connection 完全跳过那套结构脚本——它在 250MB 库上要十几到几十秒，
 # 期间独占写锁，会把同时打开的页面请求全部堵死
 # （表现为"启动慢 / 刷新不出来 / database is locked"）。
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 # 变更日志（v2_change_events）是"数据变了就通知前端刷新"的游标表，**不是审计日志**。
 # 它由 30 多个触发器自动写入，长期累积会拖慢每一次写操作
 # （2026-09-17 故障：累积到 343 万行，把整个数据库拖垮）。服务启动时只保留最近这么多条。
@@ -253,6 +253,7 @@ def _initialize_connection() -> sqlite3.Connection:
             planned_publish_at TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'materials_pending',
             final_video_manual_check INTEGER NOT NULL DEFAULT 0 CHECK(final_video_manual_check IN (0, 1)),
+            midroll_endroll_strategy TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -627,6 +628,9 @@ def _initialize_connection() -> sqlite3.Connection:
         conn.execute("ALTER TABLE production_tasks ADD COLUMN raw_cleanup_at TEXT NOT NULL DEFAULT ''")
     if "final_video_manual_check" not in task_columns:
         conn.execute("ALTER TABLE production_tasks ADD COLUMN final_video_manual_check INTEGER NOT NULL DEFAULT 0")
+    if "midroll_endroll_strategy" not in task_columns:
+        # 任务级插片覆盖；空串 = 跟随参数中心的全局默认（与 final_video_manual_check 同一模式）。
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN midroll_endroll_strategy TEXT NOT NULL DEFAULT ''")
     file_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_files)")}
     resource_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(resource_index)")}
     revenue_attempt_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(v2_revenue_collection_attempts)")}
@@ -1188,6 +1192,7 @@ def task_response(task: sqlite3.Row) -> dict[str, object]:
         "release_district": str(task["release_district"] or ""),
         "release_detail_address": str(task["release_detail_address"] or ""),
         "final_video_manual_check": bool(task["final_video_manual_check"]),
+        "midroll_endroll_strategy": _task_insertion_strategy(task),
         "paths": {
             "root": str(task["root_path"]), "materials": str(task["material_path"]),
             "template": str(task["template_path"]), "finals": str(task["final_path"]),
@@ -1791,6 +1796,271 @@ def production_resource_media(resource_id: str, *, thumbnail: bool = False) -> P
     raise ValueError("生产资源不存在")
 
 
+# ---------------------------------------------------------------------------
+# 参数中心（Engine Parameters）
+#
+# 「参数中心」是资料中心之后的新页签，只放**用户经常要调的生产参数**。
+# 产品与工程规则见 docs/V2参数中心规则.md；界面上一个参数组 = 一张卡。
+#
+# 这里的两个参数组都返回**完整解析后的生效值**，不是原始存储值：
+# 前端不需要知道"没设置过时该用什么默认值"，只看生效值即可。
+# ---------------------------------------------------------------------------
+
+ENGINE_PARAMETER_KEY = "midroll_endroll_strategy"
+
+
+def template_copy_file_path() -> Path:
+    """返回模板文案配置文件路径（`<系统数据>\\模板文案.json`）。"""
+    _, data_root = require_configured_paths()
+    return Path(data_root) / "模板文案.json"
+
+
+def promotion_video_dir() -> Path:
+    """返回引流视频目录（中插 / 尾插素材所在处）。"""
+    workspace, _ = require_configured_paths()
+    return Path(workspace) / "生成资源" / "引流视频"
+
+
+def _ensure_template_copy_module():
+    try:
+        from server.template_engine.jianying59_template.template_copy import (
+            DEFAULT_BLESSING_COPY,
+            DEFAULT_DRAMA_PROMPT_COPY,
+            clean_copy_items,
+            load_template_copy,
+        )
+    except ModuleNotFoundError:
+        from template_engine.jianying59_template.template_copy import (
+            DEFAULT_BLESSING_COPY,
+            DEFAULT_DRAMA_PROMPT_COPY,
+            clean_copy_items,
+            load_template_copy,
+        )
+    return DEFAULT_BLESSING_COPY, DEFAULT_DRAMA_PROMPT_COPY, load_template_copy, clean_copy_items
+
+
+def _stored_template_copy() -> dict[str, object] | None:
+    conn = connection()
+    try:
+        row = conn.execute("SELECT value_json FROM v2_settings WHERE key=?", ("template_copy",)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    try:
+        value = json.loads(str(row["value_json"]))
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _write_template_copy_file(*, blessing: tuple[str, ...], drama_prompt: tuple[str, ...]) -> None:
+    """把生效文案池落到生成子进程读取的 JSON 文件。
+
+    必须是**原子替换**：模板生成子进程随时可能读到这个文件，半截文件会让它启动失败。
+    这里刻意用 ``[]`` 而不是省略字段，让"不要这条轨道"的意图明确写在磁盘上。
+    """
+    path = template_copy_file_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"blessing": list(blessing), "drama_prompt": list(drama_prompt)}
+    body = json.dumps(payload, ensure_ascii=False, indent=2)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(body, encoding="utf-8", newline="\n")
+    os.replace(temporary, path)
+
+
+def _resolved_copy_pools() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """返回界面要显示的生效文案池。
+
+    优先级：数据库设置 > 磁盘上的 `模板文案.json` > 内置默认池。
+    中间那一层是为了兼容"用户之前手工编辑过配置文件"的历史状态。
+    """
+    default_blessing, default_drama, load_template_copy, _ = _ensure_template_copy_module()
+    file_path = template_copy_file_path()
+    stored = _stored_template_copy()
+    if stored is None:
+        return load_template_copy(path=file_path)
+    # 存储层已经是权威值；磁盘文件是它的派生物，不再回头读。
+    blessing = default_blessing if "blessing" not in stored else tuple(_clean_copy_items(stored.get("blessing"), "blessing"))
+    drama = default_drama if "drama_prompt" not in stored else tuple(_clean_copy_items(stored.get("drama_prompt"), "drama_prompt"))
+    return blessing, drama
+
+
+def _clean_copy_items(value: object, field: str) -> list[str]:
+    _, _, _, clean_copy_items = _ensure_template_copy_module()
+    return clean_copy_items(value, field)
+
+
+def _normalize_copy_pool(value: object, field: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """把界面传来的文案池规范化。
+
+    ``None`` / 字段缺失 = 沿用（默认池或旧值）；``[]`` = 明确要"不要这条轨道"。
+    这两种语义不能混：见 docs/V2参数中心规则.md §3.1。
+    """
+    if value is None:
+        return tuple(default)
+    return tuple(_clean_copy_items(value, field))
+
+
+def get_engine_parameters() -> dict[str, object]:
+    """参数中心的「文案」+「成片插片」两个参数组的生效值。"""
+    default_blessing, default_drama, _, _ = _ensure_template_copy_module()
+    blessing, drama_prompt = _resolved_copy_pools()
+    stored_strategy = get_v2_settings().get(ENGINE_PARAMETER_KEY)
+    return {
+        "template_copy": {
+            "blessing": list(blessing),
+            "drama_prompt": list(drama_prompt),
+            "blessing_default": list(default_blessing),
+            "drama_prompt_default": list(default_drama),
+            "configured": _stored_template_copy() is not None,
+        },
+        "midroll_endroll": {
+            "strategy": resolve_midroll_endroll_strategy(stored_strategy),
+            "configured": stored_strategy is not None,
+        },
+    }
+
+
+def update_engine_parameters(payload: dict[str, object]) -> dict[str, object]:
+    """保存参数中心提交的参数组。只处理载荷里出现过的组。"""
+    if not isinstance(payload, dict):
+        raise ValueError("参数中心请求格式不正确")
+    unknown = set(payload) - {"template_copy", "midroll_endroll"}
+    if unknown:
+        raise ValueError(f"参数中心收到不支持的参数组：{', '.join(sorted(unknown))}")
+    if "template_copy" in payload:
+        copy_payload = payload.get("template_copy")
+        if not isinstance(copy_payload, dict):
+            raise ValueError("文案参数格式不正确")
+        write_template_copy(
+            blessing=copy_payload.get("blessing"),
+            drama_prompt=copy_payload.get("drama_prompt"),
+        )
+    if "midroll_endroll" in payload:
+        insertion_payload = payload.get("midroll_endroll")
+        if not isinstance(insertion_payload, dict):
+            raise ValueError("成片插片参数格式不正确")
+        strategy = normalize_midroll_endroll_strategy(insertion_payload)
+        _save_setting(ENGINE_PARAMETER_KEY, strategy)
+    return get_engine_parameters()
+
+
+def _save_setting(key: str, value: object) -> None:
+    conn = connection()
+    try:
+        conn.execute(
+            "INSERT INTO v2_settings(key, value_json, updated_at) VALUES(?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at",
+            (key, json.dumps(value, ensure_ascii=False), now_text()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def write_template_copy(*, blessing: object, drama_prompt: object) -> None:
+    """保存文案池：数据库是权威值，磁盘 JSON 文件是给它派生的副本。"""
+    default_blessing, default_drama, _, _ = _ensure_template_copy_module()
+    current_blessing, current_drama = _resolved_copy_pools()
+    resolved_blessing = _normalize_copy_pool(
+        blessing, "blessing", current_blessing if blessing is None else default_blessing
+    )
+    resolved_drama = _normalize_copy_pool(
+        drama_prompt, "drama_prompt", current_drama if drama_prompt is None else default_drama
+    )
+    _save_setting("template_copy", {"blessing": list(resolved_blessing), "drama_prompt": list(resolved_drama)})
+    _write_template_copy_file(blessing=resolved_blessing, drama_prompt=resolved_drama)
+
+
+def _parse_insertion_slot(value: object, label: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}设置格式不正确")
+    enabled = value.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError(f"{label}的开关必须是布尔值")
+    mode = str(value.get("mode") or "latest").strip()
+    if mode not in {"latest", "locked"}:
+        raise ValueError(f"{label}的取材方式只能是「跟随最新序号」或「指定某一条」")
+    requested_file = value.get("file")
+    if requested_file is not None and not isinstance(requested_file, str):
+        raise ValueError(f"{label}指定的素材名格式不正确")
+    file_name = Path(str(requested_file or "").strip()).name
+    if mode == "locked" and not file_name:
+        raise ValueError(f"{label}已选择「指定某一条」，但没有选具体文件")
+    if mode == "latest":
+        file_name = ""
+    elif not (promotion_video_dir() / file_name).is_file():
+        # 保留"上一次就指定的那一条"是允许的：素材可能只是被临时移走，
+        # 生成时会明确报错，不该在保存这一步就把其他参数一起卡住。
+        if file_name != _stored_locked_file(label):
+            raise ValueError(f"{label}指定的素材不存在：{file_name}，请重新选择")
+    return {"enabled": enabled, "mode": mode, "file": file_name}
+
+
+def _stored_locked_file(label: str) -> str:
+    """读取当前存储里某个插片位锁定的文件名；没有则返回空串。"""
+    stored = _stored_strategy()
+    if not isinstance(stored, dict):
+        return ""
+    slot = stored.get("midroll" if label == "中插" else "endroll")
+    if not isinstance(slot, dict) or str(slot.get("mode") or "") != "locked":
+        return ""
+    return Path(str(slot.get("file") or "")).name
+
+
+def _stored_strategy() -> object:
+    conn = connection()
+    try:
+        row = conn.execute("SELECT value_json FROM v2_settings WHERE key=?", (ENGINE_PARAMETER_KEY,)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    try:
+        return json.loads(str(row["value_json"]))
+    except ValueError:
+        return None
+
+
+def normalize_midroll_endroll_strategy(payload: dict[str, object]) -> dict[str, object]:
+    """校验并规范化界面提交的插片策略。"""
+    unknown = set(payload) - {"midroll", "endroll"}
+    if unknown:
+        raise ValueError(f"成片插片设置包含未知字段：{', '.join(sorted(unknown))}")
+    return {
+        "midroll": _parse_insertion_slot(payload.get("midroll"), "中插"),
+        "endroll": _parse_insertion_slot(payload.get("endroll"), "尾插"),
+    }
+
+
+def resolve_midroll_endroll_strategy(stored: object) -> dict[str, object]:
+    """把存储值解析成**生效策略**。
+
+    从未设置过（``None`` / 非法值）→ 历史行为：中插、尾插都要，各取序号最大的一条。
+    这样"老库 + 新代码"生成的成片与改动前完全一致。
+    """
+    default = {
+        "midroll": {"enabled": True, "mode": "latest", "file": ""},
+        "endroll": {"enabled": True, "mode": "latest", "file": ""},
+    }
+    if not isinstance(stored, dict):
+        return default
+    resolved = dict(default)
+    for key in ("midroll", "endroll"):
+        slot = stored.get(key)
+        if not isinstance(slot, dict):
+            continue
+        enabled = slot.get("enabled", True)
+        mode = str(slot.get("mode") or "latest")
+        resolved[key] = {
+            "enabled": bool(enabled),
+            "mode": mode if mode in {"latest", "locked"} else "latest",
+            "file": Path(str(slot.get("file") or "")).name,
+        }
+    return resolved
+
+
 DEFAULT_SETTINGS = {
     "data_drive": "",
     "data_root_dir": "",
@@ -1812,6 +2082,10 @@ DEFAULT_SETTINGS = {
     "revenue_auto_collection_enabled": True,
     "revenue_auto_collection_times": ["06:00", "12:30", "18:00"],
     "local_vision_ai_mode": "compatibility",
+    # 成片插片策略（参数中心「成片插片」卡的全局默认）。
+    # None = 用户从未设置过 → 保持历史行为：中插、尾插都要，各取序号最大的一条。
+    # 参数字典见 docs/V2参数中心规则.md §3.2。
+    "midroll_endroll_strategy": None,
 }
 
 
@@ -1893,6 +2167,8 @@ def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
         raise ValueError("收益自动采集开关必须是布尔值")
     if values["local_vision_ai_mode"] not in {"compatibility", "quality", "disabled"}:
         raise ValueError("本地视觉 AI 模式不正确")
+    if values["midroll_endroll_strategy"] is not None and not isinstance(values["midroll_endroll_strategy"], dict):
+        raise ValueError("成片插片策略格式不正确")
     if (not isinstance(values["revenue_auto_collection_times"], list)
             or not values["revenue_auto_collection_times"]
             or not all(isinstance(item, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", item) for item in values["revenue_auto_collection_times"])
@@ -3319,6 +3595,49 @@ def create_finished_video_tasks_batch(task_id: str, source_material_ids: list[st
         conn.close()
 
 
+def _task_insertion_strategy(task: object) -> dict[str, object] | None:
+    """读取任务级插片覆盖；``None`` = 这个任务跟随参数中心的全局默认。"""
+    try:
+        raw = task["midroll_endroll_strategy"]  # type: ignore[index]
+    except (KeyError, IndexError, TypeError):
+        return None
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def update_task_insertion_strategy(task_id: str, strategy: object) -> dict[str, object]:
+    """设置单个生产任务的插片覆盖。
+
+    ``None`` = 清除覆盖、回到"跟随全局默认"（与 `production_tasks.final_video_manual_check`
+    同一模式：任务级为空就跟全局）。
+    """
+    if strategy is None:
+        stored = ""
+    elif isinstance(strategy, dict):
+        stored = json.dumps(normalize_midroll_endroll_strategy(strategy), ensure_ascii=False)
+    else:
+        raise ValueError("任务级插片设置格式不正确")
+    conn = connection()
+    try:
+        updated = conn.execute(
+            "UPDATE production_tasks SET midroll_endroll_strategy=?, updated_at=? "
+            "WHERE id=? AND COALESCE(cleanup_status, 'active')='active'",
+            (stored, now_text(), task_id),
+        ).rowcount
+        if updated != 1:
+            raise ValueError("生产任务不存在")
+        conn.commit()
+        return get_task_details(task_id)
+    finally:
+        conn.close()
+
+
 def update_task_manual_check(task_id: str, enabled: bool) -> dict[str, object]:
     """Update the live manual-check policy for one production drama."""
     conn = connection()
@@ -4040,6 +4359,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v2/settings":
             self._json(HTTPStatus.OK, get_v2_settings())
             return
+        if path == "/api/v2/engine-parameters":
+            # 参数中心：文案 + 成片插片两个参数组的生效值。见 docs/V2参数中心规则.md
+            self._json(HTTPStatus.OK, get_engine_parameters())
+            return
         if path == "/api/v2/local-vision-ai/status":
             from server.local_vision_ai import status
             self._json(HTTPStatus.OK, status())
@@ -4272,6 +4595,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, {"opened": True}); return
             if path == "/api/v2/settings":
                 self._json(HTTPStatus.OK, update_v2_settings(payload)); return
+            if path == "/api/v2/engine-parameters":
+                # 参数中心按「参数组」局部提交：只处理载荷里出现过的组。
+                self._json(HTTPStatus.OK, update_engine_parameters(payload)); return
             if path == "/api/v2/local-vision-ai/download":
                 from server.local_vision_ai import start_download
                 self._json(HTTPStatus.ACCEPTED, start_download(str(payload.get("model") or ""))); return
@@ -4310,6 +4636,11 @@ class Handler(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/manual-check", path)
             if match:
                 self._json(HTTPStatus.OK, update_task_manual_check(match.group(1), bool(payload.get("enabled", False))))
+                return
+            match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/insertion-strategy", path)
+            if match:
+                # 任务级插片覆盖；strategy 传 null = 清除覆盖、跟随参数中心的全局默认。
+                self._json(HTTPStatus.OK, update_task_insertion_strategy(match.group(1), payload.get("strategy")))
                 return
             match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/template", path)
             if match:
