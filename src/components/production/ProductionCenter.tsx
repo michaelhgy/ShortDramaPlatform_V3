@@ -163,6 +163,8 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
   const [isTemplateVideoPreviewOpen, setIsTemplateVideoPreviewOpen] = useState(false);
   const [videoExporter, setVideoExporter] = useState<ExecutorInfo | null>(null);
   const [supportableDramas, setSupportableDramas] = useState<number | null>(null);
+  // 读取失败要能跟"还没读到"区分开，否则按钮提示会永远停在"正在读取…"（刷新大修 · 第 8 步）
+  const [supportableDramasFailed, setSupportableDramasFailed] = useState(false);
   const [openingDraftVideoId, setOpeningDraftVideoId] = useState<string | null>(null);
   const [previewMaterialClip, setPreviewMaterialClip] = useState<ScannedMaterialClip | null>(null);
   const [isMaterialPreviewMuted, setIsMaterialPreviewMuted] = useState(() => localStorage.getItem('v2-material-preview-muted') !== 'false');
@@ -220,8 +222,12 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
       }
     }
     void getV2ProductionResources()
-      .then((resources) => { if (active) setSupportableDramas(calculateResourceMetrics(resources.items).supportableDramas); })
-      .catch(() => undefined);
+      .then((resources) => {
+        if (!active) return;
+        setSupportableDramas(calculateResourceMetrics(resources.items).supportableDramas);
+        setSupportableDramasFailed(false);
+      })
+      .catch(() => { if (active) setSupportableDramasFailed(true); });
     return () => { active = false; };
   }, []);
 
@@ -525,7 +531,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
   const generateTemplateDisabledReason = !selectedUnit?.scannedMaterials.length
     ? '当前没有已扫描素材'
     : supportableDramas === null
-      ? '正在读取生产资源容量'
+      ? (supportableDramasFailed ? '生产资源容量读取失败' : '正在读取生产资源容量')
       : supportableDramas < 1
         ? '生产资源支持剧集数不足 1 部'
         : '自动生成专属模板';
@@ -595,7 +601,7 @@ export const ProductionCenter: React.FC<ProductionCenterProps> = ({
   );
   const canOpenFinalDraft = videoExporter?.controlState === 'manual_paused' && !videoExporter.currentTaskId;
   const openFinalDraftHint = !videoExporter
-    ? '正在读取视频导出器状态'
+    ? (taskCenterArea.error ? '视频导出器状态读取失败' : '正在读取视频导出器状态')
     : videoExporter.currentTaskId
       ? '视频导出器仍有进行中的任务'
       : videoExporter.controlState !== 'manual_paused'

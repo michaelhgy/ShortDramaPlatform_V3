@@ -32,6 +32,7 @@ import { createBusinessDrama, loadAssetsCenterSeed } from './services/assetsCent
 import { getV2Accounts, getV2Settings, type V2AccountRecord } from './api/v2Catalog';
 import { loadV2DailyAccountRevenueSummary, type V2DailyAccountRevenueSummary } from './api/v2Revenue';
 import { eventDetail } from './services/dataChangeEvents';
+import { useDataArea } from './hooks/useDataArea';
 
 function yesterdayDateValue(): string {
   const value = new Date();
@@ -93,22 +94,36 @@ export default function App() {
   const [editingTimeTask, setEditingTimeTask] = useState<ScheduleTask | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // 刷新大修 · 第 8 步：剧集/剧场名单原来只在挂载时读一次 —— 在资料中心改了剧名或新增剧集，
+  // "安排今天"弹窗里还是旧的，必须刷新整个页面才对。现在与资料中心**共用 catalog 区域**（同一份数据），
+  // 那边一改，这边自动跟上。
+  const catalogArea = useDataArea<Awaited<ReturnType<typeof loadAssetsCenterSeed>>>(
+    'catalog',
+    () => loadAssetsCenterSeed(),
+  );
+
   useEffect(() => {
     void refreshScheduleAccounts().catch(() => showToast('安排今日的昨日收益读取失败。'));
-    loadAssetsCenterSeed().then((seed) => {
-      setDramas(seed.dramas.map((drama) => ({
-        id: drama.id,
-        name: drama.currentName,
-        theaterId: drama.theaterId,
-        theaterName: drama.theaterName,
-        coverUrl: seed.profiles.find((profile) => profile.dramaId === drama.id)?.cover.mainCoverUrl,
-        productionCount: drama.productionCount || 0,
-        lastScheduledAt: drama.lastScheduledAt || '',
-        activeProductionCount: drama.activeProductionCount || 0,
-      })));
-      setScheduleTheaters(seed.theaters.filter((theater) => theater.status === '启用').map((theater) => ({ id: theater.id, name: theater.name })));
-    }).catch(() => showToast('安排今日的真实账号和剧集加载失败。'));
   }, []);
+
+  useEffect(() => {
+    const seed = catalogArea.data;
+    if (!seed) {
+      if (catalogArea.error) showToast('安排今日的真实账号和剧集加载失败。');
+      return;
+    }
+    setDramas(seed.dramas.map((drama) => ({
+      id: drama.id,
+      name: drama.currentName,
+      theaterId: drama.theaterId,
+      theaterName: drama.theaterName,
+      coverUrl: seed.profiles.find((profile) => profile.dramaId === drama.id)?.cover.mainCoverUrl,
+      productionCount: drama.productionCount || 0,
+      lastScheduledAt: drama.lastScheduledAt || '',
+      activeProductionCount: drama.activeProductionCount || 0,
+    })));
+    setScheduleTheaters(seed.theaters.filter((theater) => theater.status === '启用').map((theater) => ({ id: theater.id, name: theater.name })));
+  }, [catalogArea.data, catalogArea.error]);
 
   // “安排今日”只需要当前可安排的正常账号。账号状态变化时更新这份
   // 小型名单和昨日收益，不重读资料中心的其余数据。
@@ -136,14 +151,16 @@ export default function App() {
     }, 2800);
   };
 
+  // 刷新大修 · 第 8 步：原来要等两个请求都结束才打开弹窗，本地服务慢时点了"安排今天"
+  // 会有几秒钟毫无反应（按钮不转圈、面板也不出来）。现在**先打开**，数据到了再填。
   const openSchedule = () => {
-    Promise.all([getV2Settings().catch(() => null), refreshScheduleAccounts().catch(() => undefined)])
+    setIsScheduleModalOpen(true);
+    void Promise.all([getV2Settings().catch(() => null), refreshScheduleAccounts().catch(() => undefined)])
       .then(([settings]) => {
         if (!settings) return;
         setPublishTimePresets(settings.publish_presets);
         setPublishDateOffsetDays(settings.publish_date_offset_days);
-      })
-      .finally(() => setIsScheduleModalOpen(true));
+      });
   };
 
   // Derived state
