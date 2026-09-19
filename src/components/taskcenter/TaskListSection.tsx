@@ -530,7 +530,6 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                     {group.templateTask && (
                       <MaterialLine
                         key={group.templateTask.id}
-                        label="模板"
                         row={toMaterialRow(group.templateTask)}
                         isTemplate
                         onRetryTask={onRetryTask}
@@ -546,7 +545,6 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                       group.rows.map((row) => (
                         <MaterialLine
                           key={row.task.id}
-                          label={row.sequence > 0 ? String(row.sequence) : '—'}
                           row={row}
                           onRetryTask={onRetryTask}
                           onRegenerateDraft={onRegenerateDraft}
@@ -567,68 +565,105 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
 };
 
 /**
- * 一条素材行。用户要求：一行只看四样东西 —— 序号、状态、进度、耗时/产物。
- * 这里是这四个元素的唯一渲染处；不要在这里再加标签或图标，
- * 每加一个元素都会直接变成"看着很累"。
+ * 一条素材行。
+ *
+ * 2026-09-19 用户纠正："你这1234是干嘛？有什么用？放素材名啊，放1234干嘛"。
+ * 素材的身份就是**文件名**（`神农宝库，医武镇九州-3.mp4`），序号只是文件名里的一段，
+ * 单独拎出来用户根本对不上哪条是哪条。所以第一列永远是素材名，序号不再单独成列。
+ *
+ * 四列各讲一件事：素材名 / 状态 / 进度 / 产物。
+ * 不在这里加第五样东西 —— 每加一个元素都会直接变成"看着很累"。
  */
 const MaterialLine: React.FC<{
-  label: string;
   row: MaterialRow;
   isTemplate?: boolean;
   onRetryTask: (task: TaskItem) => void;
   onRegenerateDraft: (task: TaskItem) => void;
   onReExportVideo: (task: TaskItem) => void;
   onViewTaskDetail: (task: TaskItem) => void;
-}> = ({ label, row, isTemplate = false, onRetryTask, onRegenerateDraft, onReExportVideo, onViewTaskDetail }) => {
+}> = ({ row, isTemplate = false, onRetryTask, onRegenerateDraft, onReExportVideo, onViewTaskDetail }) => {
   const { task, statusWord, statusText, detail } = row;
   const allowedActions = getTaskCenterActions(task);
   const canRetry = allowedActions.includes('retry');
   const canRegenerate = allowedActions.includes('regenerate');
   const canReExport = allowedActions.includes('reExport');
+  const isAbnormal = statusWord === 'abnormal';
 
-  const statusStyle = statusWord === 'abnormal'
+  const materialLabel = isTemplate ? '模板草稿' : (task.materialFullName || task.materialName || '（未记录素材名）');
+
+  const statusStyle = isAbnormal
     ? 'text-rose-700'
     : statusWord === 'exporting'
     ? 'text-emerald-700'
     : statusWord === 'drafting'
     ? 'text-sky-700'
     : statusWord === 'completed'
-    ? 'text-slate-600'
+    ? 'text-slate-500'
     : 'text-amber-700';
 
+  // 耗时与大小分成两段：数字用等宽字体，大小单独右对齐，才能上下比较。
+  const [durationText, sizeText] = detail.includes(' · ') ? detail.split(' · ') : [detail, ''];
+
   return (
-    <div className="group/line px-3.5 py-1.5 flex items-center gap-3 border-b border-black/[0.03] last:border-b-0 hover:bg-white transition-colors">
-      <span className={`shrink-0 font-mono font-black text-[12px] text-center ${isTemplate ? 'w-10 text-amber-700' : 'w-6 text-[#1A1D2E]'}`}>
-        {label}
+    <div
+      className={`group/line px-3.5 py-1 flex items-center gap-3 border-b border-black/[0.03] last:border-b-0 transition-colors ${
+        isAbnormal ? 'bg-rose-50/40' : 'hover:bg-white'
+      }`}
+    >
+      {/* 第 1 列：素材名（主信息） */}
+      <span
+        className={`shrink-0 w-[252px] truncate text-[11px] ${
+          isTemplate ? 'font-bold text-amber-800' : 'text-[#1A1D2E] font-medium'
+        }`}
+        title={materialLabel}
+      >
+        {materialLabel}
       </span>
 
-      <span className={`shrink-0 w-[104px] flex items-center gap-1 text-[11px] font-extrabold ${statusStyle}`}>
+      {/* 第 2 列：状态。完成了只给一个 ✓，不写"完成"两个字 */}
+      <span className={`shrink-0 w-[96px] flex items-center gap-1 text-[11px] font-extrabold ${statusStyle}`}>
         {statusWord === 'completed' ? (
           <Check className="w-3 h-3 text-emerald-600 shrink-0 stroke-[3]" />
         ) : statusWord === 'abnormal' ? (
           <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
         ) : statusWord === 'exporting' || statusWord === 'drafting' ? (
           <RefreshCw className="w-3 h-3 shrink-0 animate-spin" />
-        ) : statusWord === 'queued' ? (
+        ) : (
           <Ban className="w-3 h-3 text-amber-500 shrink-0" />
-        ) : null}
-        <span className="truncate">{statusText}</span>
+        )}
+        {statusWord !== 'completed' && <span className="truncate">{statusText}</span>}
       </span>
 
-      {/* 进度轨：只有真的在跑才画，排队不画（画了会让人以为做了一半） */}
-      <span className="shrink-0 w-[90px] h-1.5 rounded-full bg-slate-100 overflow-hidden">
-        {row.progress !== null && (
-          <span
-            className={`block h-full rounded-full transition-all duration-300 ${statusWord === 'drafting' ? 'bg-sky-500' : 'bg-emerald-500'}`}
-            style={{ width: `${row.progress}%` }}
-          />
+      {/* 第 3 列：进度。只有真的在跑才画，其余行这一列是空的 —— 空轨道配"完成"是自相矛盾 */}
+      <span className="shrink-0 w-[104px] flex items-center gap-1.5">
+        {row.progress !== null ? (
+          <>
+            <span className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <span
+                className={`block h-full rounded-full transition-all duration-300 ${statusWord === 'drafting' ? 'bg-sky-500' : 'bg-emerald-500'}`}
+                style={{ width: `${row.progress}%` }}
+              />
+            </span>
+            <span className="font-mono text-[10px] font-bold text-slate-500 w-[28px] text-right">{row.progress}%</span>
+          </>
+        ) : null}
+      </span>
+
+      {/* 第 4 列：产物 / 异常原因 */}
+      <span className="flex-1 min-w-0 flex items-center gap-3 text-[11px]">
+        {isAbnormal ? (
+          <span className="text-rose-700 truncate">{detail}</span>
+        ) : (
+          <>
+            <span className="flex-1" />
+            <span className="font-mono text-slate-600 w-[62px] text-right shrink-0">{durationText || ''}</span>
+            <span className="font-mono text-slate-500 w-[74px] text-right shrink-0">{sizeText || ''}</span>
+          </>
         )}
       </span>
 
-      <span className="flex-1 min-w-0 text-[11px] text-[#64748B] truncate">{detail}</span>
-
-      {/* 动作只在悬停或异常时出现，平时不占视线 */}
-      <span className={`shrink-0 flex items-center gap-1 ${statusWord === 'abnormal' ? '' : 'opacity-0 group-hover/line:opacity-100'} transition-opacity`}>
+      {/* 操作：异常行常驻（要你马上处理），其余行鼠标移上去才出现 */}
+      <span className={`shrink-0 flex items-center gap-1 ${isAbnormal ? '' : 'opacity-0 group-hover/line:opacity-100'} transition-opacity`}>
         {canRegenerate && (
           <button
             onClick={() => onRegenerateDraft(task)}
@@ -641,10 +676,10 @@ const MaterialLine: React.FC<{
         {canReExport && (
           <button
             onClick={() => onReExportVideo(task)}
-            className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-[#1A1D2E] cursor-pointer"
+            className="px-1.5 py-0.5 rounded-lg bg-[#1A1D2E] text-[#DDFD00] text-[10px] font-bold hover:bg-black cursor-pointer whitespace-nowrap"
             title="保留现有草稿，重新排入视频导出队列"
           >
-            <Video className="w-3 h-3" />
+            重新导出
           </button>
         )}
         {canRetry && (
