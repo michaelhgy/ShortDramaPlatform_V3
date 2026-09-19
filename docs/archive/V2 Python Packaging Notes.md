@@ -1,3 +1,5 @@
+> 🗄 **2026-09-19 已归档**：不再维护，仅供追溯。打包笔记；真要重新打包时再启用。
+
 # V2 Python Packaging Notes
 
 `requirements-runtime.txt` is the Windows production-runtime dependency lock.

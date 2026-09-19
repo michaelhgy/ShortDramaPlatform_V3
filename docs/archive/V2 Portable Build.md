@@ -1,3 +1,5 @@
+> 🗄 **2026-09-19 已归档**：不再维护，仅供追溯。打包笔记；真要重新打包时再启用。
+
 # V2 Portable Build
 
 使用 CPython 3.12.10 的干净构建虚拟环境安装 `requirements-runtime.txt` 与
