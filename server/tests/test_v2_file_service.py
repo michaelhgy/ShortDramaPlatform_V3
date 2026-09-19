@@ -553,6 +553,89 @@ class V2FileServiceTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def _register_and_expire(self, task: dict[str, object]) -> None:
+        """把任务推到"过程清理已到期、原素材清理也已到期"，供收尾清理测试共用。"""
+        conn = service.connection()
+        try:
+            conn.execute(
+                "UPDATE production_tasks SET release_status='registered',actual_release_time='2026-01-01 08:00',"
+                "process_cleanup_at='2000-01-01 08:00:00',raw_cleanup_at='2999-01-01 08:00:00',cleanup_status='active' WHERE id=?",
+                (task["id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertEqual(1, service.run_due_cleanup()["process"])
+        conn = service.connection()
+        try:
+            conn.execute("UPDATE production_tasks SET raw_cleanup_at='2000-01-01 08:00:00' WHERE id=?", (task["id"],))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _task_with_scanned_material(self, source_id: str) -> dict[str, object]:
+        task = service.create_task({
+            "source_id": source_id, "account_name": "账号", "drama_name": "剧集", "planned_publish_at": "2026-08-28T08:00",
+        })
+        (Path(task["paths"]["materials"]) / "源素材.mp4").write_bytes(b"source")
+        service.scan_task(str(task["id"]))
+        return task
+
+    def test_raw_cleanup_reclaims_the_empty_task_directory_chain(self) -> None:
+        """7 天原素材清理成功后，素材／剧集／账号／日期 的空壳要一起回收。"""
+        task = self._task_with_scanned_material("raw-cleanup-prune")
+        self._register_and_expire(task)
+        production_root = service.WORKSPACE / "生产文件"
+        self.assertTrue(Path(task["paths"]["root"]).is_dir())
+
+        result = service.run_due_cleanup()
+        self.assertEqual(1, result["raw"])
+        self.assertFalse(Path(task["paths"]["root"]).exists(), "任务目录链应当被回收")
+        self.assertTrue(production_root.is_dir(), "生产文件 根目录不能被删掉")
+        self.assertEqual([], [item.name for item in production_root.iterdir()], "不该留下任何空壳目录")
+        conn = service.connection()
+        try:
+            row = conn.execute("SELECT cleanup_status FROM production_tasks WHERE id=?", (task["id"],)).fetchone()
+            self.assertEqual("raw_cleaned", row["cleanup_status"])
+            recorded = conn.execute(
+                "SELECT deleted_json FROM cleanup_records WHERE task_id=? AND cleanup_type='scheduled_raw'", (task["id"],)
+            ).fetchone()
+            deleted_paths = json.loads(str(recorded["deleted_json"]))
+            self.assertIn(str(Path(task["paths"]["materials"])), deleted_paths, "回收的目录要写进清理记录")
+            self.assertIn(str(Path(task["paths"]["root"])), deleted_paths)
+        finally:
+            conn.close()
+
+    def test_apple_ds_store_does_not_block_directory_reclaim(self) -> None:
+        """苹果电脑留下的 .DS_Store 不算内容，不许阻挡目录回收（2026-09-19 用户口径）。"""
+        task = self._task_with_scanned_material("raw-cleanup-ds-store")
+        account_dir = Path(task["paths"]["root"]).parent
+        date_dir = account_dir.parent
+        for directory in (account_dir, date_dir):
+            (directory / ".DS_Store").write_bytes(b"apple")
+        self._register_and_expire(task)
+
+        result = service.run_due_cleanup()
+        self.assertEqual(1, result["raw"])
+        self.assertFalse(date_dir.exists(), "只装着垃圾文件的日期目录也要被回收")
+        self.assertEqual([], [item.name for item in (service.WORKSPACE / "生产文件").iterdir()])
+
+    def test_reclaim_never_touches_a_sibling_task_with_content(self) -> None:
+        """回收只走自己这条链：兄弟任务的目录还有内容时必须原地不动。"""
+        cleaned = self._task_with_scanned_material("raw-cleanup-siblings")
+        neighbour = service.create_task({
+            "source_id": "raw-cleanup-siblings-neighbour", "account_name": "账号", "drama_name": "邻居剧集",
+            "planned_publish_at": "2026-08-28T08:00",
+        })
+        (Path(neighbour["paths"]["materials"]) / "邻居素材.mp4").write_bytes(b"neighbour")
+        self._register_and_expire(cleaned)
+
+        result = service.run_due_cleanup()
+        self.assertEqual(1, result["raw"])
+        self.assertFalse(Path(cleaned["paths"]["root"]).exists())
+        self.assertTrue(Path(neighbour["paths"]["materials"]).is_dir(), "邻居任务的素材目录不能被动")
+        self.assertTrue(Path(neighbour["paths"]["root"]).is_dir())
+
     def test_executor_trace_is_bounded_replaced_on_retry_and_removed_with_task(self) -> None:
         task = service.create_task({
             "source_id": "executor-trace-lifecycle", "account_name": "账号", "drama_name": "剧集", "planned_publish_at": "2026-08-28T08:00",

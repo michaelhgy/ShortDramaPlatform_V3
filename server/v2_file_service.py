@@ -3486,6 +3486,89 @@ def _remove_paths(paths: list[Path], *, preserve_directory: Path | None = None) 
     return deleted, errors
 
 
+def _directory_holds_nothing_but_apple_junk(directory: Path) -> bool:
+    """目录里除 ``.DS_Store`` 外没有别的东西 —— 这就算空。
+
+    ``.DS_Store`` 是苹果电脑 Finder 自动写下的垃圾文件，不是本系统生成的。
+    用户口径（2026-09-19）：「遇到苹果留下的垃圾文件不要阻挡清理」——
+    所以它不算内容，也不能让目录永远回收不掉。
+    """
+    try:
+        return all(item.name == ".DS_Store" for item in directory.iterdir())
+    except OSError:
+        return False
+
+
+def prune_empty_task_directories(root_path: Path) -> list[str]:
+    """任务彻底清完后，自底向上回收它留下的空目录链。
+
+    背景（2026-09-19 用户反馈）：``生产文件`` 下堆了 99 个空的
+    ``日期\\账号\\剧集\\素材``，来源全是"7 天原素材清理"——那一步用
+    ``preserve_directory`` 只清空 ``素材`` 里的文件、故意留着目录本身，
+    清空后 ``剧集``／``账号``／``日期`` 就成了挂在盘上的空壳。
+
+    调用时机：**原素材清理成功之后**（此时才敢说这个任务彻底清完了）。
+    两步走：
+    1. 先清**这条任务自己的**空子目录（``素材``／``模板``／``成片``／``缓存`` 都在这一层）；
+    2. 再从任务目录往上收：本身空了就删，然后看 ``账号``／``日期`` 是否跟着空。
+    删除范围止于 ``生产文件`` 根，且只删"除 ``.DS_Store`` 外为空"的目录；
+    碰到任何还有内容的祖先立刻停手。
+
+    ⚠️ 不要改成"启动时扫盘删所有空目录"：新建任务的 ``素材/模板/成片``
+    三个目录生来就是空的，扫盘会把正在使用的任务目录一起删掉。
+    按任务往上收尾只会碰这条任务自己的祖先，不会碰兄弟任务的目录。
+    """
+    removed: list[str] = []
+    try:
+        workspace, _ = require_configured_paths()
+    except (RuntimeError, OSError):
+        return removed
+    production_root = (workspace / "生产文件").resolve()
+    try:
+        task_root = root_path.resolve()
+    except OSError:
+        return removed
+
+    if task_root.is_dir():
+        _prune_empty_subdirectories(task_root, removed)
+
+    # 目录本身已被整棵删掉时（"删除剧集"），从它的父级继续往回收。
+    current = task_root if task_root.is_dir() else task_root.parent
+    while current != production_root and _is_within(current, production_root):
+        if not _directory_holds_nothing_but_apple_junk(current):
+            break
+        try:
+            shutil.rmtree(current)
+        except OSError:
+            break
+        removed.append(str(current))
+        current = current.parent
+    return removed
+
+
+def _prune_empty_subdirectories(directory: Path, removed: list[str]) -> None:
+    """清掉 ``directory`` 里的空子目录（自底向上，含只被垃圾文件占位的）。
+
+    ⚠️ 只允许对**这条任务自己的目录**调用：它会递归下去，套到别人的任务目录上
+    会把别人正在使用的空目录（新任务生来就是空的三个目录）一起删掉。
+    """
+    try:
+        children = list(directory.iterdir())
+    except OSError:
+        return
+    for child in children:
+        if not child.is_dir():
+            continue
+        _prune_empty_subdirectories(child, removed)
+        if not _directory_holds_nothing_but_apple_junk(child):
+            continue
+        try:
+            shutil.rmtree(child)
+        except OSError:
+            continue
+        removed.append(str(child))
+
+
 def _due_at_or_backfill(conn: sqlite3.Connection, task: sqlite3.Row, column: str, delta: timedelta) -> datetime | None:
     """Use the release-time snapshot; only legacy blank rows are backfilled once."""
     value = str(task[column] or "").strip()
@@ -3581,6 +3664,9 @@ def execute_cleanup(task_id: str) -> dict[str, object]:
             paths.extend(_task_source_output_paths(conn, task_id))
             paths.extend(_task_reserved_resource_paths(conn, task_id))
             deleted, errors = _remove_paths(paths)
+            # "删除剧集"把任务目录整棵删掉后，账号／日期目录可能跟着空掉，一并回收。
+            # 这个函数自带保护：目录还在、或还有内容时它自己会停手。
+            deleted.extend(prune_empty_task_directories(Path(str(task["root_path"]))))
         stamp = now_text(); status = "partial" if errors else "completed"
         if registered:
             conn.execute("UPDATE production_resource_reservations SET status=?, released_at=? WHERE task_id=? AND status='reserved'", ("missing" if errors else "released", stamp, task_id))
@@ -3667,6 +3753,9 @@ def run_due_cleanup() -> dict[str, int]:
             conn.execute("UPDATE production_tasks SET cleanup_status=?, cleaned_at=?, updated_at=? WHERE id=?", (status, stamp, stamp, str(task["id"])))
             if not errors:
                 conn.execute("UPDATE production_files SET status='source_cleaned', thumbnail_path='', missing_scan_count=0, updated_at=? WHERE task_id=?", (stamp, str(task["id"])))
+                # 原素材一清空，素材／剧集／账号／日期 就成了空壳；收尾时顺手回收，
+                # 回收到的目录一起写进这次清理记录，方便回溯"什么被删了"。
+                deleted.extend(prune_empty_task_directories(Path(str(task["root_path"]))))
             conn.execute("INSERT INTO cleanup_records VALUES (?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex, str(task["id"]), "scheduled_raw", status, json.dumps(deleted, ensure_ascii=False), json.dumps(["素材登记信息、账号、剧集、发布时间、发布地址、收益和爆款关联"], ensure_ascii=False), "\n".join(errors), stamp, stamp))
             raw_count += 1
         conn.commit()
