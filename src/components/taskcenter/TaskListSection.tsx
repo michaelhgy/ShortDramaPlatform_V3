@@ -525,6 +525,20 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                       </span>
                       <span className="text-slate-300 font-light text-xs shrink-0">×</span>
                       <span className="font-black text-xs text-[#1A1D2E] truncate">《{group.dramaName}》</span>
+
+                      {/* 此刻正在做这个组的执行器，紧跟在剧名后面。
+                          一个组可以同时被 2~3 个执行器处理（调度每 0.5 秒同时尝试派模板/成片/导出），
+                          所以这里是清单，有几个显示几个；都没在跑就一个都不出现。 */}
+                      {group.activeExecutors.map((executor) => (
+                        <span
+                          key={executor}
+                          className="flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-1.5 py-0.5 shrink-0"
+                        >
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                          {EXECUTOR_LABEL[executor]}
+                        </span>
+                      ))}
+
                       {allDone && group.abnormalCount === 0 && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold shrink-0">
                           全部完成
@@ -566,22 +580,6 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                         {remaining > 0 && <span className="h-full bg-indigo-500" style={{ width: `${remaining}%` }} />}
                       </span>
                     </div>
-
-                    {/* 色条上方：此刻正在做这个组的执行器。有几个显示几个，没有就整行不占位。
-                        一个组可以同时被 2~3 个执行器处理（调度每 0.5 秒同时尝试派模板/成片/导出）。 */}
-                    {group.activeExecutors.length > 0 && (
-                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                        {group.activeExecutors.map((executor) => (
-                          <span
-                            key={executor}
-                            className="flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-1.5 py-0.5"
-                          >
-                            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                            {EXECUTOR_LABEL[executor]}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
