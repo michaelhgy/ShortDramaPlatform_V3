@@ -96,13 +96,17 @@ function toMaterialRow(task: TaskItem): MaterialRow {
   }
 
   if (videoStatus === 'running') {
+    // 导出中的百分比拿不到真实值（后端对导出尝试统一给 0），显示"0%"会让人以为卡住了。
+    // 改说后端真实记录的导出阶段，那个是准的。
+    const phase = exportPhaseLabel(task.videoStage.rawStatus);
+    const hasRealProgress = (task.videoStage.progress ?? 0) > 0;
     return {
       task,
       sequence: task.sequenceNo ?? 0,
       statusWord: 'exporting',
-      statusText: `导出中 ${task.videoStage.progress ?? 0}%`,
-      progress: task.videoStage.progress ?? 0,
-      detail: exportPhaseLabel(task.videoStage.rawStatus) || (task.durationSeconds > 0 ? `已耗时 ${taskElapsedLabel(task.durationSeconds)}` : ''),
+      statusText: hasRealProgress ? `导出中 ${task.videoStage.progress}%` : (phase ? `导出中 · ${phase}` : '导出中'),
+      progress: hasRealProgress ? (task.videoStage.progress ?? 0) : null,
+      detail: task.durationSeconds > 0 ? `已耗时 ${taskElapsedLabel(task.durationSeconds)}` : '',
     };
   }
 
@@ -155,14 +159,18 @@ interface DramaGroup {
   templateAbnormal: boolean;
   runningCount: number;
   /** 此刻真正在做这个组的执行器（可能同时有 2~3 个，也可能一个都没有）。 */
-  activeExecutors: Array<'template' | 'final' | 'export'>;
+  activeExecutors: Array<'template' | 'final' | 'export' | 'template_export'>;
+  /** 模板是否已经彻底做完（草稿+导出都完成）。组头的"全部完成"必须看它，
+   *  否则模板还在导出就敢写"全部完成"。 */
+  templateSettled: boolean;
   firstCreatedAt: string;
 }
 
-const EXECUTOR_LABEL: Record<'template' | 'final' | 'export', string> = {
+const EXECUTOR_LABEL: Record<'template' | 'final' | 'export' | 'template_export', string> = {
   template: '模板生成中',
   final: '成片生成中',
   export: '视频导出中',
+  template_export: '模板导出中',
 };
 
 function buildGroup(item: TaskItem, rows: TaskItem[]): DramaGroup {
@@ -185,10 +193,19 @@ function buildGroup(item: TaskItem, rows: TaskItem[]): DramaGroup {
 
   // 一个组可以用三个执行器同时干活（调度每 0.5 秒同时尝试派模板/成片/导出）。
   // 所以这里是"正在做这个组的执行器清单"，不是单个执行器。
-  const activeExecutors: Array<'template' | 'final' | 'export'> = [];
+  // 关键：模板的导出也归"视频导出器"，但它属于模板阶段，必须报「模板导出中」，
+  // 否则用户会以为成片在跑（2026-09-19 实机截图发现的问题）。
+  const activeExecutors: Array<'template' | 'final' | 'export' | 'template_export'> = [];
+  const templateVideoRunning = Boolean(templateTask) && templateTask!.videoStage.status === 'running';
   if (templateTask && templateTask.draftStage.status === 'running') activeExecutors.push('template');
+  if (templateVideoRunning) activeExecutors.push('template_export');
   if (materialRows.some((row) => row.statusWord === 'drafting')) activeExecutors.push('final');
   if (materialRows.some((row) => row.statusWord === 'exporting')) activeExecutors.push('export');
+
+  // 模板没做完就不算"全部完成"。模板草稿已生成但视频还在排队/导出，都属于没做完。
+  const templateSettled = !templateTask
+    ? true
+    : templateTask.draftStage.status === 'done' && templateTask.videoStage.status === 'done';
 
   const scheduled = item.scheduledPublishTime || '';
   const parsed = scheduled ? Date.parse(scheduled) : Number.NaN;
@@ -210,6 +227,7 @@ function buildGroup(item: TaskItem, rows: TaskItem[]): DramaGroup {
     templateAbnormal,
     runningCount,
     activeExecutors,
+    templateSettled,
     firstCreatedAt: rows.reduce((earliest, task) => (earliest === '' || task.createdAt < earliest ? task.createdAt : earliest), ''),
   };
 }
@@ -494,7 +512,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
           groups.map((group, index) => {
             const isExpanded = expandedGroupKey === group.key;
             const { exported, remaining } = railSegments(group);
-            const allDone = group.materialCount > 0 && group.videoCount === group.materialCount;
+            const allDone = group.materialCount > 0 && group.videoCount === group.materialCount && group.templateSettled;
 
             return (
               <div
