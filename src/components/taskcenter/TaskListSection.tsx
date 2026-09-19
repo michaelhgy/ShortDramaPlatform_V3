@@ -8,21 +8,17 @@ import {
   Sparkles, 
   Clock, 
   AlertTriangle, 
-  CheckCircle2, 
   Bug, 
   ChevronDown, 
   ChevronUp, 
   Info,
   Check,
-  Play,
-  ArrowRight,
-  Flame,
-  AlertCircle
+  ArrowRight
 } from 'lucide-react';
 import { TaskItem, TaskCategory } from './taskCenterTypes';
 import { getTaskCenterActions } from './taskCenterActionPolicy';
 import { formatTaskDateTime } from './taskCenterFormat';
-import { taskElapsedLabel } from '../../utils/duration';
+import { formatElapsedSeconds, taskElapsedLabel } from '../../utils/duration';
 
 interface TaskListSectionProps {
   tasks: TaskItem[];
@@ -132,121 +128,6 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
     setExpandedTaskId(prev => (prev === id ? null : id));
   };
 
-  /**
-   * Helper to derive the single primary focal state of the task
-   * so users can scan and immediately understand what's happening right now.
-   */
-  const getTaskPrimaryFocalState = (task: TaskItem) => {
-    const { draftStage, videoStage, status } = task;
-
-    // 1. Draft abnormal states
-    if (draftStage.status === 'timeout') {
-      return {
-        label: '草稿生成超时',
-        subtext: '耗时超出设定阈值',
-        phase: 'draft' as const,
-        tone: 'danger' as const,
-        icon: AlertTriangle,
-      };
-    }
-    if (draftStage.status === 'error') {
-      return {
-        label: '草稿生成中断',
-        subtext: '装配过程遇到异常',
-        phase: 'draft' as const,
-        tone: 'danger' as const,
-        icon: AlertCircle,
-      };
-    }
-
-    // 2. Video abnormal states
-    if (videoStage.status === 'timeout') {
-      return {
-        label: task.taskCategory === 'template' && task.hasCompletedFirstExport
-          ? '新版本导出超时（正式模板已保留）'
-          : '视频导出超时',
-        subtext: task.taskCategory === 'template' && task.hasCompletedFirstExport
-          ? '当前正式模板视频仍可正常使用'
-          : '剪映渲染响应挂起',
-        phase: 'video' as const,
-        tone: 'danger' as const,
-        icon: AlertTriangle,
-      };
-    }
-    if (videoStage.status === 'error') {
-      return {
-        label: task.taskCategory === 'template' && task.hasCompletedFirstExport
-          ? '新版本导出失败（正式模板已保留）'
-          : '视频导出失败',
-        subtext: task.taskCategory === 'template' && task.hasCompletedFirstExport
-          ? '当前正式模板视频仍可正常使用'
-          : '编码渲染中断',
-        phase: 'video' as const,
-        tone: 'danger' as const,
-        icon: AlertCircle,
-      };
-    }
-
-    // 3. Actively Running States
-    if (videoStage.status === 'running') {
-      return {
-        label: `正在导出视频 ${videoStage.progress || task.progress}%`,
-        subtext: task.durationSeconds > 0 ? `已耗时 ${taskElapsedLabel(task.durationSeconds)}` : '剪映硬件编码中',
-        phase: 'video' as const,
-        tone: 'running' as const,
-        icon: Video,
-      };
-    }
-    if (draftStage.status === 'running') {
-      return {
-        label: `正在组装草稿 ${draftStage.progress || task.progress}%`,
-        subtext: task.durationSeconds > 0 ? `已耗时 ${taskElapsedLabel(task.durationSeconds)}` : '工程组装中',
-        phase: 'draft' as const,
-        tone: 'running' as const,
-        icon: RefreshCw,
-      };
-    }
-
-    // 4. Waiting states
-    if (draftStage.status === 'done' && videoStage.status === 'waiting') {
-      return {
-        label: '草稿就绪 · 等待首次导出',
-        subtext: '已加入视频导出器排队',
-        phase: 'video' as const,
-        tone: 'waiting_export' as const,
-        icon: Clock,
-      };
-    }
-    if (draftStage.status === 'waiting') {
-      return {
-        label: '等待草稿生成',
-        subtext: '排队等待调度执行',
-        phase: 'draft' as const,
-        tone: 'waiting_draft' as const,
-        icon: Clock,
-      };
-    }
-
-    // 5. Completed
-    if (status === 'done' || (draftStage.status === 'done' && videoStage.status === 'done')) {
-      return {
-        label: '全流程已完成',
-        subtext: task.durationSeconds > 0 ? `总耗时 ${taskElapsedLabel(task.durationSeconds)}` : '产物已就绪',
-        phase: 'done' as const,
-        tone: 'done' as const,
-        icon: CheckCircle2,
-      };
-    }
-
-    return {
-      label: '等待中',
-        subtext: task.durationSeconds > 0 ? taskElapsedLabel(task.durationSeconds) : '尚未开始',
-      phase: 'draft' as const,
-      tone: 'neutral' as const,
-      icon: Clock,
-    };
-  };
-
   return (
     <div className="space-y-3.5">
       {/* Section Header */}
@@ -261,15 +142,20 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
           </span>
         </div>
 
-        {/* Legend */}
+        {/* Legend：图例必须解释卡片上真实存在的颜色，否则就是摆设。
+            卡片现在的颜色语义 = 蓝=草稿在跑 / 绿=导出在跑或已完成 / 红=异常 / 浅灰=还没轮到。 */}
         <div className="hidden lg:flex items-center gap-3 text-[11px] text-[#64748B]">
           <span className="flex items-center gap-1.5 font-medium">
+            <span className="w-2 h-2 rounded-full bg-sky-500" />
+            草稿装配
+          </span>
+          <span className="flex items-center gap-1.5 font-medium">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            聚焦当前活跃阶段
+            剪映导出
           </span>
           <span className="flex items-center gap-1.5 font-medium">
             <span className="w-2 h-2 rounded-full bg-rose-500" />
-            异常精准定位与恢复
+            异常
           </span>
         </div>
       </div>
@@ -440,7 +326,6 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
 
             // Draft Stage conditions
             const draftStatus = task.draftStage.status;
-            const isDraftWaiting = draftStatus === 'waiting';
             const isDraftRunning = draftStatus === 'running';
             const isDraftDone = draftStatus === 'done';
             const isDraftAbnormal = draftStatus === 'error' || draftStatus === 'timeout';
@@ -448,358 +333,254 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
             // Video Stage conditions
             const videoStatus = task.videoStage.status;
             const videoPhaseLabel = exportPhaseLabel(task.videoStage.rawStatus);
-            const isVideoIdle = videoStatus === 'idle';
             const isVideoWaiting = videoStatus === 'waiting';
             const isVideoRunning = videoStatus === 'running';
             const isVideoDone = videoStatus === 'done';
             const isVideoAbnormal = videoStatus === 'error' || videoStatus === 'timeout';
-
-            // Current Focal State
-            const focalState = getTaskPrimaryFocalState(task);
-            const FocalIcon = focalState.icon;
 
             const allowedActions = getTaskCenterActions(task);
             const canRegenerate = allowedActions.includes('regenerate');
             const canRetry = allowedActions.includes('retry');
             const canReExport = allowedActions.includes('reExport');
 
+            // 三个阶段耗时相加得到这张卡的真实总耗时。原来卡片上下两处
+            // 分别写"总耗时"和"已执行"，它们说的其实是同一件事，这里是唯一出处。
+            const totalSeconds = (task.draftStage.durationSeconds ?? 0) + (task.videoStage.durationSeconds ?? 0);
+
+            // 卡片高度依赖这两条轨道的语义，必须先算清楚：
+            // 「已完成」是 100%，「正在跑」用真实进度，「排队/未开始」留一条浅灰待办轨。
+            const draftPercent = isDraftDone ? 100 : isDraftRunning ? (task.draftStage.progress ?? 0) : 0;
+            const draftTrackClass = isDraftAbnormal
+              ? 'bg-rose-500'
+              : isDraftRunning
+                ? 'bg-sky-500'
+                : isDraftDone
+                  ? 'bg-slate-700'
+                  : 'bg-transparent';
+            const videoPercent = isVideoDone ? 100 : isVideoRunning ? (task.videoStage.progress ?? 0) : isVideoWaiting ? 15 : 0;
+            const videoTrackClass = isVideoAbnormal
+              ? 'bg-rose-500'
+              : isVideoRunning
+                ? 'bg-emerald-500'
+                : isVideoDone
+                  ? 'bg-emerald-500'
+                  : isVideoWaiting
+                    ? 'bg-amber-400'
+                    : 'bg-transparent';
+            const draftValueLabel = isDraftAbnormal
+              ? '异常'
+              : isDraftRunning
+                ? `${task.draftStage.progress ?? 0}%`
+                : isDraftDone
+                  ? '已完成'
+                  : '等待';
+            const videoValueLabel = videoPhaseLabel
+              || (isVideoAbnormal ? '异常' : isVideoRunning ? `${task.videoStage.progress ?? 0}%` : isVideoDone ? '已完成' : isVideoWaiting ? '排队' : '未开始');
+
             return (
               <div
                 key={task.id}
-                className={`rounded-2xl border transition-all duration-150 overflow-hidden bg-white ${
+                className={`rounded-2xl border bg-white transition-all duration-150 overflow-hidden ${
                   isOverallAbnormal
                     ? 'border-rose-300 ring-2 ring-rose-500/10 shadow-xs'
                     : isOverallRunning
                     ? 'border-emerald-400 ring-2 ring-emerald-500/10 shadow-xs'
-                    : isOverallDone
-                    ? 'border-black/[0.06] hover:border-black/[0.12] shadow-2xs'
                     : 'border-black/[0.06] hover:border-black/[0.12]'
                 }`}
               >
-                {/* Main Card Header & Focal Line */}
-                <div className="p-4 space-y-3">
-                  {/* Top Row: Identity Anchor (Left) + Focal Status Spotlight (Middle/Right) + Schedule/Priority (Right) */}
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                    {/* Left: Task Identity Header */}
-                    <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-                      {/* Category Tag */}
+                <div className="px-3.5 py-2.5 space-y-2">
+                  {/* 第 1 行：身份 + 发布时间 + 优先级（同一行讲完"我是谁"） */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
                       {isTemplate ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-black bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs shrink-0">
-                          <Sparkles className="w-3 h-3 text-amber-700" />
+                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-black bg-amber-100 text-amber-900 border border-amber-300/80 shrink-0">
+                          <Sparkles className="w-2.5 h-2.5 text-amber-700" />
                           模板
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-black bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-2xs shrink-0">
-                          <Film className="w-3 h-3 text-indigo-600" />
+                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-black bg-indigo-50 text-indigo-800 border border-indigo-200 shrink-0">
+                          <Film className="w-2.5 h-2.5 text-indigo-600" />
                           成片
                         </span>
                       )}
 
-                      {/* Clear, High-Contrast Typography Hierarchy */}
-                      <div className="flex items-center gap-2 flex-wrap min-w-0">
-                        <span className="font-extrabold text-sm text-slate-800 tracking-tight">
-                          {task.accountName}
+                      <span className="font-extrabold text-xs text-slate-800 tracking-tight truncate max-w-[130px]">
+                        {task.accountName}
+                      </span>
+                      <span className="text-slate-300 font-light text-xs">×</span>
+                      <h4 className="font-black text-xs text-[#1A1D2E] tracking-tight truncate max-w-[220px]">
+                        《{task.dramaName}》
+                      </h4>
+
+                      {isFinalVideo && task.materialName ? (
+                        <span className="px-1.5 py-0.5 rounded-md bg-slate-900 text-white font-mono font-extrabold text-[10px] shrink-0">
+                          {task.materialName}
                         </span>
-                        <span className="text-slate-300 font-light">×</span>
-                        <h4 className="font-black text-sm text-[#1A1D2E] tracking-tight">
-                          《{task.dramaName}》
-                        </h4>
-
-                        {/* Material Specificity */}
-                        {isFinalVideo && task.materialName ? (
-                          <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-extrabold text-xs shadow-2xs">
-                            {task.materialName}
-                          </span>
-                        ) : isTemplate ? (
-                          <span className="text-[11px] text-amber-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-bold">
-                            通用母本草稿
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Right Meta Anchor: Publish Time & Schedule Priority */}
-                    <div className="flex items-center gap-2 self-start lg:self-auto shrink-0">
-                      {/* Scheduled Time */}
-                      <div className="flex items-center gap-1 text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-xl border border-black/[0.04]">
-                        <Clock className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{formatTaskDateTime(task.scheduledPublishTime)} 发布</span>
-                      </div>
-
-                      {/* Priority Badge */}
-                      {task.priorityTag?.includes('模板') || task.priorityTag?.includes('最高') ? (
-                        <span className="text-[11px] font-black px-2.5 py-1 rounded-xl bg-amber-500/15 text-amber-950 border border-amber-500/30">
-                          ⭐ 模板最高优先
+                      ) : isTemplate ? (
+                        <span className="text-[10px] text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200 font-bold shrink-0">
+                          通用母本
                         </span>
-                      ) : (
-                        <span className="text-[11px] font-black px-2.5 py-1 rounded-xl bg-[#1A1D2E] text-[#DDFD00]">
-                          优先 #{task.priorityRank}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Middle Row: The Unified Stage Progress Strip (Visual Flow Architecture) */}
-                  <div className="rounded-xl bg-[#F8FAFC] border border-black/[0.04] p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    {/* Left Spotlight Box: Single Primary Focal State */}
-                    <div className="flex items-center gap-3 min-w-[260px]">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
-                        focalState.tone === 'danger'
-                          ? 'bg-rose-500 text-white animate-pulse'
-                          : focalState.tone === 'running'
-                          ? 'bg-emerald-500 text-white'
-                          : focalState.tone === 'done'
-                          ? 'bg-[#1A1D2E] text-[#DDFD00]'
-                          : focalState.tone === 'waiting_export'
-                          ? 'bg-amber-400 text-amber-950'
-                          : 'bg-slate-200 text-slate-600'
-                      }`}>
-                        <FocalIcon className={`w-5 h-5 ${focalState.tone === 'running' ? 'animate-spin' : ''}`} />
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-xs font-black tracking-tight ${
-                            focalState.tone === 'danger'
-                              ? 'text-rose-700'
-                              : focalState.tone === 'running'
-                              ? 'text-emerald-800'
-                              : focalState.tone === 'done'
-                              ? 'text-slate-900'
-                              : focalState.tone === 'waiting_export'
-                              ? 'text-amber-900'
-                              : 'text-slate-700'
-                          }`}>
-                            {focalState.label}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[#64748B] truncate mt-0.5">
-                          {focalState.subtext}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Right Flow Stepper (Two-Phase Integrated Track) */}
-                    <div className="flex-1 max-w-lg flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-black/[0.05]">
-                      {/* Step 1: 草稿装配 */}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className={`font-extrabold flex items-center gap-1 truncate ${
-                            isDraftAbnormal
-                              ? 'text-rose-700'
-                              : isDraftRunning
-                              ? 'text-emerald-800'
-                              : isDraftDone
-                              ? 'text-slate-800'
-                              : 'text-slate-400'
-                          }`}>
-                            {isDraftDone ? (
-                              <Check className="w-3 h-3 text-emerald-600 shrink-0 stroke-[3]" />
-                            ) : (
-                              <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
-                            )}
-                            1. 草稿装配
-                          </span>
-                          <span className="font-mono text-[10px] text-slate-400 font-bold shrink-0">
-                            {isDraftAbnormal ? '异常' : isDraftRunning ? `${task.draftStage.progress}%` : isDraftDone ? '已完成' : '等待'}
-                          </span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-300 ${
-                              isDraftAbnormal
-                                ? 'bg-rose-500'
-                                : isDraftRunning
-                                ? 'bg-emerald-500'
-                                : isDraftDone
-                                ? 'bg-slate-700'
-                                : 'bg-transparent'
-                            }`}
-                            style={{ width: isDraftDone ? '100%' : `${task.draftStage.progress || 0}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Stepper Arrow */}
-                      <div className={`shrink-0 px-0.5 ${isDraftDone ? 'text-slate-600' : 'text-slate-300'}`}>
-                        <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-                      </div>
-
-                      {/* Step 2: 视频导出 */}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className={`font-extrabold flex items-center gap-1 truncate ${
-                            isVideoAbnormal
-                              ? 'text-rose-700'
-                              : isVideoRunning
-                              ? 'text-emerald-800'
-                              : isVideoDone
-                              ? 'text-slate-800'
-                              : 'text-slate-400'
-                          }`}>
-                            {isVideoDone ? (
-                              <Check className="w-3 h-3 text-emerald-600 shrink-0 stroke-[3]" />
-                            ) : (
-                              <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
-                            )}
-                            2. 剪映导出
-                          </span>
-                          <span className="font-mono text-[10px] text-slate-400 font-bold shrink-0">
-                            {videoPhaseLabel || (isVideoAbnormal ? '异常' : isVideoRunning ? `${task.videoStage.progress}%` : isVideoDone ? '已完成' : isVideoWaiting ? '排队' : '未开始')}
-                          </span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-300 ${
-                              isVideoAbnormal
-                                ? 'bg-rose-500'
-                                : isVideoRunning
-                                ? 'bg-emerald-500'
-                                : isVideoDone
-                                ? 'bg-[#1A1D2E]'
-                                : isVideoWaiting
-                                ? 'bg-amber-400'
-                                : 'bg-transparent'
-                            }`}
-                            style={{ width: isVideoDone ? '100%' : `${task.videoStage.progress || (isVideoWaiting ? 15 : 0)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Abnormal Callout Alert (Displays clearly when something failed or timed out) */}
-                  {isOverallAbnormal && (
-                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 animate-in fade-in">
-                      <div className="flex items-start gap-2 text-xs">
-                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-extrabold text-rose-900">
-                            {isDraftAbnormal
-                              ? `【草稿阶段异常】${task.draftStage.errorDetail || '组装中断或超时'}`
-                              : `【视频阶段异常】${task.videoStage.errorDetail || '剪映渲染中断或超时'}`}
-                          </p>
-                          <p className="text-[11px] text-rose-700 mt-0.5">
-                            {isDraftAbnormal
-                              ? isTemplate
-                                ? '草稿异常，请点击右侧【重新生成】重新构建模板'
-                                : '草稿异常，请点击右侧【重试】重新调度'
-                              : isTemplate && task.hasCompletedFirstExport
-                                ? '之前的正式模板视频已保留并可使用；这次新版本导出未成功，可按需点击右侧【重新导出】。'
-                                : '草稿已完好保留，仅需点击右侧【重新导出】即可重新渲染'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Right Action Button Inside Alert for immediate recovery */}
-                      <div className="shrink-0 flex items-center gap-1.5 self-end sm:self-auto">
-                        {canRegenerate && (
-                          <button
-                            onClick={() => onRegenerateDraft(task)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-xs font-black text-white shadow-xs transition-all active:scale-95 cursor-pointer"
-                          >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            <span>重新生成</span>
-                          </button>
-                        )}
-
-                        {canRetry && (
-                          <button
-                            onClick={() => onRetryTask(task)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-black text-white shadow-xs transition-all active:scale-95 cursor-pointer"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>重试</span>
-                          </button>
-                        )}
-
-                        {canReExport && (
-                          <button
-                            onClick={() => onReExportVideo(task)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1A1D2E] hover:bg-black text-xs font-black text-[#DDFD00] shadow-xs transition-all active:scale-95 cursor-pointer"
-                          >
-                            <Video className="w-3.5 h-3.5" />
-                            <span>重新导出</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Bottom Row: Footnote Stats & Secondary Actions */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5 text-xs text-[#64748B]">
-                    {/* Left Timing Narrative */}
-                    <div className="flex items-center gap-2.5 text-[11px] flex-wrap">
-                      {isOverallRunning ? (
-                        <div className="flex items-center gap-1.5 font-bold text-emerald-800">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                          <span>已执行: <strong className="font-mono text-[#1A1D2E]">{taskElapsedLabel(task.durationSeconds, task.durationFormatted)}</strong></span>
-                        </div>
-                      ) : isOverallDone ? (
-                        <div className="flex items-center gap-2 text-slate-700 font-medium">
-                          <span>总耗时: <strong className="font-mono font-bold text-[#1A1D2E]">{taskElapsedLabel(task.durationSeconds, task.durationFormatted)}</strong></span>
-                          {task.fileSizeMb && (
-                            <>
-                              <span>·</span>
-                              <span>产物文件: <strong className="font-mono text-emerald-700 font-bold">{task.fileSizeMb.toFixed(1)}MB</strong></span>
-                            </>
-                          )}
-                        </div>
-                      ) : !isOverallAbnormal ? (
-                        <div className="flex items-center gap-1 text-slate-500 font-medium">
-                          <span>{task.durationSeconds > 0 ? taskElapsedLabel(task.durationSeconds) : '尚未开始'}</span>
-                        </div>
                       ) : null}
                     </div>
 
-                    {/* Right Footnote Actions (Only for completed or non-abnormal tasks) */}
-                    <div className="flex items-center gap-2 shrink-0 ml-auto">
-                      {/* Completed Task Options */}
-                      {canRegenerate && isTemplate && !isOverallAbnormal && (
-                        <>
-                          <button
-                            onClick={() => onRegenerateDraft(task)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 transition-all active:scale-95 cursor-pointer"
-                          >
-                            <RefreshCw className="w-3 h-3 text-slate-500" />
-                            <span>重新生成</span>
-                          </button>
-                          <button
-                            onClick={() => onReExportVideo(task)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 transition-all active:scale-95 cursor-pointer"
-                          >
-                            <Video className="w-3 h-3 text-slate-500" />
-                            <span>重新导出</span>
-                          </button>
-                        </>
+                    <div className="flex items-center gap-1.5 shrink-0 text-[10px]">
+                      <span className="flex items-center gap-1 font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md border border-black/[0.04]">
+                        <Clock className="w-2.5 h-2.5 text-slate-500" />
+                        {formatTaskDateTime(task.scheduledPublishTime)}
+                      </span>
+
+                      {task.priorityTag?.includes('模板') || task.priorityTag?.includes('最高') ? (
+                        <span className="font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-950 border border-amber-500/30">
+                          ⭐ 模板优先
+                        </span>
+                      ) : (
+                        <span className="font-black px-1.5 py-0.5 rounded-md bg-[#1A1D2E] text-[#DDFD00] font-mono">
+                          #{task.priorityRank}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 第 2 行：两阶段流程条（草稿装配 → 剪映导出）——状态与进度只在这里说一次 */}
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-[132px] shrink-0 space-y-1">
+                      <div className="flex items-center justify-between gap-1 text-[10px]">
+                        <span className={`font-extrabold flex items-center gap-0.5 truncate ${
+                          isDraftAbnormal ? 'text-rose-700' : isDraftRunning ? 'text-sky-800' : isDraftDone ? 'text-slate-800' : 'text-slate-400'
+                        }`}>
+                          {isDraftDone ? (
+                            <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0 stroke-[3]" />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
+                          )}
+                          1.草稿装配
+                        </span>
+                        <span className={`font-mono font-bold shrink-0 ${
+                          isDraftAbnormal ? 'text-rose-600' : isDraftDone ? 'text-slate-500' : isDraftRunning ? 'text-sky-700' : 'text-slate-400'
+                        }`}>
+                          {draftValueLabel}
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-300 ${draftTrackClass}`} style={{ width: `${draftPercent}%` }} />
+                      </div>
+                    </div>
+
+                    <ArrowRight className={`w-3 h-3 shrink-0 ${isDraftDone ? 'text-slate-500' : 'text-slate-300'}`} />
+
+                    <div className="flex-1 min-w-[132px] space-y-1">
+                      <div className="flex items-center justify-between gap-1 text-[10px]">
+                        <span className={`font-extrabold flex items-center gap-0.5 truncate ${
+                          isVideoAbnormal ? 'text-rose-700' : isVideoRunning ? 'text-emerald-800' : isVideoDone ? 'text-slate-800' : 'text-slate-400'
+                        }`}>
+                          {isVideoDone ? (
+                            <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0 stroke-[3]" />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
+                          )}
+                          2.剪映导出
+                        </span>
+                        <span className={`font-mono font-bold shrink-0 ${
+                          isVideoAbnormal ? 'text-rose-600' : isVideoDone ? 'text-slate-500' : isVideoRunning ? 'text-emerald-700' : isVideoWaiting ? 'text-amber-700' : 'text-slate-400'
+                        }`}>
+                          {videoValueLabel}
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-300 ${videoTrackClass}`} style={{ width: `${videoPercent}%` }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 异常摘要（只有真异常才出现，保留原来那句可执行的提示） */}
+                  {isOverallAbnormal && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-rose-800 bg-rose-50 border border-rose-200 rounded-lg px-2 py-1">
+                      <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                      <span className="font-extrabold shrink-0">
+                        {isDraftAbnormal ? '草稿异常' : '视频异常'}
+                      </span>
+                      <span className="truncate">
+                        {isDraftAbnormal
+                          ? (task.draftStage.errorDetail || '组装中断或超时')
+                          : (task.videoStage.errorDetail || '剪映渲染中断或超时')}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* 第 3 行：耗时/产物（只说一次）+ 操作 */}
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    <div className="flex items-center gap-2 text-[10px] text-[#64748B] min-w-0">
+                      {isOverallRunning ? (
+                        <span className="flex items-center gap-1 font-bold text-emerald-800 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          已耗时 <strong className="font-mono text-[#1A1D2E]">{taskElapsedLabel(task.durationSeconds, task.durationFormatted)}</strong>
+                        </span>
+                      ) : isOverallDone ? (
+                        <span className="shrink-0">
+                          总耗时 <strong className="font-mono font-bold text-[#1A1D2E]">{totalSeconds > 0 ? formatElapsedSeconds(totalSeconds) : taskElapsedLabel(task.durationSeconds, task.durationFormatted)}</strong>
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-slate-400">
+                          {totalSeconds > 0 ? `已耗时 ${formatElapsedSeconds(totalSeconds)}` : '尚未开始'}
+                        </span>
                       )}
 
-                      {canReExport && isFinalVideo && !isOverallAbnormal && (
+                      {isOverallDone && task.fileSizeMb ? (
+                        <span className="flex items-center gap-1 shrink-0">
+                          <span className="text-slate-300">·</span>
+                          产物 <strong className="font-mono text-emerald-700 font-bold">{task.fileSizeMb.toFixed(1)}MB</strong>
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {canRegenerate && isTemplate && !isOverallAbnormal && (
+                        <button
+                          onClick={() => onRegenerateDraft(task)}
+                          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 transition-all active:scale-95 cursor-pointer"
+                          title="保留现有模板草稿，重新构建"
+                        >
+                          <RefreshCw className="w-2.5 h-2.5 text-slate-500" />
+                          <span>重新生成</span>
+                        </button>
+                      )}
+
+                      {canReExport && !isOverallAbnormal && (
                         <button
                           onClick={() => onReExportVideo(task)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 transition-all active:scale-95 cursor-pointer"
+                          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-700 transition-all active:scale-95 cursor-pointer"
+                          title="保留现有草稿，重新排入视频导出队列"
                         >
-                          <Video className="w-3 h-3 text-slate-500" />
+                          <Video className="w-2.5 h-2.5 text-slate-500" />
                           <span>重新导出</span>
                         </button>
                       )}
 
-                      {/* Diagnostic Drawer */}
+                      {canRetry && !isOverallAbnormal && (
+                        <button
+                          onClick={() => onRetryTask(task)}
+                          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-[10px] font-bold text-rose-700 transition-all active:scale-95 cursor-pointer"
+                          title="结束当前任务并重新执行"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          <span>重试</span>
+                        </button>
+                      )}
+
                       <button
                         onClick={() => onViewTaskDetail(task)}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-xl hover:bg-slate-100 text-[11px] font-bold text-slate-600 hover:text-[#1A1D2E] transition-all cursor-pointer"
+                        className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-[#1A1D2E] transition-all cursor-pointer"
+                        title="诊断 / 详情"
                       >
-                        <Bug className="w-3 h-3 text-slate-400" />
-                        <span>诊断 / 详情</span>
+                        <Bug className="w-3 h-3" />
                       </button>
 
-                      {/* Expand paths */}
                       <button
                         onClick={() => toggleExpand(task.id)}
-                        className="p-1 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                        className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
                         title={isExpanded ? '收起文件路径' : '展开文件路径'}
                       >
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                       </button>
                     </div>
                   </div>
@@ -807,24 +588,24 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
 
                 {/* Inline Expandable File Path Drawer */}
                 {isExpanded && (
-                  <div className="px-4 pb-3.5 pt-2 border-t border-black/[0.04] bg-slate-50/80 space-y-2 text-xs text-[#64748B] animate-in fade-in duration-100">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                  <div className="px-3.5 pb-2.5 pt-1.5 border-t border-black/[0.04] bg-slate-50/80 space-y-1.5 text-xs text-[#64748B] animate-in fade-in duration-100">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 text-[11px]">
                       {task.materialFullName && (
-                        <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-black/[0.04]">
+                        <div className="flex items-center gap-2 p-1.5 rounded-lg bg-white border border-black/[0.04]">
                           <span className="text-[#64748B] shrink-0 font-medium">源素材:</span>
                           <code className="text-[#1A1D2E] truncate font-mono">{task.materialFullName}</code>
                         </div>
                       )}
 
                       {task.draftPath && (
-                        <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-black/[0.04]">
+                        <div className="flex items-center gap-2 p-1.5 rounded-lg bg-white border border-black/[0.04]">
                           <span className="text-[#64748B] shrink-0 font-medium">剪映草稿:</span>
                           <code className="text-[#1A1D2E] truncate font-mono">{task.draftPath}</code>
                         </div>
                       )}
 
                       {task.outputPath && (
-                        <div className="flex items-center gap-2 p-2 rounded-lg bg-white border border-black/[0.04]">
+                        <div className="flex items-center gap-2 p-1.5 rounded-lg bg-white border border-black/[0.04]">
                           <span className="text-[#64748B] shrink-0 font-medium">成片产物:</span>
                           <code className="text-emerald-700 font-bold truncate font-mono">
                             {task.outputPath} {task.fileSizeMb ? `(${task.fileSizeMb}MB)` : ''}
