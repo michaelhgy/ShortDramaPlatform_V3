@@ -5,6 +5,8 @@ This service owns V2 paths and metadata. It never imports or mutates V1.
 
 from __future__ import annotations
 
+import errno
+
 import hashlib
 import json
 import mimetypes
@@ -45,7 +47,7 @@ DATABASE_INITIALIZATION_LOCK = threading.Lock()
 # 版本一致时 _initialize_connection 完全跳过那套结构脚本——它在 250MB 库上要十几到几十秒，
 # 期间独占写锁，会把同时打开的页面请求全部堵死
 # （表现为"启动慢 / 刷新不出来 / database is locked"）。
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 # 变更日志（v2_change_events）是"数据变了就通知前端刷新"的游标表，**不是审计日志**。
 # 它由 30 多个触发器自动写入，长期累积会拖慢每一次写操作
 # （2026-09-17 故障：累积到 343 万行，把整个数据库拖垮）。
@@ -56,6 +58,9 @@ SCHEMA_VERSION = 3
 # 没有任何历史查询用它，也**与"爆款素材匹配"无关**（爆款靠磁盘上的「爆款/账号日」目录 +
 # 模板选剧算法，一条变更事件都没参与）。所以留 5 万条纯属占地方。
 CHANGE_EVENT_RETENTION = 1_000
+# 文件删除：可重试的失败（被占用/拒绝访问）按次数退避重试，仍失败只影响该文件本身。
+_REMOVE_RETRY_ATTEMPTS = 3
+_REMOVE_RETRY_DELAY_SECONDS = 0.4
 # 高频裁剪的节流间隔：每 30 秒的清理循环里最多每 10 分钟裁一次，
 # 既避免"只在服务启动时裁"导致长期贴着上限，也不会让裁剪本身频繁抢写锁。
 CHANGE_EVENT_PRUNE_INTERVAL_SECONDS = 600
@@ -754,6 +759,10 @@ def _initialize_connection() -> sqlite3.Connection:
         "CREATE INDEX IF NOT EXISTS idx_production_tasks_account_drama_dates ON production_tasks(account_name, drama_name, planned_publish_at, actual_release_time);"
         "CREATE INDEX IF NOT EXISTS idx_v2_revenue_video_links_video ON v2_revenue_video_links(account_id, source_video_id);"
         "CREATE INDEX IF NOT EXISTS idx_v2_change_events_id ON v2_change_events(id);"
+        # 到期清理改索引查询（2026-09-19）：run_due_cleanup 每 30 秒要挑出"已发布 + 还没清完 +
+        # 到点了"的任务，没有索引就每次全表扫 production_tasks。现在 108 行无所谓，
+        # 攒到几千行就是每 30 秒扫一遍。
+        "CREATE INDEX IF NOT EXISTS idx_production_tasks_cleanup_due ON production_tasks(release_status, cleanup_status, process_cleanup_at, raw_cleanup_at);"
         "CREATE INDEX IF NOT EXISTS idx_resource_index_identity ON resource_index(file_identity);"
         "CREATE INDEX IF NOT EXISTS idx_wechat_index_keywords_drama ON wechat_index_keywords(drama_id, role, enabled);"
         "CREATE INDEX IF NOT EXISTS idx_wechat_index_observations_keyword_date ON wechat_index_observations(keyword_id, ymd);"
@@ -764,100 +773,131 @@ def _initialize_connection() -> sqlite3.Connection:
     # Keep trigger creation idempotent. Dropping a trigger on every connection
     # needlessly takes a schema write lock and races with executor updates.
     conn.executescript("""
+        DROP TRIGGER IF EXISTS v2_evt_production_task_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_production_task_update AFTER UPDATE ON production_tasks BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,updated_at) VALUES ('production_task_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_production_task_insert;
         CREATE TRIGGER IF NOT EXISTS v2_evt_production_task_insert AFTER INSERT ON production_tasks BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,updated_at) VALUES ('production_task_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_material_change;
         CREATE TRIGGER IF NOT EXISTS v2_evt_material_change AFTER INSERT ON production_files BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,material_id,updated_at) VALUES ('material_changed',NEW.task_id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_material_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_material_update AFTER UPDATE ON production_files BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,material_id,updated_at) VALUES ('material_changed',NEW.task_id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_template_change;
         CREATE TRIGGER IF NOT EXISTS v2_evt_template_change AFTER INSERT ON template_jobs BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,task_id,updated_at) VALUES ('template_changed',NEW.task_id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_template_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_template_update AFTER UPDATE ON template_jobs BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,task_id,updated_at) VALUES ('template_changed',NEW.task_id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_video_change;
         CREATE TRIGGER IF NOT EXISTS v2_evt_video_change AFTER INSERT ON production_video_tasks BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,task_id,video_id,updated_at) VALUES ('video_changed',NEW.task_id,NEW.id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_video_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_video_update AFTER UPDATE ON production_video_tasks BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,task_id,video_id,updated_at) VALUES ('video_changed',NEW.task_id,NEW.id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_export_job_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_export_job_update AFTER UPDATE ON export_jobs BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,task_id,updated_at) VALUES ('video_export_changed',NEW.production_task_id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_export_attempt_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_export_attempt_update AFTER UPDATE ON export_attempts BEGIN
           INSERT INTO v2_change_events(change_type,production_task_id,task_id,updated_at)
           SELECT 'video_export_changed', j.production_task_id, NEW.id, NEW.updated_at FROM export_jobs j WHERE j.id=NEW.job_id;
         END;
+        DROP TRIGGER IF EXISTS v2_evt_executor_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_executor_update AFTER UPDATE ON executor_controls BEGIN
           INSERT INTO v2_change_events(change_type,task_id,updated_at) VALUES ('task_changed',NEW.current_task_id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_account_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_account_update AFTER UPDATE ON accounts BEGIN
           INSERT INTO v2_change_events(change_type,account_id,updated_at) VALUES ('account_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_account_insert;
         CREATE TRIGGER IF NOT EXISTS v2_evt_account_insert AFTER INSERT ON accounts BEGIN
           INSERT INTO v2_change_events(change_type,account_id,updated_at) VALUES ('account_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_account_delete;
         CREATE TRIGGER IF NOT EXISTS v2_evt_account_delete AFTER DELETE ON accounts BEGIN
           INSERT INTO v2_change_events(change_type,account_id,updated_at) VALUES ('account_changed',OLD.id,OLD.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_drama_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_drama_update AFTER UPDATE ON dramas BEGIN
           INSERT INTO v2_change_events(change_type,drama_id,updated_at) VALUES ('drama_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_drama_insert;
         CREATE TRIGGER IF NOT EXISTS v2_evt_drama_insert AFTER INSERT ON dramas BEGIN
           INSERT INTO v2_change_events(change_type,drama_id,updated_at) VALUES ('drama_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_drama_delete;
         CREATE TRIGGER IF NOT EXISTS v2_evt_drama_delete AFTER DELETE ON dramas BEGIN
           INSERT INTO v2_change_events(change_type,drama_id,updated_at) VALUES ('drama_changed',OLD.id,OLD.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_theater_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_theater_update AFTER UPDATE ON theaters BEGIN
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('theater_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_theater_insert;
         CREATE TRIGGER IF NOT EXISTS v2_evt_theater_insert AFTER INSERT ON theaters BEGIN
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('theater_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_theater_delete;
         CREATE TRIGGER IF NOT EXISTS v2_evt_theater_delete AFTER DELETE ON theaters BEGIN
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('theater_changed',OLD.id,OLD.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_sub_theater_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_sub_theater_update AFTER UPDATE ON sub_theaters BEGIN
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('sub_theater_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_sub_theater_insert;
         CREATE TRIGGER IF NOT EXISTS v2_evt_sub_theater_insert AFTER INSERT ON sub_theaters BEGIN
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('sub_theater_changed',NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_sub_theater_delete;
         CREATE TRIGGER IF NOT EXISTS v2_evt_sub_theater_delete AFTER DELETE ON sub_theaters BEGIN
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('sub_theater_changed',OLD.id,OLD.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_drama_profile_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_drama_profile_update AFTER UPDATE ON drama_profiles BEGIN
           INSERT INTO v2_change_events(change_type,drama_id,entity_id,updated_at) VALUES ('profile_changed',NEW.drama_id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_drama_profile_insert;
         CREATE TRIGGER IF NOT EXISTS v2_evt_drama_profile_insert AFTER INSERT ON drama_profiles BEGIN
           INSERT INTO v2_change_events(change_type,drama_id,entity_id,updated_at) VALUES ('profile_changed',NEW.drama_id,NEW.id,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_drama_profile_delete;
         CREATE TRIGGER IF NOT EXISTS v2_evt_drama_profile_delete AFTER DELETE ON drama_profiles BEGIN
           INSERT INTO v2_change_events(change_type,drama_id,entity_id,updated_at) VALUES ('profile_changed',OLD.drama_id,OLD.id,OLD.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_settings_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_settings_update AFTER UPDATE ON v2_settings BEGIN
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('settings_changed',NEW.key,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_settings_insert;
         CREATE TRIGGER IF NOT EXISTS v2_evt_settings_insert AFTER INSERT ON v2_settings BEGIN
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('settings_changed',NEW.key,NEW.updated_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_resource_insert;
         CREATE TRIGGER IF NOT EXISTS v2_evt_resource_insert AFTER INSERT ON resource_index BEGIN
-          INSERT INTO v2_change_events(change_type,updated_at) VALUES ('resource_changed',NEW.last_seen_at);
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('resource_changed',NEW.resource_id,NEW.last_seen_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_resource_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_resource_update AFTER UPDATE ON resource_index BEGIN
-          INSERT INTO v2_change_events(change_type,updated_at) VALUES ('resource_changed',NEW.last_seen_at);
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('resource_changed',NEW.resource_id,NEW.last_seen_at);
         END;
+        DROP TRIGGER IF EXISTS v2_evt_revenue_run_update;
         CREATE TRIGGER IF NOT EXISTS v2_evt_revenue_run_update AFTER UPDATE OF status ON v2_revenue_collection_runs
         WHEN NEW.status IN ('completed','failed') AND OLD.status<>NEW.status BEGIN
-          INSERT INTO v2_change_events(change_type,updated_at) VALUES ('revenue_changed',NEW.updated_at);
+          INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('revenue_changed',NEW.id,NEW.updated_at);
         END;
     """)
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -3384,8 +3424,40 @@ def _task_raw_cleanup_paths(conn: sqlite3.Connection, task: sqlite3.Row) -> list
     return paths
 
 
+def _is_transient_remove_error(exc: OSError) -> bool:
+    """True 表示"文件正被别的程序占用"这类**可重试**的失败。
+
+    Windows 上最常见的两种：WinError 32（文件被占用）、WinError 5（拒绝访问）。
+    这类失败重试一两次往往就好了；真失败（路径不存在、权限永久不足）不在这里。
+    """
+    winerror = getattr(exc, "winerror", None)
+    return winerror in {5, 32, 33} or exc.errno in {errno.EACCES, errno.EBUSY, errno.EPERM}
+
+
+def _remove_one(resolved: Path, preserve_directory: Path | None) -> None:
+    if preserve_directory is not None and resolved == preserve_directory.resolve():
+        if resolved.exists():
+            for item in resolved.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+        return
+    if not resolved.exists():
+        return
+    if resolved.is_dir():
+        shutil.rmtree(resolved)
+    else:
+        resolved.unlink()
+
+
 def _remove_paths(paths: list[Path], *, preserve_directory: Path | None = None) -> tuple[list[str], list[str]]:
-    """Remove exact paths; optionally empty, rather than remove, one source directory."""
+    """Remove exact paths; optionally empty, rather than remove, one source directory.
+
+    **单个文件删不掉不许拖累整批**（2026-09-19）：被剪映/播放器占用的文件以前会让
+    整个清理阶段留下 ``partial`` 状态，整批重试。现在按文件重试有限次，仍失败就
+    记录下来继续删下一个 —— 一个占用中的文件只影响它自己。
+    """
     deleted: list[str] = []
     errors: list[str] = []
     seen: set[str] = set()
@@ -3399,23 +3471,18 @@ def _remove_paths(paths: list[Path], *, preserve_directory: Path | None = None) 
         if key in seen:
             continue
         seen.add(key)
-        try:
-            if preserve_directory is not None and resolved == preserve_directory.resolve():
-                if resolved.exists():
-                    for item in resolved.iterdir():
-                        if item.is_dir():
-                            shutil.rmtree(item)
-                        else:
-                            item.unlink()
+
+        for attempt in range(_REMOVE_RETRY_ATTEMPTS):
+            try:
+                _remove_one(resolved, preserve_directory)
                 deleted.append(str(resolved))
-            elif resolved.exists():
-                if resolved.is_dir():
-                    shutil.rmtree(resolved)
-                else:
-                    resolved.unlink()
-                deleted.append(str(resolved))
-        except OSError as exc:
-            errors.append(f"{resolved.name}: {exc}")
+                break
+            except OSError as exc:
+                if attempt + 1 < _REMOVE_RETRY_ATTEMPTS and _is_transient_remove_error(exc):
+                    time.sleep(_REMOVE_RETRY_DELAY_SECONDS * (attempt + 1))
+                    continue
+                errors.append(f"{resolved.name}: {exc}")
+                break
     return deleted, errors
 
 
@@ -3557,7 +3624,21 @@ def run_due_cleanup() -> dict[str, int]:
     try:
         settings = get_v2_settings()
         now = datetime.now()
-        rows = conn.execute("SELECT * FROM production_tasks WHERE release_status='registered' AND cleanup_status IN ('active','process_cleaned','partial','raw_partial') AND actual_release_time<>''").fetchall()
+        # 索引查询：只捞"已发布 + 还没清完 + （到点了 或 到期时间还没写）"的行。
+        # 原来是把所有已发布未清完的任务全捞出来逐条算到期（每 30 秒一遍），任务一多就是白扫。
+        # 到期时间在发布时就是快照；空白只出现在旧数据上，由 _due_at_or_backfill 补一次，
+        # 补完那一行立刻带上时间戳，下一轮就不再进入"空白"分支。
+        now_text_value = now.isoformat(sep=" ", timespec="seconds")
+        rows = conn.execute(
+            "SELECT * FROM production_tasks WHERE release_status='registered' "
+            "AND cleanup_status IN ('active','process_cleaned','partial','raw_partial') "
+            "AND actual_release_time<>'' "
+            "AND ("
+            "  (cleanup_status IN ('active','partial') AND (process_cleanup_at='' OR process_cleanup_at<=?)) "
+            "  OR (cleanup_status IN ('process_cleaned','raw_partial') AND (raw_cleanup_at='' OR raw_cleanup_at<=?))"
+            ")",
+            (now_text_value, now_text_value),
+        ).fetchall()
         for task in rows:
             process_due = _due_at_or_backfill(conn, task, "process_cleanup_at", timedelta(hours=int(settings["short_term_cleanup_hours"])))
             raw_due = _due_at_or_backfill(conn, task, "raw_cleanup_at", timedelta(days=int(settings["raw_material_retention_days"])))
