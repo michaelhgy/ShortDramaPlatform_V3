@@ -18,6 +18,7 @@ import ctypes
 import queue
 import threading
 import shutil
+import time
 import unicodedata
 import subprocess
 from datetime import date, datetime, timedelta
@@ -47,8 +48,18 @@ DATABASE_INITIALIZATION_LOCK = threading.Lock()
 SCHEMA_VERSION = 3
 # 变更日志（v2_change_events）是"数据变了就通知前端刷新"的游标表，**不是审计日志**。
 # 它由 30 多个触发器自动写入，长期累积会拖慢每一次写操作
-# （2026-09-17 故障：累积到 343 万行，把整个数据库拖垮）。服务启动时只保留最近这么多条。
-CHANGE_EVENT_RETENTION = 50_000
+# （2026-09-17 故障：累积到 343 万行，把整个数据库拖垮）。
+#
+# 保留条数 = 1000（2026-09-19 用户拍板，原 50_000）：
+# 全代码核查确认这张表**只有两个读者** —— ① 前端增量刷新接口 list_change_events(after_id)，
+# 它只关心"比游标新的"；② runtime_guard 只看最后一行判断服务是否卡死。
+# 没有任何历史查询用它，也**与"爆款素材匹配"无关**（爆款靠磁盘上的「爆款/账号日」目录 +
+# 模板选剧算法，一条变更事件都没参与）。所以留 5 万条纯属占地方。
+CHANGE_EVENT_RETENTION = 1_000
+# 高频裁剪的节流间隔：每 30 秒的清理循环里最多每 10 分钟裁一次，
+# 既避免"只在服务启动时裁"导致长期贴着上限，也不会让裁剪本身频繁抢写锁。
+CHANGE_EVENT_PRUNE_INTERVAL_SECONDS = 600
+LAST_CHANGE_EVENT_PRUNE = 0.0
 DATABASE_INITIALIZED_PATH: Path | None = None
 
 
@@ -214,6 +225,70 @@ def _prune_change_events(conn: sqlite3.Connection, keep: int = CHANGE_EVENT_RETE
     cursor = conn.execute("DELETE FROM v2_change_events WHERE id <= ?", (cutoff,))
     conn.commit()
     return max(0, int(cursor.rowcount or 0))
+
+
+def preview_settled_detail_records() -> dict[str, object]:
+    """列出"已结算明细"：**已发布且已清完**任务名下、再也不会被用到的明细行。
+
+    背景：发布后清理只删磁盘文件，数据库里模板/成片/素材/导出这些**明细行一条不删**
+    （2026-09-19 实测 99 个已发布任务留下 5,565 行）。发布登记信息、账号、剧集、
+    发布时间、发布地址、收益关联都保留在 ``production_tasks`` 主表里，所以明细可以清。
+
+    **只在 ``cleanup_status='raw_cleaned'``（文件已彻底清完）时才列入**：
+    ``process_cleaned`` 阶段只是删了过程文件，保留明细便于排查。
+    """
+    conn = connection()
+    try:
+        counts: dict[str, int] = {}
+        for table, predicate in _SETTLED_DETAIL_PREDICATES:
+            counts[table] = int(conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {predicate}").fetchone()[0])
+        tasks = int(conn.execute(
+            "SELECT COUNT(*) FROM production_tasks WHERE release_status='registered' AND cleanup_status='raw_cleaned'"
+        ).fetchone()[0])
+        return {"total": sum(counts.values()), "byTable": counts, "settledTasks": tasks}
+    finally:
+        conn.close()
+
+
+def cleanup_settled_detail_records() -> dict[str, object]:
+    """清除"已结算明细"。**只删数据库明细行，不碰磁盘文件，也不删任务主表行。**
+
+    主表 ``production_tasks`` 必须留着：发布登记、发布时间、发布地址、收益关联都在上面。
+    """
+    conn = connection()
+    try:
+        removed: dict[str, int] = {}
+        for table, predicate in _SETTLED_DETAIL_PREDICATES:
+            removed[table] = conn.execute(f"DELETE FROM {table} WHERE {predicate}").rowcount
+        conn.commit()
+        return {"removed": removed, "total": sum(removed.values())}
+    finally:
+        conn.close()
+
+
+# 顺序有意义：先删引用别人的（export_attempts → export_jobs），再删被引用的。
+_SETTLED_DETAIL_PREDICATES: tuple[tuple[str, str], ...] = (
+    ("export_attempts", "job_id IN (SELECT j.id FROM export_jobs j JOIN production_tasks t ON t.id=j.production_task_id WHERE t.release_status='registered' AND t.cleanup_status='raw_cleaned')"),
+    ("export_jobs", "production_task_id IN (SELECT id FROM production_tasks WHERE release_status='registered' AND cleanup_status='raw_cleaned')"),
+    ("template_jobs", "task_id IN (SELECT id FROM production_tasks WHERE release_status='registered' AND cleanup_status='raw_cleaned')"),
+    ("production_video_tasks", "task_id IN (SELECT id FROM production_tasks WHERE release_status='registered' AND cleanup_status='raw_cleaned')"),
+    ("production_files", "task_id IN (SELECT id FROM production_tasks WHERE release_status='registered' AND cleanup_status='raw_cleaned')"),
+    ("production_resource_reservations", "task_id IN (SELECT id FROM production_tasks WHERE release_status='registered' AND cleanup_status='raw_cleaned')"),
+)
+
+
+def prune_change_events_if_due() -> int:
+    """在 30 秒清理循环里按节流间隔裁剪变更事件（不再只依赖服务启动那一次）。"""
+    global LAST_CHANGE_EVENT_PRUNE
+    now = time.monotonic()
+    if now - LAST_CHANGE_EVENT_PRUNE < CHANGE_EVENT_PRUNE_INTERVAL_SECONDS:
+        return 0
+    LAST_CHANGE_EVENT_PRUNE = now
+    conn = connection()
+    try:
+        return _prune_change_events(conn)
+    finally:
+        conn.close()
 
 
 def _initialize_connection() -> sqlite3.Connection:
@@ -4571,6 +4646,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"孤儿记录处理失败：{exc}"})
             return
+        if path == "/api/v2/task-center/settled-records":
+            # 已结算明细：已发布且已清完的任务名下、再也不会被用到的明细行。
+            # 主表（发布登记/发布时间/发布地址/收益关联）不动。
+            try:
+                if self.command == "DELETE":
+                    self._json(HTTPStatus.OK, cleanup_settled_detail_records())
+                else:
+                    self._json(HTTPStatus.OK, preview_settled_detail_records())
+            except Exception as exc:  # noqa: BLE001
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"已结算明细处理失败：{exc}"})
+            return
         if path == "/api/v2/task-center":
             try:
                 from server.task_center_service import task_center_snapshot
@@ -4838,7 +4924,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:  # noqa: N802
         try:
-            match = re.fullmatch(r"/api/v2/task-center/tasks/([a-f0-9]+)/orphan", urlparse(self.path).path)
+            path = urlparse(self.path).path
+            if path == "/api/v2/task-center/orphan-records":
+                self._json(HTTPStatus.OK, cleanup_orphan_records())
+                return
+            if path == "/api/v2/task-center/settled-records":
+                self._json(HTTPStatus.OK, cleanup_settled_detail_records())
+                return
+            match = re.fullmatch(r"/api/v2/task-center/tasks/([a-f0-9]+)/orphan", path)
             if match:
                 self._json(HTTPStatus.OK, cleanup_orphan_template_job(match.group(1)))
                 return

@@ -248,6 +248,10 @@ def _loop() -> None:
             dispatch_once()
             if time.monotonic() - last_cleanup >= 30:
                 service.run_due_cleanup()
+                # 变更事件也要持续裁，不能只在服务启动时裁一次 ——
+                # 否则长期贴着上限（2026-09-19 实测 50002 条顶格）。
+                # 裁剪函数自己带节流，这里每次调都是安全的。
+                service.prune_change_events_if_due()
                 last_cleanup = time.monotonic()
         except Exception:
             # 单个任务的错误由 runner 写回任务；调度循环不能因一个任务退出。
