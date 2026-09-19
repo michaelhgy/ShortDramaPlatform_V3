@@ -144,27 +144,52 @@ interface DramaGroup {
   orderRank: number;
   templateTask?: TaskItem;
   rows: MaterialRow[];
-  /** 与生产中心同一口径：视频=已导出、草稿=草稿已生成（含模板草稿）、素材=本组条目总数 */
+  /** 与生产中心同一口径：视频=已导出的素材、草稿=草稿已生成的素材（含模板草稿）、素材=已登记素材条数 */
   videoCount: number;
   draftCount: number;
   materialCount: number;
+  /** 模板异常 + 素材异常，都算（用户 2026-09-19："异常都算"）。 */
   abnormalCount: number;
+  /** 只有素材行异常的数量，用来决定组头是红框还是橙框。 */
+  materialAbnormalCount: number;
+  templateAbnormal: boolean;
   runningCount: number;
+  /** 此刻真正在做这个组的执行器（可能同时有 2~3 个，也可能一个都没有）。 */
+  activeExecutors: Array<'template' | 'final' | 'export'>;
   firstCreatedAt: string;
 }
+
+const EXECUTOR_LABEL: Record<'template' | 'final' | 'export', string> = {
+  template: '模板生成中',
+  final: '成片生成中',
+  export: '视频导出中',
+};
 
 function buildGroup(item: TaskItem, rows: TaskItem[]): DramaGroup {
   const materialRows = rows
     .filter((task) => task && task.taskCategory !== 'template')
     .map(toMaterialRow);
   const templateTask = rows.find((task) => task.taskCategory === 'template');
-  const materialCount = materialRows.length + (templateTask ? 1 : 0);
+  // 素材就是素材，模板不算素材（2026-09-19 修正：原来把模板当成第 N+1 条素材，
+  // 导致「素材 11」比真实素材 10 条多一个，草稿数也跟着虚高）。
+  const materialCount = materialRows.length;
   const videoCount = materialRows.filter((row) => row.statusWord === 'completed').length;
   const generatedDrafts = materialRows.filter((row) => row.statusWord === 'completed' || row.statusWord === 'exporting' || row.statusWord === 'queued').length;
   const templateDraftReady = Boolean(templateTask) && templateTask!.draftStage.status === 'done';
   const draftCount = generatedDrafts + (templateDraftReady ? 1 : 0);
-  const abnormalCount = materialRows.filter((row) => row.statusWord === 'abnormal').length;
+  const materialAbnormalCount = materialRows.filter((row) => row.statusWord === 'abnormal').length;
+  const templateRow = templateTask ? toMaterialRow(templateTask) : null;
+  const templateAbnormal = templateRow?.statusWord === 'abnormal';
+  const abnormalCount = materialAbnormalCount + (templateAbnormal ? 1 : 0);
   const runningCount = materialRows.filter((row) => row.statusWord === 'exporting' || row.statusWord === 'drafting').length;
+
+  // 一个组可以用三个执行器同时干活（调度每 0.5 秒同时尝试派模板/成片/导出）。
+  // 所以这里是"正在做这个组的执行器清单"，不是单个执行器。
+  const activeExecutors: Array<'template' | 'final' | 'export'> = [];
+  if (templateTask && templateTask.draftStage.status === 'running') activeExecutors.push('template');
+  if (materialRows.some((row) => row.statusWord === 'drafting')) activeExecutors.push('final');
+  if (materialRows.some((row) => row.statusWord === 'exporting')) activeExecutors.push('export');
+
   const scheduled = item.scheduledPublishTime || '';
   const parsed = scheduled ? Date.parse(scheduled) : Number.NaN;
   return {
@@ -181,7 +206,10 @@ function buildGroup(item: TaskItem, rows: TaskItem[]): DramaGroup {
     draftCount,
     materialCount,
     abnormalCount,
+    materialAbnormalCount,
+    templateAbnormal,
     runningCount,
+    activeExecutors,
     firstCreatedAt: rows.reduce((earliest, task) => (earliest === '' || task.createdAt < earliest ? task.createdAt : earliest), ''),
   };
 }
@@ -472,8 +500,10 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
               <div
                 key={group.key}
                 className={`rounded-2xl border bg-white transition-all duration-150 overflow-hidden ${
-                  group.abnormalCount > 0
+                  group.materialAbnormalCount > 0
                     ? 'border-rose-300 ring-2 ring-rose-500/10 shadow-xs'
+                    : group.templateAbnormal
+                    ? 'border-amber-300 ring-2 ring-amber-500/10 shadow-xs'
                     : group.runningCount > 0
                     ? 'border-emerald-400 ring-2 ring-emerald-500/10 shadow-xs'
                     : 'border-black/[0.06] hover:border-black/[0.12]'
@@ -495,11 +525,6 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                       </span>
                       <span className="text-slate-300 font-light text-xs shrink-0">×</span>
                       <span className="font-black text-xs text-[#1A1D2E] truncate">《{group.dramaName}》</span>
-                      {group.abnormalCount > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-800 font-bold shrink-0">
-                          ⚠ {group.abnormalCount} 条异常
-                        </span>
-                      )}
                       {allDone && group.abnormalCount === 0 && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold shrink-0">
                           全部完成
@@ -507,7 +532,8 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                       )}
                     </div>
 
-                    {/* 组头三段数字 + 色条（口径与生产中心一致） */}
+                    {/* 组头三段数字 + 异常数 + 色条（口径与生产中心一致）。
+                        素材数不含模板；异常 = 模板异常 + 素材异常，都算。 */}
                     <div className="mt-1 flex items-center gap-2">
                       <span className="flex items-center gap-1 text-[10px] font-bold text-[#64748B] shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -521,12 +547,41 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                         素材 <strong className="font-mono text-[#1A1D2E]">{group.materialCount}</strong>
                       </span>
+                      <span
+                        className={`flex items-center gap-1 text-[10px] font-bold shrink-0 ${
+                          group.abnormalCount > 0 ? 'text-rose-700' : 'text-[#64748B]'
+                        }`}
+                        title={
+                          group.abnormalCount === 0
+                            ? '没有异常'
+                            : `模板异常 ${group.templateAbnormal ? 1 : 0} 条 · 素材异常 ${group.materialAbnormalCount} 条`
+                        }
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${group.abnormalCount > 0 ? 'bg-rose-500 animate-pulse' : 'bg-slate-400'}`} />
+                        异常 <strong className={`font-mono ${group.abnormalCount > 0 ? 'text-rose-700' : 'text-[#1A1D2E]'}`}>{group.abnormalCount}</strong>
+                      </span>
 
-                      <span className="flex-1 min-w-[80px] h-1.5 rounded-full overflow-hidden flex bg-slate-200/70">
+                      <span className="flex-1 min-w-[60px] h-1.5 rounded-full overflow-hidden flex bg-slate-200/70">
                         {exported > 0 && <span className="h-full bg-emerald-500" style={{ width: `${exported}%` }} />}
                         {remaining > 0 && <span className="h-full bg-indigo-500" style={{ width: `${remaining}%` }} />}
                       </span>
                     </div>
+
+                    {/* 色条上方：此刻正在做这个组的执行器。有几个显示几个，没有就整行不占位。
+                        一个组可以同时被 2~3 个执行器处理（调度每 0.5 秒同时尝试派模板/成片/导出）。 */}
+                    {group.activeExecutors.length > 0 && (
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        {group.activeExecutors.map((executor) => (
+                          <span
+                            key={executor}
+                            className="flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-1.5 py-0.5"
+                          >
+                            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                            {EXECUTOR_LABEL[executor]}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
