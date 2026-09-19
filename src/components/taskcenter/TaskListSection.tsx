@@ -274,7 +274,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
   /**
    * 排序（2026-09-19 用户拍板）：
    *   第 1 层 账号 × 剧集：计划发布时间早 → 开工时间早
-   *   第 2 层 组内素材：序号升序；正在执行的那条拎到本组最前（只影响本组，不影响整组名次）
+   *   第 2 层 组内素材：序号升序
    * 特意**不再**按"执行中/排队/完成"分层排序 —— 那正是素材序号被排成 5,1,2,3,4 的原因。
    */
   const groups = useMemo(() => {
@@ -304,12 +304,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
     const built = Array.from(byUnit.values()).map(rows => buildGroup(rows[0], rows));
 
     built.forEach(group => {
-      group.rows.sort((a, b) => {
-        const aActive = a.statusWord === 'exporting' || a.statusWord === 'drafting' ? 0 : 1;
-        const bActive = b.statusWord === 'exporting' || b.statusWord === 'drafting' ? 0 : 1;
-        if (aActive !== bActive) return aActive - bActive;
-        return a.sequence - b.sequence || a.task.createdAt.localeCompare(b.task.createdAt);
-      });
+      group.rows.sort((a, b) => a.sequence - b.sequence || a.task.createdAt.localeCompare(b.task.createdAt));
     });
 
     const visible = built.filter(group => {
