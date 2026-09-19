@@ -41,6 +41,18 @@ export function cleanupV2OrphanTask(jobId: string): Promise<{ deleted: boolean }
 }
 
 /**
+ * 孤儿记录：挂在**已经不存在的生产任务**下面的模板/成片/导出/素材记录。
+ * 它们是"删除剧集只删了主表"留下的残留，会让任务中心显示「未知账号 ×《未知剧集》」。
+ */
+export function loadV2OrphanRecords(): Promise<{ total: number; byTable: Record<string, number>; orphanGroups: Array<{ table: string; task_id: string; rows: number }> }> {
+  return v2Client.get('/api/v2/task-center/orphan-records');
+}
+
+export function cleanupV2OrphanRecords(): Promise<{ removed: Record<string, number>; total: number }> {
+  return v2Client.delete('/api/v2/task-center/orphan-records');
+}
+
+/**
  * 手动调整一个「账号 × 剧集」的生产顺序。
  * 这个顺序同时是三个执行器的取任务顺序（用户 2026-09-19 拍板）。
  */

@@ -16,7 +16,8 @@ import {
   Minimize2,
   RefreshCw,
   Layers,
-  Activity
+  Activity,
+  Trash2
 } from 'lucide-react';
 import { TaskItem, ExecutorInfo } from './taskCenterTypes';
 import { INITIAL_EXECUTORS } from './taskCenterMockData';
@@ -25,7 +26,7 @@ import { ExecutorsOverview } from './ExecutorsOverview';
 import { TaskListSection } from './TaskListSection';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
 import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, storeSharedTaskCenterSnapshot } from '../../services/taskCenterService';
-import { cleanupV2OrphanTask, regenerateV2Template, reorderV2ProductionUnit, retryV2Template, reExportV2Task, setV2ExecutorPaused, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
+import { cleanupV2OrphanRecords, cleanupV2OrphanTask, loadV2OrphanRecords, regenerateV2Template, reorderV2ProductionUnit, retryV2Template, reExportV2Task, setV2ExecutorPaused, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
 import { dataSource } from '../../services/dataSource';
 import { useDataArea } from '../../hooks/useDataArea';
 
@@ -53,6 +54,9 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
   const [orphanCleanupTask, setOrphanCleanupTask] = useState<TaskItem | null>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const tasksRef = useRef<TaskItem[]>([]);
+  // 孤儿记录：已不存在的生产任务留下的模板/成片/导出记录（"删除剧集"历史上只删了主表）。
+  // 它们会让任务列表出现「未知账号 ×《未知剧集》」的幽灵组，所以打开时检查一次。
+  const [orphanTotal, setOrphanTotal] = useState(0);
 
   // Durations are display-only: the backend supplies started/completed times,
   // while this lightweight clock keeps active timers ticking without polling.
@@ -276,6 +280,29 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
       .catch((error: unknown) => showToast(error instanceof Error ? error.message : '顺序调整失败，请稍后重试。'));
   };
 
+  useEffect(() => {
+    if (!isOpen || dataSource === 'mock') return;
+    let active = true;
+    loadV2OrphanRecords()
+      .then((result) => { if (active) setOrphanTotal(result.total || 0); })
+      .catch(() => { if (active) setOrphanTotal(0); });
+    return () => { active = false; };
+  }, [isOpen]);
+
+  const handleCleanupOrphans = () => {
+    cleanupV2OrphanRecords()
+      .then((result) => {
+        setOrphanTotal(0);
+        showToast(`已清除 ${result.total} 条孤儿记录（只删数据库记录，未动任何文件）`);
+        return loadSharedTaskCenter(true);
+      })
+      .then((snapshot) => {
+        setExecutors(snapshot.executors);
+        setTasks(snapshot.tasks);
+      })
+      .catch((error: unknown) => showToast(error instanceof Error ? error.message : '孤儿记录清理失败，请稍后重试。'));
+  };
+
   const handleToggleExecutor = (executor: ExecutorInfo) => {
     const shouldPause = executor.status !== 'manual_paused' && executor.status !== 'error_paused';
     setV2ExecutorPaused(executor.id, shouldPause).then((snapshot) => {
@@ -393,6 +420,27 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
 
         {/* Modal Scrollable Content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
+          {/* 孤儿记录提醒：数据卫生问题，不是任务。有才显示，没有就完全不占地方。 */}
+          {orphanTotal > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50/70 px-4 py-2.5">
+              <div className="flex items-start gap-2 text-xs text-amber-950">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-extrabold">有 {orphanTotal} 条孤儿记录（已不存在的生产任务留下的模板 / 成片 / 导出记录）</p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    它们会让上面的任务列表出现「未知账号 ×《未知剧集》」的幽灵分组。清除只删数据库记录，<strong>不会动磁盘上任何文件</strong>。
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleCleanupOrphans}
+                className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] text-xs font-bold hover:bg-black transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                清除孤儿记录
+              </button>
+            </div>
+          )}
           {/* Section 1: Three Independent Executors (Top Core) */}
           <ExecutorsOverview
             executors={liveExecutors}

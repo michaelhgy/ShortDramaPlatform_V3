@@ -352,8 +352,13 @@ def task_center_snapshot() -> dict[str, Any]:
     conn = service.connection()
     try:
         rows = conn.execute(
+            # INNER JOIN 而不是 LEFT JOIN：``production_tasks`` 行被删掉之后，挂在它
+            # 下面的模板/成片/导出记录会变成**孤儿**，LEFT JOIN 会让它们的 ``t.*`` 全变
+            # NULL，而 ``COALESCE(t.release_status,'unregistered')`` 恰好把 NULL 当成
+            # "未登记发布"放行 —— 界面上就冒出「未知账号 ×《未知剧集》」的幽灵任务
+            # （2026-09-19 实机发现：19 个组里有 10 个是这种幽灵）。
             "SELECT j.*, t.account_name, t.drama_name, t.planned_publish_at "
-            "FROM template_jobs j LEFT JOIN production_tasks t ON t.id=j.task_id "
+            "FROM template_jobs j JOIN production_tasks t ON t.id=j.task_id "
             "WHERE j.version_no=(SELECT MAX(latest.version_no) FROM template_jobs latest WHERE latest.task_id=j.task_id) "
             "AND COALESCE(t.release_status, 'unregistered') <> 'registered' "
             "ORDER BY j.created_at DESC, j.version_no DESC"
@@ -395,7 +400,7 @@ def task_center_snapshot() -> dict[str, Any]:
     try:
         export_rows = export_conn.execute(
             "SELECT a.*, j.production_task_id, j.subject_type, j.subject_id, j.draft_name, j.draft_path, j.target_path, j.status AS job_status, t.account_name, t.drama_name, t.planned_publish_at "
-            "FROM export_attempts a JOIN export_jobs j ON j.id=a.job_id LEFT JOIN production_tasks t ON t.id=j.production_task_id "
+            "FROM export_attempts a JOIN export_jobs j ON j.id=a.job_id JOIN production_tasks t ON t.id=j.production_task_id "
             "WHERE a.attempt_no=(SELECT MAX(x.attempt_no) FROM export_attempts x WHERE x.job_id=a.job_id) "
             "AND COALESCE(t.release_status, 'unregistered') <> 'registered' "
             "AND (a.status <> 'completed' OR a.finished_at >= datetime('now', '-7 day')) "

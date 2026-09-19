@@ -3453,6 +3453,24 @@ def execute_cleanup(task_id: str) -> dict[str, object]:
             # “删除剧集”是完全删除：不留下孤立的任务清理记录。
             conn.execute("DELETE FROM cleanup_records WHERE task_id=?", (task_id,))
             purge_executor_traces_for_task(conn, task_id)
+            # ⚠️ 必须级联删除名下的所有子表记录。历史缺陷（2026-09-19 实测）：
+            # 这里原来只删了 production_tasks 一行，模板/成片/导出/素材/预约记录
+            # 全部变成孤儿（10 个任务留下 654 条），任务中心随即显示
+            # 「未知账号 ×《未知剧集》」的幽灵任务。删任务就得把它名下的一起带走。
+            conn.execute(
+                "DELETE FROM export_attempts WHERE job_id IN "
+                "(SELECT id FROM export_jobs WHERE production_task_id=?)",
+                (task_id,),
+            )
+            for statement in (
+                "DELETE FROM export_jobs WHERE production_task_id=?",
+                "DELETE FROM template_jobs WHERE task_id=?",
+                "DELETE FROM production_video_tasks WHERE task_id=?",
+                "DELETE FROM production_files WHERE task_id=?",
+                "DELETE FROM production_resource_reservations WHERE task_id=?",
+                "DELETE FROM executor_trace_events WHERE production_task_id=?",
+            ):
+                conn.execute(statement, (task_id,))
             conn.execute("DELETE FROM production_tasks WHERE id=?", (task_id,))
         conn.commit()
         return {"status": status, "deleted": deleted, "errors": errors}
@@ -3498,6 +3516,72 @@ def run_due_cleanup() -> dict[str, int]:
         conn.commit()
         return {"process": process_count, "raw": raw_count}
     finally: conn.close()
+
+
+# 顺序有意义：先删引用别人的（export_attempts → export_jobs），再删被引用的。
+# 这类记录的来源见 preview_orphan_records() 的说明。
+_ORPHAN_PREDICATES: tuple[tuple[str, str], ...] = (
+    ("export_attempts", "job_id IN (SELECT j.id FROM export_jobs j WHERE j.production_task_id NOT IN (SELECT id FROM production_tasks))"),
+    ("export_jobs", "production_task_id NOT IN (SELECT id FROM production_tasks)"),
+    ("template_jobs", "task_id NOT IN (SELECT id FROM production_tasks)"),
+    ("production_video_tasks", "task_id NOT IN (SELECT id FROM production_tasks)"),
+    ("production_files", "task_id NOT IN (SELECT id FROM production_tasks)"),
+    ("production_resource_reservations", "task_id NOT IN (SELECT id FROM production_tasks)"),
+    ("cleanup_records", "task_id NOT IN (SELECT id FROM production_tasks)"),
+    ("executor_trace_events", "production_task_id NOT IN (SELECT id FROM production_tasks)"),
+)
+
+
+
+def preview_orphan_records() -> dict[str, object]:
+    """列出"孤儿记录"：挂在**已经不存在的生产任务**下面的模板/成片/导出/素材/清理记录。
+
+    这些记录怎么来的：`删除剧集`只删了 ``production_tasks`` 那一行，没有删它名下的
+    子表记录（见 immediate_cleanup 的 ``DELETE FROM production_tasks`` 分支）。
+    任务中心因此会显示「未知账号 ×《未知剧集》」的幽灵任务 —— 2026-09-19 实测：
+    10 个幽灵组、654 条孤儿记录。
+
+    ``v2_change_events``（变更流水，实测 5 万条）**不算孤儿**：它是按时间的审计日志，
+    与父任务存在与否无关，不能删。
+    """
+    conn = connection()
+    try:
+        counts: dict[str, int] = {}
+        for table, predicate in _ORPHAN_PREDICATES:
+            counts[table] = int(conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {predicate}").fetchone()[0])
+        detail = [
+            {
+                "table": str(row["table_name"]),
+                "task_id": str(row["task_id"]),
+                "rows": int(row["rows"] or 0),
+            }
+            for row in conn.execute(
+                "SELECT j.task_id AS task_id, 'template_jobs' AS table_name, COUNT(*) AS rows "
+                "FROM template_jobs j WHERE j.task_id NOT IN (SELECT id FROM production_tasks) GROUP BY j.task_id "
+                "ORDER BY j.task_id LIMIT 40"
+            ).fetchall()
+        ]
+        return {"total": sum(counts.values()), "byTable": counts, "orphanGroups": detail}
+    finally:
+        conn.close()
+
+
+def cleanup_orphan_records() -> dict[str, object]:
+    """清除孤儿记录。**只删数据库行，不碰磁盘文件。**
+
+    删除顺序从叶子到根：export_attempts → export_jobs → template_jobs →
+    production_video_tasks → production_files → 其余引用表。
+    先删引用方，才不会在中间态留下新的悬空引用。
+    """
+    conn = connection()
+    try:
+        removed: dict[str, int] = {}
+        for table, predicate in _ORPHAN_PREDICATES:
+            removed[table] = conn.execute(f"DELETE FROM {table} WHERE {predicate}").rowcount
+        conn.commit()
+        return {"removed": removed, "total": sum(removed.values())}
+    finally:
+        conn.close()
 
 
 def start_finished_video_generation(video_id: str) -> dict[str, str]:
@@ -4475,6 +4559,17 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(HTTPStatus.OK, dict(row))
             finally:
                 conn.close()
+            return
+        if path == "/api/v2/task-center/orphan-records":
+            # 孤儿记录：挂在已经不存在的生产任务下面的模板/成片/导出/素材记录。
+            # GET 只列数量（不删），DELETE 才真删。任务中心用它在界面上显示并清理。
+            try:
+                if self.command == "DELETE":
+                    self._json(HTTPStatus.OK, cleanup_orphan_records())
+                else:
+                    self._json(HTTPStatus.OK, preview_orphan_records())
+            except Exception as exc:  # noqa: BLE001
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"孤儿记录处理失败：{exc}"})
             return
         if path == "/api/v2/task-center":
             try:
