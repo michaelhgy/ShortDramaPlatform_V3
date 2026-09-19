@@ -39,3 +39,17 @@ export function reExportV2Task(taskId: string): Promise<{ id: string; status: st
 export function cleanupV2OrphanTask(jobId: string): Promise<{ deleted: boolean }> {
   return v2Client.delete(`/api/v2/task-center/tasks/${jobId}/orphan`);
 }
+
+/**
+ * 手动调整一个「账号 × 剧集」的生产顺序。
+ * 这个顺序同时是三个执行器的取任务顺序（用户 2026-09-19 拍板）。
+ */
+export function reorderV2ProductionUnit(
+  productionTaskId: string,
+  action: 'top' | 'up' | 'down',
+): Promise<{ order: string[] }> {
+  return v2Client.post('/api/v2/task-center/manual-order', {
+    production_task_id: productionTaskId,
+    action,
+  });
+}

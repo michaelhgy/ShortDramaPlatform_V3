@@ -20,6 +20,9 @@ _START_LOCK = threading.Lock()
 _DISPATCH_LOCK = threading.Lock()
 _PAUSED = False
 _PRIORITY_CACHE: tuple[float, dict[str, int]] = (0.0, {})
+# 手动调整排序后的顺序缓存。同一份快照里每个任务卡都要问一次顺序，不能每次都查库。
+_ORDER_CACHE: tuple[float, dict[str, int]] = (0.0, {})
+_ORDER_CACHE_LOCK = threading.Lock()
 # 成片草稿生成器已具备真实执行入口，由任务中心统一调度。
 FINAL_GENERATOR_READY = True
 
@@ -106,7 +109,8 @@ def _claim_next_template_job() -> str | None:
         try:
             row = conn.execute(
                 "SELECT j.id FROM template_jobs j JOIN production_tasks t ON t.id=j.task_id "
-                "WHERE j.status='queued' ORDER BY CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, "
+                "WHERE j.status='queued' ORDER BY " + _manual_order_key(conn) +
+                "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, "
                 "t.planned_publish_at, j.created_at, j.version_no LIMIT 1"
             ).fetchone()
             if not row:
@@ -159,7 +163,8 @@ def _claim_next_final_video() -> str | None:
                 + template_ready_clause
                 # 同一生产任务内按素材登记序号推进。重试时创建时间不能让
                 # -3 跑到 -2 前面；序号是生产素材的业务顺序，不从文件名临时解析。
-                + "ORDER BY CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at, "
+                + "ORDER BY " + _manual_order_key(conn)
+                + "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at, "
                 + "CASE WHEN f.sequence_no IS NULL THEN 1 ELSE 0 END, f.sequence_no, f.file_name, v.created_at LIMIT 1"
             )
             row = conn.execute(query).fetchone()
@@ -194,7 +199,8 @@ def _claim_next_export_attempt() -> str | None:
                 "ORDER BY CASE WHEN j.subject_type='template' THEN 0 ELSE 1 END, "
                 # 模板仍是所有视频导出的最高优先级。成片则先按所属生产任务
                 # 优先级，再按素材序号；首次导出和重新导出没有额外插队权。
-                "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at, "
+                + _manual_order_key(conn)
+                + "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at, "
                 "CASE WHEN j.subject_type='final' AND f.sequence_no IS NULL THEN 1 ELSE 0 END, "
                 "CASE WHEN j.subject_type='final' THEN f.sequence_no ELSE 0 END, "
                 "CASE WHEN j.subject_type='final' THEN f.file_name ELSE j.draft_name END, "
@@ -473,8 +479,13 @@ def task_center_snapshot() -> dict[str, Any]:
         manager = ExecutorManager(conn)
         executors = [_executor_snapshot(manager, executor_id, tasks) for executor_id in ("video_exporter", "final_generator", "template_generator")]
         drama_priorities = _drama_priorities(conn)
+        # 手动排序位次：一次算清、贴到每张卡上。界面按它分组排序，
+        # 三个执行器也按同一个数字取任务，两边不会打架。
+        order_ranks = _unit_order_ranks(conn)
     finally:
         conn.close()
+    for item in tasks:
+        item["orderRank"] = order_ranks.get(str(item.get("productionTaskId") or ""), 0)
     return {
         "executors": executors,
         "tasks": tasks,
@@ -678,8 +689,144 @@ def _final_task_item(row: Any) -> dict[str, Any]:
     }
 
 
+# 「账号 × 剧集」单位的排序键。手动顺序与显示顺序必须**用同一个函数**算，
+# 否则界面显示的位次和实际取任务的顺序会不一致（"手动排序 = 最高调度优先"就落空了）。
+MANUAL_ORDER_FIRST_SQL = "CASE WHEN t.manual_order > 0 THEN 0 ELSE 1 END, t.manual_order, "
+_DEFAULT_UNIT_ORDER = (
+    "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at"
+)
+
+
+def _manual_order_key(conn: Any) -> str:
+    """手动位次的排序键；列还不存在的库（旧库首次连接、测试用的精简表）自动降级为不排序。
+
+    这不是为了兼容测试而妥协：真实数据库的列由 ``v2_file_service`` 的 DDL 迁移补上，
+    但迁移发生在**第一次建立连接**时，而调度循环和快照都可能先跑那一步。
+    """
+    try:
+        columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_tasks)").fetchall()}
+    except Exception:  # noqa: BLE001
+        return ""
+    return MANUAL_ORDER_FIRST_SQL if "manual_order" in columns else ""
+
+
+def _unit_is_complete(conn: Any, task_id: str) -> bool:
+    """全部已提交成片都导出完成，且没有草稿/视频异常 → 这部剧做完了。"""
+    row = conn.execute(
+        "SELECT "
+        "(SELECT COUNT(*) FROM production_video_tasks v WHERE v.task_id=t.id "
+        " AND v.status NOT IN ('cancelled','cancellation_requested','invalidated')) AS total, "
+        "(SELECT COUNT(*) FROM production_video_tasks v WHERE v.task_id=t.id "
+        " AND v.status IN ('generation_failed','generation_timeout')) AS draft_bad, "
+        "(SELECT COUNT(*) FROM production_video_tasks v WHERE v.task_id=t.id "
+        " AND (SELECT a.status FROM export_attempts a JOIN export_jobs j ON j.id=a.job_id "
+        "      WHERE j.subject_type='final' AND j.subject_id=v.id "
+        "      ORDER BY a.attempt_no DESC LIMIT 1) = 'completed') AS exported "
+        "FROM production_tasks t WHERE t.id=?",
+        (task_id,),
+    ).fetchone()
+    if row is None:
+        return False
+    total = int(row["total"] or 0)
+    return total > 0 and int(row["exported"] or 0) == total and int(row["draft_bad"] or 0) == 0
+
+
+def _ordered_units(conn: Any) -> tuple[list[str], list[str]]:
+    """返回 (显示顺序, 未完成单位的顺序)。
+
+    显示顺序规则（2026-09-19 用户拍板）：
+      1. 已做完的整部剧沉到最后
+      2. 手动调过的按 manual_order 从小到大
+      3. 没调过的按业务规则：计划发布时间早 → 开工时间早
+
+    手动调整只在**未完成**的单位之间进行 —— 已完成的根本不需要排优先级，
+    让它们参与手动排序会让用户点了"置顶"却看不到任何变化。
+    """
+    rows = conn.execute(
+        "SELECT t.id, t.manual_order, t.planned_publish_at, t.created_at FROM production_tasks t "
+        "WHERE (EXISTS (SELECT 1 FROM template_jobs j WHERE j.task_id=t.id) "
+        "   OR EXISTS (SELECT 1 FROM production_video_tasks v WHERE v.task_id=t.id)) "
+        "AND COALESCE(t.release_status, 'unregistered') <> 'registered'"
+    ).fetchall()
+    incomplete: list[tuple[int, str, str, str]] = []
+    complete: list[tuple[str, str, str]] = []
+    for row in rows:
+        planned = str(row["planned_publish_at"] or "") or "9999-12-31"
+        created = str(row["created_at"] or "")
+        task_id = str(row["id"])
+        if _unit_is_complete(conn, task_id):
+            complete.append((planned, created, task_id))
+            continue
+        manual = int(row["manual_order"] or 0)
+        incomplete.append((manual if manual > 0 else 10**9, planned, created, task_id))
+    incomplete.sort()
+    complete.sort()
+    active_order = [item[3] for item in incomplete]
+    return active_order + [item[2] for item in complete], active_order
+
+
+def _ordered_unit_ids(conn: Any) -> list[str]:
+    """当前「账号 × 剧集」的完整显示顺序。"""
+    return _ordered_units(conn)[0]
+
+
+def _unit_order_ranks(conn: Any) -> dict[str, int]:
+    global _ORDER_CACHE
+    now = time.monotonic()
+    with _ORDER_CACHE_LOCK:
+        if now - _ORDER_CACHE[0] < 2 and _ORDER_CACHE[1]:
+            return _ORDER_CACHE[1]
+    ranks = {task_id: index for index, task_id in enumerate(_ordered_unit_ids(conn), start=1)}
+    with _ORDER_CACHE_LOCK:
+        _ORDER_CACHE = (now, ranks)
+    return ranks
+
+
+def task_center_reorder(production_task_id: str, action: str) -> dict[str, Any]:
+    """手动调整一个「账号 × 剧集」的生产顺序。
+
+    action：``top`` 置顶 / ``up`` 上移一位 / ``down`` 下移一位。
+
+    首次调整时把**所有未完成单位**的位次一次性落库（materialize），之后调整只改数字。
+    这样"界面显示第几 = 执行器第几个做"永远成立，不会出现界面第一、实际最后跑。
+    """
+    if action not in {"top", "up", "down"}:
+        raise ValueError("排序动作只能是 top、up 或 down")
+    conn = service.connection()
+    try:
+        _, active_order = _ordered_units(conn)
+        if production_task_id not in active_order:
+            # 整部剧已完成（或不属于任何在做任务）：它已经沉底，不需要也不该占手动位次。
+            raise ValueError("这部剧已经做完了，不需要调整顺序（已完成的会自动沉到列表最后）")
+        index = active_order.index(production_task_id)
+        if action == "top":
+            target = 0
+        elif action == "up":
+            target = max(0, index - 1)
+        else:
+            target = min(len(active_order) - 1, index + 1)
+        if target != index:
+            active_order.pop(index)
+            active_order.insert(target, production_task_id)
+        # 把未完成单位的位次整份重写：位次 = 显示顺序 = 执行器取任务顺序。
+        # 只写未登记发布的那些行 —— 历史任务不该被这次调整碰到。
+        stamp = service.now_text()
+        for position, task_id in enumerate(active_order, start=1):
+            conn.execute(
+                "UPDATE production_tasks SET manual_order=?, updated_at=? WHERE id=? "
+                "AND COALESCE(release_status, 'unregistered') <> 'registered'",
+                (position, stamp, task_id),
+            )
+        conn.commit()
+        global _ORDER_CACHE
+        with _ORDER_CACHE_LOCK:
+            _ORDER_CACHE = (0.0, {})
+        return {"order": _ordered_unit_ids(conn)}
+    finally:
+        conn.close()
+
+
 def _production_priority_rank(row: Any) -> int:
-    """Calculate the same account x drama order shown by the priority banner."""
     global _PRIORITY_CACHE
     now = time.monotonic()
     if now - _PRIORITY_CACHE[0] < 2:

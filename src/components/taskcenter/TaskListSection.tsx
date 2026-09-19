@@ -27,6 +27,8 @@ interface TaskListSectionProps {
   onRegenerateDraft: (task: TaskItem) => void;
   onReExportVideo: (task: TaskItem) => void;
   onViewTaskDetail: (task: TaskItem) => void;
+  /** 手动调整生产顺序；顺序同时决定三个执行器先做谁（后端统一算，两边不会不一致）。 */
+  onReorderUnit?: (productionTaskId: string, action: 'top' | 'up' | 'down') => void;
 }
 
 /** Keep the persisted exporter phase visible instead of reducing all active work to "正在导出". */
@@ -138,6 +140,8 @@ interface DramaGroup {
   scheduledPublishTime: string;
   sortTimestamp: number;
   priorityRank: number;
+  /** 后端算出的「账号 × 剧集」生产顺序位次，与执行器取任务顺序同源。 */
+  orderRank: number;
   templateTask?: TaskItem;
   rows: MaterialRow[];
   /** 与生产中心同一口径：视频=已导出、草稿=草稿已生成（含模板草稿）、素材=本组条目总数 */
@@ -170,6 +174,7 @@ function buildGroup(item: TaskItem, rows: TaskItem[]): DramaGroup {
     scheduledPublishTime: scheduled,
     sortTimestamp: Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER,
     priorityRank: item.priorityRank,
+    orderRank: item.orderRank ?? 0,
     templateTask,
     rows: materialRows,
     videoCount,
@@ -187,6 +192,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
   onRegenerateDraft,
   onReExportVideo,
   onViewTaskDetail,
+  onReorderUnit,
 }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'abnormal' | 'waiting' | 'done'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | TaskCategory>('all');
@@ -270,6 +276,14 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
     });
 
     return visible.sort((a, b) => {
+      // 已做完的整部剧沉到最后（用户 2026-09-19 选定）
+      const aDone = a.materialCount > 0 && a.videoCount === a.materialCount ? 1 : 0;
+      const bDone = b.materialCount > 0 && b.videoCount === b.materialCount ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      // 再做手动的位次；后端把"手动位次"和"执行器取任务顺序"算成同一个东西
+      const aRank = a.orderRank > 0 ? a.orderRank : Number.MAX_SAFE_INTEGER;
+      const bRank = b.orderRank > 0 ? b.orderRank : Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
       if (a.sortTimestamp !== b.sortTimestamp) return a.sortTimestamp - b.sortTimestamp;
       const created = a.firstCreatedAt.localeCompare(b.firstCreatedAt);
       if (created) return created;
@@ -516,11 +530,50 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {/* 手动调整生产顺序：这个顺序同时是三个执行器的取任务顺序 */}
+                    {onReorderUnit && !allDone && (
+                      <span
+                        className="flex items-center gap-0.5"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => onReorderUnit(group.key, 'top')}
+                          disabled={index === 0}
+                          className="px-1 py-0.5 rounded-md bg-slate-100 hover:bg-[#1A1D2E] hover:text-[#DDFD00] text-slate-600 text-[10px] font-bold transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="置顶：让三个执行器下一个就做这部剧"
+                        >
+                          置顶
+                        </button>
+                        <button
+                          onClick={() => onReorderUnit(group.key, 'up')}
+                          disabled={index === 0}
+                          className="p-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="上移一位"
+                        >
+                          <ChevronUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => onReorderUnit(group.key, 'down')}
+                          disabled={index === groups.length - 1}
+                          className="p-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="下移一位"
+                        >
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </span>
+                    )}
+
                     <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md border border-black/[0.04]">
                       <Clock className="w-2.5 h-2.5 text-slate-500" />
                       {group.scheduledPublishTime ? formatTaskDateTime(group.scheduledPublishTime) : '未设置'}
                     </span>
-                    {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                    <button
+                      onClick={(event) => { event.stopPropagation(); toggleGroup(group.key); }}
+                      className="p-0.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                      title={isExpanded ? '收起素材列表' : '展开素材列表'}
+                    >
+                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 

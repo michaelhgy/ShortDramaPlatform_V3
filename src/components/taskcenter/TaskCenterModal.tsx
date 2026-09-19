@@ -25,7 +25,7 @@ import { ExecutorsOverview } from './ExecutorsOverview';
 import { TaskListSection } from './TaskListSection';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
 import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, storeSharedTaskCenterSnapshot } from '../../services/taskCenterService';
-import { cleanupV2OrphanTask, regenerateV2Template, retryV2Template, reExportV2Task, setV2ExecutorPaused, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
+import { cleanupV2OrphanTask, regenerateV2Template, reorderV2ProductionUnit, retryV2Template, reExportV2Task, setV2ExecutorPaused, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
 import { dataSource } from '../../services/dataSource';
 import { useDataArea } from '../../hooks/useDataArea';
 
@@ -259,6 +259,23 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
     showToast(next ? '⏸️ 全局后台执行队列已暂停' : '▶️ 全局后台执行队列已恢复调度');
   };
 
+  // 手动调整生产顺序：后端把"手动位次"和"三个执行器的取任务顺序"算成同一个东西，
+  // 所以这里只要把动作发过去、把回来的顺序落进界面即可，前端不再自己排序。
+  const handleReorderUnit = (productionTaskId: string, action: 'top' | 'up' | 'down') => {
+    if (dataSource === 'mock') {
+      showToast('Mock 模式下不调整顺序');
+      return;
+    }
+    reorderV2ProductionUnit(productionTaskId, action)
+      .then(() => loadSharedTaskCenter(true))
+      .then((snapshot) => {
+        setTasks(snapshot.tasks);
+        setExecutors(snapshot.executors);
+      })
+      .then(() => showToast(action === 'top' ? '已置顶 —— 执行器下一个就做这部剧' : action === 'up' ? '已上移一位' : '已下移一位'))
+      .catch((error: unknown) => showToast(error instanceof Error ? error.message : '顺序调整失败，请稍后重试。'));
+  };
+
   const handleToggleExecutor = (executor: ExecutorInfo) => {
     const shouldPause = executor.status !== 'manual_paused' && executor.status !== 'error_paused';
     setV2ExecutorPaused(executor.id, shouldPause).then((snapshot) => {
@@ -396,6 +413,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
             onRegenerateDraft={handleRegenerateDraft}
             onReExportVideo={handleReExportVideo}
             onViewTaskDetail={(task) => setSelectedTaskForDetail(task)}
+            onReorderUnit={handleReorderUnit}
           />
         </div>
 

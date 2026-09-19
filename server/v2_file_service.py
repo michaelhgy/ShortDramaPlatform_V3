@@ -44,7 +44,7 @@ DATABASE_INITIALIZATION_LOCK = threading.Lock()
 # 版本一致时 _initialize_connection 完全跳过那套结构脚本——它在 250MB 库上要十几到几十秒，
 # 期间独占写锁，会把同时打开的页面请求全部堵死
 # （表现为"启动慢 / 刷新不出来 / database is locked"）。
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 # 变更日志（v2_change_events）是"数据变了就通知前端刷新"的游标表，**不是审计日志**。
 # 它由 30 多个触发器自动写入，长期累积会拖慢每一次写操作
 # （2026-09-17 故障：累积到 343 万行，把整个数据库拖垮）。服务启动时只保留最近这么多条。
@@ -631,6 +631,11 @@ def _initialize_connection() -> sqlite3.Connection:
     if "midroll_endroll_strategy" not in task_columns:
         # 任务级插片覆盖；空串 = 跟随参数中心的全局默认（与 final_video_manual_check 同一模式）。
         conn.execute("ALTER TABLE production_tasks ADD COLUMN midroll_endroll_strategy TEXT NOT NULL DEFAULT ''")
+    if "manual_order" not in task_columns:
+        # 用户手动调整的「账号 × 剧集」生产顺序（2026-09-19）。
+        # 0 = 从没手动调过（只在任务中心算显示顺序时兜底）；>0 = 该任务在用户排好的顺序里的位次，越小越先做。
+        # 三个执行器的派单 SQL 都把它当作**最高优先级**，所以"手动排序 = 最高调度优先"。
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN manual_order INTEGER NOT NULL DEFAULT 0")
     file_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_files)")}
     resource_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(resource_index)")}
     revenue_attempt_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(v2_revenue_collection_attempts)")}
@@ -4683,6 +4688,19 @@ class Handler(BaseHTTPRequestHandler):
                     from task_center_service import set_queue_paused, task_center_snapshot
                 set_queue_paused(path.endswith("/pause"))
                 self._json(HTTPStatus.OK, task_center_snapshot())
+                return
+            if path == "/api/v2/task-center/manual-order":
+                # 手动调整「账号 × 剧集」的生产顺序。这个顺序同时是三个执行器的取任务顺序
+                # （用户 2026-09-19 拍板："手动排序 = 最高调度优先"）。
+                try:
+                    from server.task_center_service import task_center_reorder
+                except ModuleNotFoundError:
+                    from task_center_service import task_center_reorder
+                production_task_id = str((payload or {}).get("production_task_id") or "").strip()
+                action = str((payload or {}).get("action") or "").strip()
+                if not production_task_id:
+                    raise ValueError("缺少 production_task_id")
+                self._json(HTTPStatus.OK, task_center_reorder(production_task_id, action))
                 return
             match = re.fullmatch(r"/api/v2/task-center/executors/([a-z_]+)/(?P<action>pause|resume)", path)
             if match:
