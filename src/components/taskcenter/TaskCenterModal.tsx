@@ -18,11 +18,10 @@ import {
   Layers,
   Activity
 } from 'lucide-react';
-import { TaskItem, ExecutorInfo, DramaSchedulePriority } from './taskCenterTypes';
-import { INITIAL_EXECUTORS, INITIAL_DRAMA_PRIORITIES } from './taskCenterMockData';
+import { TaskItem, ExecutorInfo } from './taskCenterTypes';
+import { INITIAL_EXECUTORS } from './taskCenterMockData';
 import { INITIAL_PREVIEW_TASKS } from './taskCenterPreviewData';
 import { ExecutorsOverview } from './ExecutorsOverview';
-import { DramaPriorityBanner } from './DramaPriorityBanner';
 import { TaskListSection } from './TaskListSection';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
 import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, storeSharedTaskCenterSnapshot } from '../../services/taskCenterService';
@@ -44,7 +43,6 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
   const cachedSnapshot = getCachedTaskCenterSnapshot();
   const [executors, setExecutors] = useState<ExecutorInfo[]>(dataSource === 'mock' ? INITIAL_EXECUTORS : (cachedSnapshot?.executors || []));
   const [tasks, setTasks] = useState<TaskItem[]>(dataSource === 'mock' ? INITIAL_PREVIEW_TASKS : (cachedSnapshot?.tasks || []));
-  const [dramaPriorities, setDramaPriorities] = useState<DramaSchedulePriority[]>(dataSource === 'mock' ? INITIAL_DRAMA_PRIORITIES : (cachedSnapshot?.dramaPriorities || []));
   const [isQueuePaused, setIsQueuePaused] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(() => {
     try { const value = localStorage.getItem('v2-task-center-snapshot-v1:updated-at'); return value ? new Date(value) : null; } catch { return null; }
@@ -94,7 +92,6 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
     setExecutors(snapshot.executors);
     tasksRef.current = snapshot.tasks;
     setTasks(snapshot.tasks);
-    setDramaPriorities(snapshot.dramaPriorities);
     setLastRefreshAt(taskCenterArea.updatedAt ? new Date(taskCenterArea.updatedAt) : null);
     if (typeof snapshot.isQueuePaused === 'boolean') setIsQueuePaused(snapshot.isQueuePaused);
   }, [taskCenterArea.data, taskCenterArea.updatedAt]);
@@ -119,7 +116,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
         showToast(`⚡ [重试] 已停止并重新排队：《${task.title}》`);
         return loadSharedTaskCenter(true);
       }).then((snapshot) => {
-        setExecutors(snapshot.executors); setTasks(snapshot.tasks); setDramaPriorities(snapshot.dramaPriorities);
+        setExecutors(snapshot.executors); setTasks(snapshot.tasks);
       }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '任务重新执行失败，请稍后重试。'));
       setRetryConfirmTask(null);
       return;
@@ -172,7 +169,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
       showToast('异常任务记录已清理');
       return loadSharedTaskCenter(true);
     }).then((snapshot) => {
-      setExecutors(snapshot.executors); setTasks(snapshot.tasks); setDramaPriorities(snapshot.dramaPriorities);
+      setExecutors(snapshot.executors); setTasks(snapshot.tasks);
       setSelectedTaskForDetail(null);
     }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '异常记录清理失败，请稍后重试。'));
     setOrphanCleanupTask(null);
@@ -185,7 +182,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
         showToast(`模板已重新排入队列：《${task.dramaName}》`);
       return loadSharedTaskCenter(true);
       }).then((snapshot) => {
-        setExecutors(snapshot.executors); setTasks(snapshot.tasks); setDramaPriorities(snapshot.dramaPriorities);
+        setExecutors(snapshot.executors); setTasks(snapshot.tasks);
       }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '模板重新生成失败，请稍后重试。'));
       return;
     }
@@ -217,7 +214,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
   const handleReExportVideo = (task: TaskItem) => {
     if (dataSource !== 'mock') {
       reExportV2Task(task.videoExportTaskId || task.id).then(() => loadSharedTaskCenter(true)).then((snapshot) => {
-        setExecutors(snapshot.executors); setTasks(snapshot.tasks); setDramaPriorities(snapshot.dramaPriorities);
+        setExecutors(snapshot.executors); setTasks(snapshot.tasks);
         showToast(`视频已重新排入导出队列：《${task.dramaName}》`);
       }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '重新导出失败，请稍后重试。'));
       return;
@@ -254,7 +251,6 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
         storeSharedTaskCenterSnapshot(snapshot);
         setExecutors(snapshot.executors);
         setTasks(snapshot.tasks);
-        setDramaPriorities(snapshot.dramaPriorities);
       }).catch(() => {
         setIsQueuePaused(!next);
         showToast('任务中心状态更新失败，请检查 V2 服务是否启动');
@@ -269,7 +265,6 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
       storeSharedTaskCenterSnapshot(snapshot);
       setExecutors(snapshot.executors);
       setTasks(snapshot.tasks);
-      setDramaPriorities(snapshot.dramaPriorities);
       showToast(shouldPause ? `${executor.name} 已请求暂停，当前任务结束后生效` : `${executor.name} 已恢复运行`);
     }).catch((error: unknown) => showToast(error instanceof Error ? error.message : '执行器状态更新失败，请稍后重试。'));
   };
@@ -390,10 +385,11 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
             onToggleExecutor={handleToggleExecutor}
           />
 
-          {/* Section 2: Dynamic Scheduling Priority Banner */}
-          <DramaPriorityBanner dramaPriorities={dramaPriorities} />
+          {/* 原来这里有一块「今日账号×剧集动态生产优先级调度」卡片横幅。
+              用户 2026-09-19 拍板：它的功能并进下面的任务列表（账号×剧集分组 + 组头名次），
+              独立横幅取消 —— 同一件事显示两遍正是"看着很累"的来源。 */}
 
-          {/* Section 3: Task List Section (Bottom Detailed Tasks) */}
+          {/* Section 2: Task List Section（账号 × 剧集优先级分组） */}
           <TaskListSection
             tasks={liveTasks}
             onRetryTask={handleRetryTask}
