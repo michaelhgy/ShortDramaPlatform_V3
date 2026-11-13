@@ -62,11 +62,37 @@ class PlannerTests(unittest.TestCase):
             ],
         }
 
+    def _raw_map_many_skips(self):
+        """多可跳段版本：验证跳集放量（同一高光枚举多条差异视频）。"""
+        raw = self._raw_map()
+        # 从 E01 的高光起点之后、到末尾之间，布满可跳段，彼此隔开
+        raw["skippable"] = [
+            {"from_line": f"E{e:02d}-005", "to_line": f"E{e:02d}-015", "what": "过渡",
+             "used_later": False, "resume_clear": True, "reason": ""}
+            for e in range(2, 12)
+        ]
+        return raw
+
+    def _two_pass_caller(self, raw):
+        """模拟两次调用：highlight 返回选点（不含可跳段），skippable 返回可跳段。"""
+        self.calls = []
+        def call(task_role, prompt, schema, schema_name):
+            self.calls.append(task_role)
+            if task_role == "skippable":
+                return {"data": {"skippable": raw.get("skippable", [])}, "usage": {}, "model": "m"}
+            picks = {k: v for k, v in raw.items() if k != "skippable"}
+            return {"data": picks, "usage": {}, "model": "m"}
+        return call
+
+    def _map_many(self):
+        return P.build_story_map(self.lines, self._two_pass_caller(self._raw_map_many_skips()))
+
     def _map(self):
-        return P.build_story_map(self.lines, lambda *a: {"data": self._raw_map(), "usage": {}, "model": "m"})
+        return P.build_story_map(self.lines, self._two_pass_caller(self._raw_map()))
 
     def test_story_map_filters_invalid_and_unqualified(self):
         story = self._map()
+        self.assertEqual(self.calls, ["highlight", "skippable"])  # 选点 + 标可跳段两次调用
         self.assertEqual([h["start_line"] for h in story["highlights"]], ["E01-005", "E06-003"])
         self.assertNotIn("E50-001", [e["line"] for e in story["end_points"]])
         self.assertEqual(len(story["skippable"]), 2)  # used_later 的段被丢弃
@@ -83,14 +109,34 @@ class PlannerTests(unittest.TestCase):
             self.assertEqual(c["mode"], "continuous")
         self.assertEqual({c["end_type"] for c in candidates}, {"告一段落", "悬念"})
 
-    def test_jump_plans_have_at_most_two_jumps(self):
+    def test_jump_plans_respect_skip_limit_and_remove_episodes(self):
         story = self._map()
         candidates = P.build_candidates(story, self.timeline, "jump", 300, 600)
         self.assertTrue(candidates)
         for c in candidates:
-            self.assertTrue(1 <= len(c["skips"]) <= 2)
+            self.assertTrue(1 <= len(c["skips"]) <= P.MAX_SKIPS_PER_VARIANT)
             skipped_eps = {int(s["from_line"][1:3]) for s in c["skips"]}
             self.assertFalse(skipped_eps & {s["episode"] for s in c["segments"]})
+
+    def test_jump_volume_many_variants_per_highlight(self):
+        """放量：可跳段充足时，同一高光应枚举出多条、互不相同、且每个高光不超过上限。"""
+        story = self._map_many()
+        candidates = P.build_candidates(story, self.timeline, "jump", 300, 600)
+        by_rank = {}
+        for c in candidates:
+            by_rank.setdefault(c["rank"], []).append(c)
+        # 至少有一个高光产出多条跳集（放量生效）
+        self.assertTrue(any(len(v) >= 3 for v in by_rank.values()),
+                        f"每个高光跳集条数：{ {r: len(v) for r, v in by_rank.items()} }")
+        for rank, variants in by_rank.items():
+            # 不超过每高光上限
+            self.assertLessEqual(len(variants), P.MAX_JUMP_PER_HIGHLIGHT)
+            # 跳法签名互不相同（内容有差异）
+            signatures = [tuple(sorted((s["from_line"], s["to_line"]) for s in c["skips"])) for c in variants]
+            self.assertEqual(len(signatures), len(set(signatures)))
+            for c in variants:
+                self.assertTrue(300 <= c["duration"] <= 600)
+                self.assertTrue(1 <= len(c["skips"]) <= P.MAX_SKIPS_PER_VARIANT)
 
     def test_later_episodes_start_after_recap(self):
         segments = self.timeline.segments("E01-005", "E03-010")

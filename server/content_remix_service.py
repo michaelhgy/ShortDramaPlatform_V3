@@ -270,7 +270,7 @@ def _model_caller(run_id: str):
         result = generate_json({
             "task_role": task_role, "model": model, "prompt": prompt, "schema": schema,
             "schema_name": schema_name, "reasoning_effort": "medium",
-            "timeout_s": 600 if task_role == "highlight" else 180,
+            "timeout_s": 600 if task_role in ("highlight", "skippable") else 180,
         })
         with _LOCK:
             run = _load(run_id)
