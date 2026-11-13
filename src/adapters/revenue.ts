@@ -97,7 +97,7 @@ export function toQingningVideoAnalysis(details: V2RevenueVideoDetail[], selecte
       linkedActualReleaseTime: first.linked_actual_release_time || first.inferred_actual_release_time || undefined,
       linkedReleaseAddress: [first.linked_release_province || first.inferred_release_province, first.linked_release_city || first.inferred_release_city, first.linked_release_district || first.inferred_release_district, first.linked_release_detail_address || first.inferred_release_detail_address].filter(Boolean).join('') || undefined,
     };
-  }).filter((video) => video.periodRevenue !== 0);
+  }).filter((video) => video.periodVideoViews > 0 || video.periodRevenue !== 0);
   const p75Views = percentile(videos.map((video) => video.periodVideoViews));
   const p75Revenue = percentile(videos.map((video) => video.periodRevenue));
   videos.forEach((video) => {

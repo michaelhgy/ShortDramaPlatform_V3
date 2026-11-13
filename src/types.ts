@@ -1,4 +1,4 @@
-export type NavTab = 'workbench' | 'production' | 'analytics' | 'assets' | 'parameters' | 'settings';
+export type NavTab = 'dashboard' | 'workbench' | 'production' | 'content' | 'analytics' | 'assets' | 'parameters' | 'settings';
 
 export type ManualAccountStatus = '正常' | '观察' | '暂停' | '实名' | '封号' | '其他';
 
@@ -45,8 +45,9 @@ export interface AccountItem {
   id: string;
   name: string;
   avatarSeed?: string;
+  avatarUrl?: string;
   yesterdayRevenue: number;
-  yesterdayRevenueState?: 'success' | 'no_data' | 'failed' | 'uncollected';
+  yesterdayRevenueState?: 'success' | 'no_data' | 'pending' | 'failed' | 'uncollected';
   monthRevenue: number;
   manualStatus: ManualAccountStatus;
   platform: string; // e.g. "微信视频号"
@@ -55,6 +56,8 @@ export interface AccountItem {
 }
 
 export interface ScheduleTask {
+  mountSource?: import('./api/dramaCatalog').MountSource;
+  mountExternalId?: string;
   id: string;
   accountId: string;
   accountName: string;
@@ -66,8 +69,8 @@ export interface ScheduleTask {
     text: string;
     tag: string;
     };
-    publishTime: string; // e.g. "今天 18:30" or "明天 09:00"
-    plannedPublishAt?: string; // YYYY-MM-DDTHH:mm, used by V2 backend scheduling
+    publishTime: string; // Compatibility name: calendar-date display.
+    plannedPublishAt?: string; // YYYY-MM-DD, planned day; actual publishing has independent time settings.
     status: DramaProductionStatus;
   theaterName?: string;
   notes?: string;

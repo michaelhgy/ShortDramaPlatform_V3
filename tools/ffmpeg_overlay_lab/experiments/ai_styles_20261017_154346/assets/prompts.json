@@ -1,0 +1,32 @@
+[
+  {
+    "id": "gold_texture",
+    "transparent": false,
+    "prompt": "Create a production-ready raster texture asset for narrow animated video side strips. Portrait 2:3 composition, full bleed. Elegant warm gold, amber and ivory light flowing vertically like luminous silk filaments, a few very small soft sparkling flecks, fine vertical detail distributed evenly over the entire image. Moderate brightness with soft gradients and rich warm midtones, no large blown-out white areas. The image will be horizontally compressed and cropped into very narrow 10-pixel strips, so avoid recognizable subjects and central focal objects. Prefer a vertically repeatable texture with similar density at the top and bottom. This is the texture itself, not a picture of a frame or a mockup. No text, letters, numbers, logos, watermark, solid border, black margins or empty central area. Opaque background."
+  },
+  {
+    "id": "gold_stickers",
+    "transparent": true,
+    "prompt": "Create one genuinely transparent PNG overlay asset for a vertical short-drama video. Portrait 2:3 layout. Decorative artwork is confined to the TOP 12 percent and BOTTOM 12 percent of the canvas. The central 76 percent must be completely transparent and empty to reveal the actor and subtitles. Refined warm gold and ivory thin hand-drawn line art: small ginkgo leaf sprigs, delicate curved stems, a few tiny four-point stars and small glowing dots. The upper and lower horizontal bands are complementary but different, spread across most of the width with generous breathing room. Light elegant decoration for adult viewers, crisp readable lines at small size, no heavy fills. Keep artwork at least 3 percent away from the outer edges. No vertical side frame. No lettering, symbols resembling writing, text, logo, watermark, background rectangle, checkerboard drawing, or displayed product mockup. Real alpha transparency, not a rendered transparency pattern."
+  },
+  {
+    "id": "cyan_texture",
+    "transparent": false,
+    "prompt": "Create a production-ready raster texture asset for narrow animated video side strips. Portrait 2:3 full-bleed composition. Calm luminous cyan, turquoise, ice blue and a little pearl white, long fluid vertical light ribbons with delicate ripples like refracted water light. Fine flowing structure is distributed across the whole image; medium contrast, soft balanced luminosity without large white flashes. The asset will be compressed horizontally and cropped into narrow 10-pixel side strips, so make an abstract texture with no objects or main subject. Prefer matching visual density at top and bottom for vertical tiling. This is the flat usable texture itself, not a frame design or a mockup. No text, letters, numbers, logos, watermarks, black margins, solid border or blank central opening. Opaque background."
+  },
+  {
+    "id": "cyan_stickers",
+    "transparent": true,
+    "prompt": "Create one genuinely transparent PNG decoration overlay for a vertical short-drama video. Portrait 2:3. Artwork only inside the TOP 12 percent and BOTTOM 12 percent, leaving the central 76 percent completely transparent and empty. Airy pearl-white and pale cyan thin line art with tiny turquoise accents: upper horizontal band of a few soft cloud curls, flowing water lines and small twinkling dots; lower horizontal band of gentle water ripples, two small stylized lotus leaves and delicate curved lines. Elegant quiet Chinese-inspired natural motifs, uncluttered, crisp lines visible when scaled down, very little filled area. Spread the decorations across most of the width while retaining gaps. Complementary upper and lower bands, different arrangement. At least 3 percent padding at outer edges. No vertical border. No text, writing, lettering, logos, watermark, opaque background, checkerboard drawing or mockup. Preserve actual alpha transparency."
+  },
+  {
+    "id": "purple_texture",
+    "transparent": false,
+    "prompt": "Create a production-ready abstract raster texture asset for narrow animated video side strips. Portrait 2:3, full bleed. Soft lavender, muted rose pink, pale violet and a few silver-white highlights. Delicate vertical nebula-like wisps with sparse tiny star specks and fine luminous threads, balanced pleasant brightness and medium contrast, not dark or aggressively neon. Distribute small-scale structure over the entire image, no single bright focal object. It will be compressed horizontally and cropped to 10-pixel vertical strips, so avoid recognizable planets, faces, moons or scenes. Prefer visually repeatable top and bottom with consistent density. Flat usable texture, not a frame design or a mockup. No text, letters, logos, watermark, border, black margins or blank central area. Opaque background."
+  },
+  {
+    "id": "purple_stickers",
+    "transparent": true,
+    "prompt": "Create one genuinely transparent PNG overlay decoration for a vertical short-drama video. Portrait 2:3. Confine all line-art motifs to TOP 12 percent and BOTTOM 12 percent. The middle 76 percent is completely empty transparent space for the drama actor and subtitles. Dreamy but restrained pearl-white, pastel lavender and muted pink thin hand-drawn line art: top band has a small crescent moon, a few four-point stars and very fine dotted constellation arcs; bottom band has a few tiny five-petal blossoms, stars and softly curved dotted arcs. Clear simple outlines with minimal fill, tasteful and light rather than childlike or crowded. Upper and lower bands span most of the width with generous gaps and have different balanced arrangements. Keep 3 percent padding from all outer edges. No side rails or full enclosing border. No writing, text, numbers, logos, watermark, opaque backdrop, transparency checkerboard illustration or mockup. Use genuine alpha transparency."
+  }
+]

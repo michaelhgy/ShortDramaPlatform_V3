@@ -1,0 +1,167 @@
+{
+  "status": "PASS",
+  "base_version": "2026.11.03.3",
+  "target_version": "2026.11.04.1",
+  "product_version": "3.0.2",
+  "updater": "D:\\ShortDramaPlatform_V3\\packaging\\updates\\2026.11.03.3_to_2026.11.04.1\\交付\\ShortDramaPlatform_V3_Update_3.0.2_2026.11.03.3_to_2026.11.04.1.exe",
+  "bytes": 30506516,
+  "sha256": "b5fb4e578eda7d1d018b0136c7a735e5e14723ca1df38324135b727eaf7a1aaf",
+  "production_database_accessed": false,
+  "production_installation_updated": false,
+  "real_publishing_performed": false,
+  "first_update": {
+    "status": "updated",
+    "version": "2026.11.04.1",
+    "backup": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\acceptance-install\\.v3-updates\\2026.11.03.3_to_2026.11.04.1_e4a9b755f32f4a10b43e0a29a3153b38\\backup",
+    "changed_files": 13,
+    "removed_files": 1
+  },
+  "target_files_verified": 3372,
+  "unchanged_files_and_mtime_verified": 3359,
+  "sentinel_preserved": true,
+  "backup_records": [
+    ".v3-updates\\2026.11.03.3_to_2026.11.04.1_e4a9b755f32f4a10b43e0a29a3153b38\\journal.json",
+    ".v3-updates\\2026.11.03.3_to_2026.11.04.1_e4a9b755f32f4a10b43e0a29a3153b38\\backup\\build-metadata.json"
+  ],
+  "repeat_update": {
+    "status": "already_current",
+    "version": "2026.11.04.1"
+  },
+  "wrong_version_rejected": {
+    "status": "error",
+    "error": "此更新包只适用于2026.11.03.3，当前为2026.10.30.1；请使用对应更新包或完整安装包。"
+  },
+  "runtime": {
+    "status": "ok",
+    "version": {
+      "product": "短剧推广运营系统",
+      "line": "V3",
+      "product_version": "3.0.2",
+      "release_id": "2026.11.04.1",
+      "channel": "stable"
+    },
+    "insertion_timeline_available": true,
+    "v3": {
+      "counts": {
+        "sticker_families": 31,
+        "stickers": 670,
+        "fullscreen_stickers": 383,
+        "effect_types": 23,
+        "effect_variants": 104,
+        "borders": 10
+      },
+      "verified_files": 1458,
+      "resource_root": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\acceptance-install\\_internal",
+      "sticker_family": "可爱小动物26字母贴纸",
+      "effect_segments": 1,
+      "border_plan": {
+        "seed": 20261020,
+        "asset_id": "08",
+        "asset_name": "起伏网格",
+        "asset_file": "assets/08/material_loop.mp4",
+        "asset_sha256": "fc654f78aada8944db95520aeb2ed87b79c6987d288fae62dbb04c1d9396ec83",
+        "native_size": [
+          676,
+          1200
+        ],
+        "scaled_size": [
+          1352,
+          2400
+        ],
+        "cycle_frames": 132,
+        "start_frame": 123,
+        "fps": 30,
+        "sides": [
+          {
+            "side": "left",
+            "width": 10,
+            "crop_x": 642,
+            "crop_y": 0
+          },
+          {
+            "side": "right",
+            "width": 10,
+            "crop_x": 435,
+            "crop_y": 0
+          }
+        ],
+        "minimum_position_separation": 108,
+        "opacity": 1,
+        "feather_px": 0,
+        "playback_speed": 1,
+        "position_fixed_during_template": true,
+        "same_material_for_both_sides": true
+      }
+    },
+    "ffmpeg": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\acceptance-install\\_internal\\tools\\ffmpeg\\bin\\ffmpeg.exe",
+    "ffprobe": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\acceptance-install\\_internal\\tools\\ffmpeg\\bin\\ffprobe.exe",
+    "runtime_resources": [
+      "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\acceptance-install\\_internal\\server\\template_engine\\jianying59_template\\resources\\track07_08_effect_pool_5_9.json",
+      "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\acceptance-install\\_internal\\server\\final_engine\\jianying59_final\\resources\\real_photo_effect_pool_5_9.json"
+    ]
+  },
+  "frozen_regeneration": {
+    "status": "PASS",
+    "cases": [
+      {
+        "label": "initial-no-insertions",
+        "file": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\frozen-regeneration\\workspace\\生产文件\\11月4日\\重新生成隔离验收\\合成测试剧\\成片\\合成测试剧-1.mp4",
+        "sha256": "a6a2e8ddbc69b198245050995c2221654e14623d7dd5f9b2e98fab0ca108a02c",
+        "frames": 90,
+        "duration": 3.0,
+        "encoding": {
+          "encoder": "h264_nvenc",
+          "warning": null
+        }
+      },
+      {
+        "label": "single-regenerated-midroll-and-endroll",
+        "file": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\frozen-regeneration\\workspace\\生产文件\\11月4日\\重新生成隔离验收\\合成测试剧\\成片\\合成测试剧-1_R02.mp4",
+        "sha256": "5c45fca6b46ba31d476324843b42bc0c43b53dc73778932ab443e81eb20c2aca",
+        "frames": 123,
+        "duration": 4.1,
+        "encoding": {
+          "encoder": "h264_nvenc",
+          "warning": null
+        }
+      },
+      {
+        "label": "batch-regenerated-current-task-tail-only",
+        "file": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\frozen-regeneration\\workspace\\生产文件\\11月4日\\重新生成隔离验收\\合成测试剧\\成片\\合成测试剧-1_R03.mp4",
+        "sha256": "93c1592179d8d73eb55727f6f4a5884524da57a0c2859c13dcd1c22de4168f86",
+        "frames": 105,
+        "duration": 3.5,
+        "encoding": {
+          "encoder": "h264_nvenc",
+          "warning": null
+        }
+      },
+      {
+        "label": "batch-regenerated-current-material-no-insertions",
+        "file": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\frozen-regeneration\\workspace\\生产文件\\11月4日\\重新生成隔离验收\\合成测试剧\\成片\\合成测试剧-1_R04.mp4",
+        "sha256": "a6a2e8ddbc69b198245050995c2221654e14623d7dd5f9b2e98fab0ca108a02c",
+        "frames": 90,
+        "duration": 3.0,
+        "encoding": {
+          "encoder": "h264_nvenc",
+          "warning": null
+        }
+      }
+    ],
+    "old_outputs_retained": true,
+    "template_cache_unchanged": true,
+    "usage_rows": 1,
+    "audio_and_cut_frames": "PASS",
+    "identity_template_only": true
+  },
+  "frozen_real_template": {
+    "status": "PASS",
+    "frames": 393,
+    "output": "D:\\ShortDramaPlatform_V3\\local-test-output\\release-2026.11.04.1\\accept-2026.11.03.3\\frozen-real-template\\workspace\\系统数据\\fg\\release\\a1\\final.mp4"
+  },
+  "compiled_source_hashes_verified": 476,
+  "bundled_frontend_files_verified": 5,
+  "fixed_resources_reused": true,
+  "changed_files": 13,
+  "removed_files": 1
+}

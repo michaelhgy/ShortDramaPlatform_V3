@@ -1,0 +1,1 @@
+[0:v]crop=540:600:540:1800,format=rgba[a];color=c=0x263244:s=540x650:r=1:d=1,format=rgba[b];[b][a]overlay=0:50:format=rgb:shortest=1,drawtext=fontfile=/mnt/c/Windows/Fonts/msyh.ttc:textfile=/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/BR_label.txt:fontsize=26:fontcolor=0xf3f0e9:x=18:y=10[out]

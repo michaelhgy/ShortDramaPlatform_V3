@@ -619,7 +619,13 @@ export const DramaModule: React.FC<DramaModuleProps> = ({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="lg:col-span-8 bg-white rounded-2xl p-12 border border-black/[0.06] shadow-xs flex flex-col items-center justify-center text-center space-y-3">
+          <AlertCircle className="w-10 h-10 text-slate-300" />
+          <h3 className="text-sm font-bold text-[#1A1D2E]">当前筛选下暂无剧集收益数据</h3>
+          <p className="text-xs text-slate-400">请尝试调整日期范围或搜索词</p>
+        </div>
+      )}
     </div>
   );
 };

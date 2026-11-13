@@ -66,7 +66,7 @@ export interface TaskItem {
   };
 
   // Scheduling & Priority
-  scheduledPublishTime: string; // e.g. "18:00"
+  scheduledPublishTime: string; // Compatibility name: YYYY-MM-DD planning date.
   priorityRank: number; // 1 = highest
   /** 「账号 × 剧集」的手动生产顺序位次（1 = 最先做）。由后端按同一份顺序算出，
    *  界面排序与三个执行器的取任务顺序都看它，所以两边永远一致。 */

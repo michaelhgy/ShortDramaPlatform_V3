@@ -1,3 +1,4 @@
+import { formatPlannedDate } from '../utils/plannedDate';
 import React from 'react';
 import { ScheduleTask, DramaProductionStatus } from '../types';
 import { DramaCover } from './DramaCover';
@@ -187,11 +188,11 @@ export const TodayScheduleSection: React.FC<TodayScheduleSectionProps> = ({
                           <div className="mt-2 flex items-center gap-2 flex-wrap">
                             <button
                               onClick={() => onEditTime(task)}
-                              title="点击修改发布时间"
+                              title="点击修改计划发布日期"
                               className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#F8FAFC] hover:bg-[#EEF2F6] text-[#1A1D2E] text-[11px] font-bold transition-all border border-black/[0.07] cursor-pointer"
                             >
                               <Clock className="w-3 h-3 text-[#64748B]" />
-                              <span>{task.publishTime}</span>
+                              <span>{formatPlannedDate(task.plannedPublishAt || task.publishTime)}</span>
                             </button>
 
                             <div>

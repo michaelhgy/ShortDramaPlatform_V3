@@ -1,6 +1,9 @@
 import { v2Client } from './client';
+import type { MaterialInsertionOverride } from '../productionTypes';
 
 export interface V2ProductionTaskRequest {
+  mount_source?: import('./dramaCatalog').MountSource;
+  mount_external_id?: string;
   source_id: string;
   account_name: string;
   drama_name: string;
@@ -15,27 +18,35 @@ export interface V2ProductionTaskRequest {
 }
 
 export interface V2ProductionTask {
+  mount_source?: import('./dramaCatalog').MountSource | '';
+  mount_external_id?: string;
+  mount_snapshot?: Record<string, unknown>;
   id: string;
   source_id: string;
   paths: { root: string; materials: string; template: string; finals: string };
 }
 
 export interface V2ProductionTaskListItem extends V2ProductionTask {
+  account_id?: string;
+  manual_order?: number;
+  created_at?: string;
   created_date: string;
   account_name: string;
   drama_name: string;
   planned_publish_at: string;
   release_status?: 'unregistered' | 'registered';
   actual_release_time?: string;
+  delivery_completed_at?: string;
   release_province?: string;
   release_city?: string;
   release_district?: string;
   release_detail_address?: string;
   final_video_manual_check?: boolean;
+  midroll_endroll_strategy?: MaterialInsertionOverride | null;
   status: string;
   task_display_status?: string;
   template_display_status?: string;
-  materials: Array<{ id: string; name: string; path: string; sequence_no: number | null; size_bytes: number; duration_seconds?: number; resolution?: string; thumbnail_path?: string; scanned_at: string; status?: string }>;
+  materials: Array<{ id: string; name: string; path: string; sequence_no: number | null; size_bytes: number; duration_seconds?: number; resolution?: string; thumbnail_path?: string; scanned_at: string; status?: string; insertion_strategy?: MaterialInsertionOverride | null }>;
   pending_material_count: number;
   materials_count?: number;
   videos_count?: number;
@@ -58,6 +69,7 @@ export interface V2ProductionTaskListItem extends V2ProductionTask {
   videos: Array<{
     id: string;
     source_material_id: string;
+    engine?: string;
     status: string;
     error_message?: string;
     generation_started_at?: string;
@@ -70,6 +82,7 @@ export interface V2ProductionTaskListItem extends V2ProductionTask {
     draft_path: string;
     output_path: string;
     output_exists?: boolean;
+    output_media_version?: string;
     output_size_bytes?: number;
     export_job_id?: string;
     export_attempt_id?: string;
@@ -117,6 +130,14 @@ export function scanV2ProductionTask(taskId: string): Promise<V2ScanResult> {
   return v2Client.post(`/api/v2/production-tasks/${taskId}/scan`);
 }
 
+export function updateV2TaskInsertionStrategy(taskId: string, strategy: MaterialInsertionOverride | null): Promise<V2ProductionTaskListItem> {
+  return v2Client.post(`/api/v2/production-tasks/${taskId}/insertion-strategy`, { strategy });
+}
+
+export function updateV2MaterialInsertionStrategy(materialId: string, strategy: MaterialInsertionOverride | null): Promise<V2ProductionTaskListItem> {
+  return v2Client.post(`/api/v2/production-files/${materialId}/insertion-strategy`, { strategy });
+}
+
 export function updateV2TaskManualCheck(taskId: string, enabled: boolean): Promise<V2ProductionTaskListItem> {
   return v2Client.post(`/api/v2/production-tasks/${taskId}/manual-check`, { enabled });
 }
@@ -146,4 +167,18 @@ export function previewV2Cleanup(taskId: string): Promise<import('../productionT
 }
 export function executeV2Cleanup(taskId: string): Promise<{ status: string; deleted: string[]; errors: string[] }> {
   return v2Client.post(`/api/v2/production-tasks/${taskId}/cleanup`);
+}
+
+
+export interface MaterialDeletePreview {
+  material_id: string; file_name: string; source_path: string;
+  can_delete: boolean; blocked_reason: string;
+  files: Array<{path: string; exists: boolean; size_bytes: number; mtime_ns: number}>;
+  cache_directories: string[]; video_count: number; job_count: number; confirmation_token: string;
+}
+export function previewV2MaterialDelete(materialId: string): Promise<MaterialDeletePreview> {
+  return v2Client.post(`/api/v2/production-files/${materialId}/delete-preview`, {});
+}
+export function deleteV2Material(materialId: string, confirmationToken: string): Promise<{task: V2ProductionTaskListItem; deleted_paths: string[]; audit_path: string}> {
+  return v2Client.post(`/api/v2/production-files/${materialId}/delete`, {confirmation_token: confirmationToken});
 }

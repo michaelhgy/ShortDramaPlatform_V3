@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import importlib.util
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
@@ -13,6 +14,7 @@ from server.worker_registry import PRODUCTION_WORKERS
 PROJECT_ROOT = Path(SPECPATH).parent
 FFMPEG_ROOT = Path(os.environ["V2_FFMPEG_EXPANDED_ROOT"])
 APPLICATION_ICON = PROJECT_ROOT / "packaging" / "assets" / "v2-application-icon.ico"
+MEDIAPIPE_ROOT = Path(importlib.util.find_spec("mediapipe").submodule_search_locations[0])
 
 datas = [
     (str(PROJECT_ROOT / "dist"), "dist"),
@@ -22,6 +24,8 @@ datas = [
     # 照片墙选人用的人脸检测模型（YuNet，MIT）。必须随包分发：目标机器可能长期离线，
     # 而缺了它只会退化成"按画面中心裁"，效果明显变差。
     (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "face_detection_yunet_2023mar.onnx"), "server/template_engine/jianying59_template/resources"),
+    (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "face_landmarker.task"), "server/template_engine/jianying59_template/resources"),
+    (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "arcface_w600k_mbf.onnx"), "server/template_engine/jianying59_template/resources"),
     (str(PROJECT_ROOT / "server" / "template_engine" / "jianying59_template" / "resources" / "YuNet-LICENSE.txt"), "server/template_engine/jianying59_template/resources"),
     (str(PROJECT_ROOT / "server" / "final_engine" / "jianying59_final" / "resources" / "real_photo_effect_pool_5_9.json"), "server/final_engine/jianying59_final/resources"),
     (str(PROJECT_ROOT / "server" / "wechat_index_proxy_addon.py"), "server"),
@@ -32,12 +36,24 @@ datas = [
 ]
 binaries = []
 
+# MediaPipe's top-level import eagerly imports optional matplotlib helpers.  The
+# application provides a lightweight stub before importing MediaPipe, so collect
+# the package by path instead of importing it during PyInstaller analysis.
+for source in MEDIAPIPE_ROOT.rglob("*"):
+    if source.is_file() and "__pycache__" not in source.parts:
+        relative_parent = source.relative_to(MEDIAPIPE_ROOT).parent
+        datas.append((str(source), str(Path("mediapipe") / relative_parent)))
+
 # These packages use dynamic backends, data files or native binaries.  This is
 # intentionally limited to V2's declared runtime dependencies, not all of site-packages.
 hiddenimports = [
     "webview.platforms.edgechromium", "webview.platforms.winforms", "clr",
     "pythonnet", "clr_loader", "rapidocr_onnxruntime", "onnxruntime.capi._pybind_state",
 ]
+for source in MEDIAPIPE_ROOT.rglob("*.py"):
+    if "__pycache__" not in source.parts:
+        module = ".".join(("mediapipe", *source.relative_to(MEDIAPIPE_ROOT).with_suffix("").parts))
+        hiddenimports.append(module.removesuffix(".__init__"))
 # NumPy, OpenCV, Pillow, ONNX Runtime and pywebview each publish a PyInstaller
 # hook.  Do not recursively collect them: that would pull their test/tooling
 # trees into the Portable package.  Only V2's dynamic automation packages need

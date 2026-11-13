@@ -1,129 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScheduleTask } from '../types';
-import { Clock, X } from 'lucide-react';
+import { Calendar, X } from 'lucide-react';
+import { plannedDate, planningDayOffset } from '../utils/plannedDate';
 
-interface EditTimePopoverProps {
-  task: ScheduleTask | null;
-  isOpen: boolean;
-  onClose: () => void;
-  onUpdateTime: (taskId: string, newTime: string) => void;
-}
-
-export const EditTimePopover: React.FC<EditTimePopoverProps> = ({
-  task,
-  isOpen,
-  onClose,
-  onUpdateTime,
-}) => {
-  const [selectedTime, setSelectedTime] = useState(task?.publishTime || '今天 18:30');
-  const [customTime, setCustomTime] = useState('18:30');
-  const [isCustom, setIsCustom] = useState(false);
-
+interface EditTimePopoverProps { task: ScheduleTask | null; isOpen: boolean; onClose: () => void; onUpdateTime: (taskId: string, newDate: string) => void }
+export const EditTimePopover: React.FC<EditTimePopoverProps> = ({ task, isOpen, onClose, onUpdateTime }) => {
+  const [value, setValue] = useState('');
+  useEffect(() => { if (isOpen && task) setValue(plannedDate(task.plannedPublishAt) || plannedDate(task.publishTime)); }, [isOpen, task?.id]);
+  useEffect(() => { if (!isOpen) return; const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); onClose(); } }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, [isOpen, onClose]);
   if (!isOpen || !task) return null;
-
-  const quickPresets = [
-    '今天 12:00',
-    '今天 18:00',
-    '今天 18:30',
-    '今天 19:45',
-    '今天 21:00',
-    '今天 22:30',
-    '明天 09:00',
-    '明天 12:00',
-    '明天 18:30',
-  ];
-
-  const handleSave = () => {
-    const finalTime = isCustom ? `今天 ${customTime}` : selectedTime;
-    onUpdateTime(task.id, finalTime);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 backdrop-blur-xs p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08]">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div>
-            <h4 className="font-bold text-sm text-[#1A1D2E]">修改发布时间</h4>
-            <p className="text-[11px] text-[#64748B] truncate max-w-[200px] mt-0.5">
-              {task.accountName} · 《{task.dramaName}》
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Quick Presets Grid */}
-        <div className="mt-4">
-          <label className="text-[11px] font-semibold text-[#64748B] block mb-2">
-            快捷时段：
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {quickPresets.map(preset => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => {
-                  setSelectedTime(preset);
-                  setIsCustom(false);
-                }}
-                className={`py-1.5 px-2 text-xs rounded-lg font-semibold transition-all border ${
-                  !isCustom && selectedTime === preset
-                    ? 'bg-[#1A1D2E] text-[#DDFD00] border-[#1A1D2E]'
-                    : 'bg-[#F8FAFC] text-[#334155] border-black/[0.06] hover:bg-white'
-                }`}
-              >
-                {preset}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Custom Input */}
-        <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setIsCustom(true)}
-            className={`text-xs px-2.5 py-1 rounded-lg border font-medium ${
-              isCustom ? 'bg-[#1A1D2E] text-[#DDFD00] border-[#1A1D2E]' : 'bg-[#F8FAFC] text-[#64748B] border-black/[0.06]'
-            }`}
-          >
-            自定义时刻
-          </button>
-
-          {isCustom && (
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-[#64748B]">今天</span>
-              <input
-                type="time"
-                value={customTime}
-                onChange={(e) => setCustomTime(e.target.value)}
-                className="px-2 py-0.5 rounded border border-slate-300 bg-white text-xs font-bold text-[#1A1D2E]"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] text-xs font-bold hover:bg-black transition-colors"
-          >
-            确认更新
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4 backdrop-blur-sm"><div role="dialog" aria-modal="true" aria-label="修改计划发布日期" className="w-full max-w-sm space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+    <div className="flex items-start justify-between"><div><h4 className="flex items-center gap-2 text-sm font-black"><Calendar size={16} />修改计划发布日期</h4><p className="mt-1 text-xs text-slate-500">{task.accountName} · 《{task.dramaName}》</p></div><button aria-label="关闭日期设置" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X size={16} /></button></div>
+    <input aria-label="计划发布日期" type="date" value={value} onChange={e => setValue(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+    <div className="flex gap-2 text-xs">{[0, 1, 2].map((offset, i) => <button key={offset} className="rounded-lg bg-slate-100 px-3 py-1.5" onClick={() => setValue(planningDayOffset(offset))}>{['今天', '明天', '后天'][i]}</button>)}<button className="rounded-lg bg-slate-100 px-3 py-1.5" onClick={() => setValue('')}>暂不设置</button></div>
+    <p className="text-xs leading-5 text-slate-400">这里安排制作计划日期，实际发布的时分在自动发布中设置。</p><div className="flex justify-end gap-2"><button className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold" onClick={onClose}>取消</button><button className="rounded-xl bg-[#1A1D2E] px-4 py-2 text-xs font-black text-[#DDFD00]" onClick={() => { onUpdateTime(task.id, value); onClose(); }}>保存日期</button></div>
+  </div></div>;
 };

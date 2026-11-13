@@ -1,113 +1,34 @@
 import React, { useState } from 'react';
-import { AccountBusinessItem, AccountBusinessStatus } from '../../../assetsTypes';
+import { AccountBusinessItem, TheaterBusinessItem } from '../../../assetsTypes';
 import { X, FileSpreadsheet, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
+import { parseAccountBatch } from '../../../utils/accountBatchImport';
 
 interface AccountBatchImportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  defaultTheaterName?: string;
+  theaters: TheaterBusinessItem[];
   onBatchImport: (accounts: Omit<AccountBusinessItem, 'id'>[]) => void;
 }
 
 export const AccountBatchImportModal: React.FC<AccountBatchImportModalProps> = ({
   isOpen,
   onClose,
-  defaultTheaterName = '九州剧场',
+  theaters,
   onBatchImport,
 }) => {
   const [pasteText, setPasteText] = useState('');
   const [parsedRows, setParsedRows] = useState<Omit<AccountBusinessItem, 'id'>[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
 
-  const normalizeDate = (value: string, allowUnreported: boolean): string | null => {
-    const raw = value.trim();
-    if (allowUnreported && raw === '未报白') return raw;
-    if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/.test(raw)) {
-      const [year, month, day] = raw.split(/[-\/]/).map(Number);
-      const date = new Date(Date.UTC(year, month - 1, day));
-      if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
-        return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      }
-    }
-    if (/^\d+(?:\.\d+)?$/.test(raw)) {
-      const serial = Number(raw);
-      if (serial >= 1 && serial <= 2958465) {
-        return new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86400000).toISOString().slice(0, 10);
-      }
-    }
-    return null;
-  };
-
   if (!isOpen) return null;
 
   const handleParse = () => {
-    if (!pasteText.trim()) {
-      setParseError('请先粘贴包含账号信息的文本内容');
-      return;
-    }
-
-    const lines = pasteText.trim().split('\n').filter(l => l.trim().length > 0);
-    const results: Omit<AccountBusinessItem, 'id'>[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      // Skip only an actual header row. A real data row can contain a theater name.
-      if (i === 0 && /^(账号昵称|昵称)\s*(账号ID|ID|平台ID)/i.test(line)) {
-        continue;
-      }
-
-      // Split by tab, comma, semicolon, or 2+ spaces
-      const parts = line.split(/\t|,|;|\s{2,}/).map(p => p.trim()).filter(Boolean);
-      if (parts.length < 1) continue;
-
-      const nickname = parts[0];
-      const accountId = parts[1] || '';
-      if (!accountId) {
-        setParseError(`第 ${i + 1} 行缺少平台iD，账号iD不能为空`);
-        setParsedRows([]);
-        return;
-      }
-      const theaterName = parts[2] || defaultTheaterName;
-      const subTheaterName = parts[3] || '';
-      
-      let rawStatus = parts[4] || '正常';
-      const validStatuses: AccountBusinessStatus[] = ['正常', '观察', '限流', '二限', '实名', '封禁', '停用'];
-      const status: AccountBusinessStatus = validStatuses.includes(rawStatus as AccountBusinessStatus) 
-        ? (rawStatus as AccountBusinessStatus) 
-        : '正常';
-
-      const whitelistedDate = normalizeDate(parts[5] || '未报白', true);
-      const registeredDate = normalizeDate(parts[6] || '', false);
-      if (!whitelistedDate) {
-        setParseError(`第 ${i + 1} 行报白时间只能填写“未报白”或有效日期`);
-        setParsedRows([]);
-        return;
-      }
-      if (!registeredDate) {
-        setParseError(`第 ${i + 1} 行注册时间必须填写有效日期`);
-        setParsedRows([]);
-        return;
-      }
-      const notes = parts[7] || '批量导入账号';
-
-      results.push({
-        nickname,
-        accountId,
-        theaterId: 'th-01',
-        theaterName,
-        subTheaterName,
-        status,
-        whitelistedDate,
-        registeredDate,
-        notes,
-      });
-    }
-
-    if (results.length === 0) {
-      setParseError('未能识别到有效的账号数据，请检查格式');
-    } else {
+    setParsedRows([]);
+    try {
+      setParsedRows(parseAccountBatch(pasteText, theaters));
       setParseError(null);
-      setParsedRows(results);
+    } catch (error) {
+      setParseError(error instanceof Error ? error.message : '账号数据格式不正确');
     }
   };
 
@@ -118,9 +39,13 @@ export const AccountBatchImportModal: React.FC<AccountBatchImportModalProps> = (
   };
 
   const handleFillSample = () => {
-    const sample = `橘子梨晚\tsphc48GynXCQvm6\t青柠剧场\t雅兮短剧\t正常\t未报白\t2026-08-25\t新号
-月亮麦片粥粥\tsphQN3qoneOLgwx\t青柠剧场\t雅兮短剧\t正常\t2026-08-24\t2026-08-24\t正剧`;
+    const theaterName = theaters[0]?.name || '青柠剧场';
+    const sample = `账号昵称\t账号ID\t剧场\t子剧场\t状态\t备注
+橘子梨晚\tsphc48GynXCQvm6\t${theaterName}
+月亮麦片粥粥\tsphQN3qoneOLgwx\t${theaterName}\t\t观察\t新号`;
     setPasteText(sample);
+    setParsedRows([]);
+    setParseError(null);
   };
 
   return (
@@ -164,14 +89,14 @@ export const AccountBatchImportModal: React.FC<AccountBatchImportModalProps> = (
             </div>
             <textarea
               rows={5}
-              placeholder="账号昵称  账号ID  所属剧场  子剧场  状态  报白时间  注册时间  备注..."
+              placeholder="账号昵称  账号ID  所属剧场  子剧场  状态  备注..."
               value={pasteText}
-              onChange={e => setPasteText(e.target.value)}
+              onChange={e => { setPasteText(e.target.value); setParsedRows([]); setParseError(null); }}
               className="w-full px-3 py-2 rounded-xl border border-black/[0.1] bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1D2E]/20 text-xs font-mono text-[#1A1D2E] resize-none"
             />
             <div className="mt-2 flex items-center justify-between">
               <span className="text-[11px] text-[#64748B]">
-                列顺序建议：账号昵称 | 账号ID | 剧场 | 子剧场 | 状态 | 报白时间 | 注册时间 | 备注
+                列顺序：账号昵称* | 账号ID* | 剧场* | 子剧场 | 状态 | 备注
               </span>
               <button
                 type="button"
@@ -182,6 +107,10 @@ export const AccountBatchImportModal: React.FC<AccountBatchImportModalProps> = (
               </button>
             </div>
           </div>
+
+          <p className="text-[11px] text-[#64748B] leading-relaxed">
+            * 昵称、账号ID、剧场必填。状态留空为“正常”；子剧场和备注均可留空；收益采集器在导入后选择。
+          </p>
 
           {parseError && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
@@ -200,15 +129,15 @@ export const AccountBatchImportModal: React.FC<AccountBatchImportModalProps> = (
                 </span>
                 <span className="text-[11px] text-slate-400">核对无误后点击下方确认导入</span>
               </div>
-              <div className="border border-black/[0.08] rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                <table className="w-full text-left text-xs border-collapse">
+              <div className="border border-black/[0.08] rounded-xl max-h-48 overflow-auto">
+                <table className="w-full min-w-[760px] text-left text-xs border-collapse">
                   <thead className="bg-slate-50 border-b border-black/[0.06] text-[#64748B] font-medium sticky top-0">
                     <tr>
                       <th className="py-2 px-3">账号昵称</th>
                       <th className="py-2 px-3">账号ID</th>
                       <th className="py-2 px-3">剧场/子剧场</th>
                       <th className="py-2 px-3">状态</th>
-                      <th className="py-2 px-3">报白时间</th>
+                      <th className="py-2 px-3">备注</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-black/[0.04]">
@@ -216,13 +145,13 @@ export const AccountBatchImportModal: React.FC<AccountBatchImportModalProps> = (
                       <tr key={i} className="hover:bg-slate-50/60">
                         <td className="py-2 px-3 font-semibold text-[#1A1D2E]">{r.nickname}</td>
                         <td className="py-2 px-3 font-mono text-slate-600">{r.accountId}</td>
-                        <td className="py-2 px-3 text-slate-600">{r.theaterName} · {r.subTheaterName}</td>
+                        <td className="py-2 px-3 text-slate-600">{r.theaterName}{r.subTheaterName ? ` · ${r.subTheaterName}` : ''}</td>
                         <td className="py-2 px-3">
                           <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium text-[10px]">
                             {r.status}
                           </span>
                         </td>
-                        <td className="py-2 px-3 text-slate-500 text-[11px]">{r.whitelistedDate}</td>
+                        <td className="py-2 px-3 text-slate-500 text-[11px]">{r.notes || '—'}</td>
                       </tr>
                     ))}
                   </tbody>

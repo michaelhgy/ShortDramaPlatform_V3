@@ -1,3 +1,4 @@
+import { formatPlannedDate, plannedDate, plannedSortTimestamp } from '../../utils/plannedDate';
 import React from 'react';
 import { 
   X, 
@@ -148,8 +149,8 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                 <p className="font-bold text-[#1A1D2E] mt-0.5">{task.accountName}</p>
               </div>
               <div>
-                <span>计划发布时间:</span>
-                <p className="font-bold text-[#1A1D2E] mt-0.5">{formatTaskDateTime(task.scheduledPublishTime)}</p>
+                <span>计划发布日期:</span>
+                <p className="font-bold text-[#1A1D2E] mt-0.5">{formatPlannedDate(task.scheduledPublishTime)}</p>
               </div>
               <div>
                 <span>创建时间:</span>

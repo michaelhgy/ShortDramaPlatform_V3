@@ -203,15 +203,15 @@ class V2TaskCenterDramaPriorityTests(unittest.TestCase):
         finally:
             conn.close()
 
-        self.assertEqual(["剧集先", "剧集后"], [item["dramaName"] for item in priorities])
-        self.assertEqual(["账号甲", "账号乙"], [item["accountName"] for item in priorities])
+        self.assertEqual(["剧集后", "剧集先"], [item["dramaName"] for item in priorities])
+        self.assertEqual(["账号乙", "账号甲"], [item["accountName"] for item in priorities])
         self.assertEqual([1, 2], [item["priorityRank"] for item in priorities])
-        self.assertEqual("18:00", priorities[0]["scheduledPublishTime"])
+        self.assertEqual("2026-08-29", priorities[0]["scheduledPublishTime"])
         self.assertEqual({"totalTasks": 3, "completedTasks": 2}, {
-            key: priorities[0][key] for key in ("totalTasks", "completedTasks")
+            key: priorities[1][key] for key in ("totalTasks", "completedTasks")
         })
         self.assertEqual({"totalTasks": 1, "completedTasks": 0}, {
-            key: priorities[1][key] for key in ("totalTasks", "completedTasks")
+            key: priorities[0][key] for key in ("totalTasks", "completedTasks")
         })
 
     def test_same_drama_for_two_accounts_stays_as_two_production_units(self) -> None:

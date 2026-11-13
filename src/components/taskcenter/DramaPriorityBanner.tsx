@@ -1,3 +1,4 @@
+import { formatPlannedDate, plannedDate, plannedSortTimestamp } from '../../utils/plannedDate';
 import React, { useState } from 'react';
 import { 
   Sparkles, 
@@ -41,7 +42,7 @@ export const DramaPriorityBanner: React.FC<DramaPriorityBannerProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-[#64748B] mt-0.5">
-              每张卡对应一个账号×剧集发布计划；计划发布时间越早优先级越高，相同发布时间按开工时间优先。
+              每张卡对应一个账号×剧集发布计划；计划发布日期越早优先级越高，同一计划日期按开工时间优先。
             </p>
           </div>
         </div>
@@ -96,7 +97,7 @@ export const DramaPriorityBanner: React.FC<DramaPriorityBannerProps> = ({
                 </div>
 
                 <span className="text-[10px] font-mono text-[#64748B]">
-                  {item.scheduledPublishTime}
+                  {formatPlannedDate(item.scheduledPublishTime)}
                 </span>
               </div>
 
@@ -142,7 +143,7 @@ export const DramaPriorityBanner: React.FC<DramaPriorityBannerProps> = ({
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
               <strong className="text-[#1A1D2E] block mb-1">🎯 1. 账号×剧集优先级调度</strong>
               <p className="text-[11px] leading-relaxed">
-                每个账号发布同一剧集都独立计算。按照【计划发布时间早 &gt; 进场生产早】排序，成片生成器优先保障高优先级发布计划尽快全量就绪。
+                每个账号发布同一剧集都独立计算。按照【计划发布日期早 &gt; 进场生产早】排序，成片生成器优先保障高优先级发布计划尽快全量就绪。
               </p>
             </div>
 

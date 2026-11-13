@@ -1,0 +1,1 @@
+[0:v]scale=540:1200,format=rgba[a];color=c=0x263244:s=540x1240:r=1:d=1,format=rgba[b];[b][a]overlay=0:40:format=rgb:shortest=1,drawtext=fontfile=/mnt/c/Windows/Fonts/msyh.ttc:textfile=/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/actual_title.txt:expansion=none:fontsize=24:fontcolor=0xf3f0e9:x=16:y=5[out]

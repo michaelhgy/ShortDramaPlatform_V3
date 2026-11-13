@@ -1,0 +1,1 @@
+[0:v][1:v]hstack=2[t];[2:v][3:v]hstack=2[b];[t][b]vstack=2[out]

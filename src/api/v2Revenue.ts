@@ -8,18 +8,18 @@ export type V2RevenueSourceData = {
 
 export type V2RevenueCollectionLog = {
   id: string; account_name: string; theater_name: string; revenue_date: string;
-  collection_status: 'success' | 'no_data' | 'failed'; amount: string | null;
+  collection_status: 'success' | 'no_data' | 'pending' | 'failed'; amount: string | null;
   error_message: string; collected_at: string;
 };
 export type V2RevenueCollectionRun = {
-  id: string; status: 'queued' | 'running' | 'completed' | 'failed'; total_units: number; completed_units: number;
+  id: string; status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped'; total_units: number; completed_units: number;
   success_units: number; no_data_units: number; failed_units: number; current_theater: string; current_account: string;
   error_message: string; created_at: string; started_at: string; finished_at: string;
 };
 
 export type V2DailyAccountRevenueSummary = {
   revenue_date: string;
-  items: Array<{ account_id: string; amount: string | null; collection_status: 'success' | 'no_data' | 'failed' | 'uncollected' }>;
+  items: Array<{ account_id: string; amount: string | null; collection_status: 'success' | 'no_data' | 'pending' | 'failed' | 'uncollected' }>;
 };
 
 /** Canonical Qingning fact: one account + one video ID + one data date. */

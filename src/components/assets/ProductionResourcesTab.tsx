@@ -1,464 +1,100 @@
-import React, { useState, useMemo } from 'react';
-import { ProductionResourceItem, ResourceCapacityMetrics } from '../../assetsTypes';
-import {
-  Video,
-  Image as ImageIcon,
-  Music,
-  FolderOpen,
-  Plus,
-  Play,
-  Pause,
-  Volume2,
-  CheckCircle2,
-  AlertCircle,
-  TrendingUp,
-  Cpu,
-  Layers,
-  Sparkles,
-  Search,
-  Filter,
-  ArrowUpRight,
-  Info,
-} from 'lucide-react';
-import { ResourcePreviewModal, PreviewResourceData } from './modals/ResourcePreviewModal';
+import { SceneryWorkbench } from './SceneryWorkbench';
+import React, { useEffect, useMemo, useState } from 'react';
+import type { ProductionResourceItem, ResourceCategory, ResourceInventoryMetrics } from '../../assetsTypes';
+import { FolderOpen, Image as ImageIcon, Play, Search, Video } from 'lucide-react';
+import { openProductionResourceFolder } from '../../services/assetsCenterService';
+import { ResourcePreviewModal, type PreviewResourceData } from './modals/ResourcePreviewModal';
 import { formatElapsedSeconds } from '../../utils/duration';
 
-interface ProductionResourcesTabProps {
+interface Props {
+  sceneryOpenRequest?: number;
   resources: ProductionResourceItem[];
-  metrics: ResourceCapacityMetrics;
+  metrics: ResourceInventoryMetrics;
   onOpenFolder: (path: string) => void;
   onAddResource: (resource: Omit<ProductionResourceItem, 'id' | 'addedAt'>) => void;
   onShowToast: (msg: string) => void;
 }
 
-type ResourceCategoryFilter = 'ALL' | 'real_video' | 'real_image' | 'bgm' | 'lead_video';
+const categories = [
+  { id: 'scenery_video', name: '风景视频', folderLabel: '打开风景目录', Icon: Video, color: 'text-indigo-600' },
+  { id: 'real_image', name: '真人图片', folderLabel: '打开图片目录', Icon: ImageIcon, color: 'text-emerald-600' },
+  { id: 'lead_video', name: '引流视频', folderLabel: '打开引流目录', Icon: Video, color: 'text-rose-600' },
+] as const;
 
-function formatDuration(seconds?: number): string {
-  return formatElapsedSeconds(seconds, '—');
-}
-
-export const ProductionResourcesTab: React.FC<ProductionResourcesTabProps> = ({
-  resources,
-  metrics,
-  onOpenFolder,
-  onAddResource,
-  onShowToast,
-}) => {
-  const [selectedCategory, setSelectedCategory] = useState<ResourceCategoryFilter>('ALL');
+export const ProductionResourcesTab: React.FC<Props> = ({ resources, metrics, onOpenFolder, onShowToast, sceneryOpenRequest = 0 }) => {
+  const [selectedCategory, setSelectedCategory] = useState<ResourceCategory | 'ALL'>(sceneryOpenRequest ? 'scenery_video' : 'ALL');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string>('ALL');
+  const [selectedTag, setSelectedTag] = useState('ALL');
   const [previewResource, setPreviewResource] = useState<PreviewResourceData | null>(null);
-  const [playingBgmId, setPlayingBgmId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sceneryOpenRequest) return;
+    setSelectedCategory('scenery_video'); setSearchTerm(''); setSelectedTag('ALL'); setPreviewResource(null);
+  }, [sceneryOpenRequest]);
+  const allTags = useMemo(() => [...new Set(resources.flatMap(item => item.tags || []))], [resources]);
+  const filteredResources = useMemo(() => resources.filter(item =>
+    (selectedCategory === 'ALL' || item.category === selectedCategory)
+    && (!searchTerm || item.name.toLowerCase().includes(searchTerm.toLowerCase()) || item.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
+    && (selectedTag === 'ALL' || item.tags?.includes(selectedTag))), [resources, selectedCategory, searchTerm, selectedTag]);
 
-  // All distinct tags
-  const allTags = useMemo(() => {
-    const set = new Set<string>();
-    resources.forEach(r => r.tags?.forEach(t => set.add(t)));
-    return Array.from(set);
-  }, [resources]);
-
-  // Filtered resources
-  const filteredResources = useMemo(() => {
-    return resources.filter(r => {
-      const matchCat = selectedCategory === 'ALL' || r.category === selectedCategory;
-      const matchSearch =
-        !searchTerm ||
-        r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.tags?.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
-      const matchTag = selectedTag === 'ALL' || r.tags?.includes(selectedTag);
-      return matchCat && matchSearch && matchTag;
-    });
-  }, [resources, selectedCategory, searchTerm, selectedTag]);
-
-  const handleOpenCategoryFolder = (cat: 'video' | 'image' | 'bgm' | 'lead_video') => {
-    const category = cat === 'video' ? 'real_video' : cat === 'image' ? 'real_image' : cat;
-    const resource = resources.find((item) => item.category === category);
-    if (!resource) { onShowToast('该资源目录暂无文件，请先放入资源后重试。'); return; }
-    const separator = resource.filePath.includes('\\') ? '\\' : '/';
-    onOpenFolder(resource.filePath.slice(0, resource.filePath.lastIndexOf(separator)));
+  const openCategory = async (category: ResourceCategory) => {
+    try { await openProductionResourceFolder(category); }
+    catch (error) { onShowToast(error instanceof Error ? error.message : '目录打开失败。'); }
   };
+  const preview = (item: ProductionResourceItem) => setPreviewResource({
+    title: item.name, categoryName: item.categoryName, type: item.category === 'real_image' ? 'image' : 'video',
+    filePath: item.filePath, fileSizeMb: item.fileSizeMb, resolution: item.resolution,
+    durationText: formatElapsedSeconds(item.durationSeconds, '—'), tags: item.tags,
+    thumbnailUrl: item.thumbnailUrl, mediaUrl: item.mediaUrl,
+  });
 
-  const handleOpenResourceFolder = (filePath: string) => {
-    const separator = filePath.includes('\\') ? '\\' : '/';
-    onOpenFolder(filePath.slice(0, filePath.lastIndexOf(separator)));
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* 1. CAPACITY METRICS DASHBOARD (产能计算中心) */}
-      <div className="bg-white rounded-2xl border border-black/[0.06] shadow-xs p-6 relative overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          {/* Main Capacity Hero */}
-          <div className="space-y-2 lg:max-w-md">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#1A1D2E] animate-pulse" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-                生产物料总产能计算
-              </h2>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl sm:text-4xl font-black text-[#1A1D2E] tracking-tight font-mono">
-                {metrics.supportableDramas}
-              </span>
-              <span className="text-base font-bold text-[#1A1D2E]">部剧集生产支持</span>
-            </div>
-            <p className="text-xs text-[#64748B] leading-relaxed">
-              基于当前有效储备物料自动核算。消耗配比：每部短剧需消耗 <strong className="text-slate-800 font-bold">3 个真人视频</strong> 与 <strong className="text-slate-800 font-bold">6 张真人图片</strong>。
-            </p>
-          </div>
-
-          {/* 3 Metric Breakdown Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1">
-            {/* Real Video Card */}
-            <div className={`p-4 rounded-xl border transition-all ${
-              metrics.bottleneckType === 'video'
-                ? 'bg-amber-50/70 border-amber-200/80 shadow-2xs'
-                : 'bg-slate-50/70 border-black/[0.05]'
-            }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-bold text-xs text-[#1A1D2E] flex items-center gap-1.5">
-                  <Video className="w-3.5 h-3.5 text-indigo-600" />
-                  真人视频
-                </span>
-                <span className="text-[10px] font-mono text-slate-400">消耗 3个/剧</span>
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-xl font-bold font-mono text-[#1A1D2E]">
-                  <span className="text-xs font-normal text-slate-500">剩余 </span>{metrics.videoCount} <span className="text-xs font-normal text-slate-500">个</span>
-                </span>
-                <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md font-mono">
-                  可供 {metrics.videoSupportableDramas} 部
-                </span>
-              </div>
-            </div>
-
-            {/* Real Image Card */}
-            <div className={`p-4 rounded-xl border transition-all ${
-              metrics.bottleneckType === 'image'
-                ? 'bg-amber-50/70 border-amber-200/80 shadow-2xs'
-                : 'bg-slate-50/70 border-black/[0.05]'
-            }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-bold text-xs text-[#1A1D2E] flex items-center gap-1.5">
-                  <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
-                  真人图片
-                </span>
-                <span className="text-[10px] font-mono text-slate-400">消耗 6张/剧</span>
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-xl font-bold font-mono text-[#1A1D2E]">
-                  <span className="text-xs font-normal text-slate-500">剩余 </span>{metrics.imageCount} <span className="text-xs font-normal text-slate-500">张</span>
-                </span>
-                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-mono">
-                  可供 {metrics.imageSupportableDramas} 部
-                </span>
-              </div>
-            </div>
-
-            {/* BGM Card */}
-            <div className="p-4 rounded-xl border bg-slate-50/70 border-black/[0.05]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-bold text-xs text-[#1A1D2E] flex items-center gap-1.5">
-                  <Music className="w-3.5 h-3.5 text-purple-600" />
-                  BGM 音频
-                </span>
-                <span className="text-[10px] text-slate-400">公共复用</span>
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-xl font-bold font-mono text-[#1A1D2E]">
-                  {metrics.bgmCount} <span className="text-xs font-normal text-slate-500">首</span>
-                </span>
-                <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
-                  全剧可复用
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottleneck Guidance Banner */}
-        <div className="mt-4 pt-3 border-t border-black/[0.06] flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs">
-            <Info className="w-4 h-4 text-slate-400 shrink-0" />
-            <span className="text-[#64748B]">
-              <strong>产能调度建议：</strong> {metrics.shortageTip}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleOpenCategoryFolder('video')}
-              className="text-[11px] font-bold text-slate-700 hover:text-indigo-600 flex items-center gap-1 cursor-pointer"
-            >
-              <FolderOpen className="w-3 h-3" />
-              <span>补充视频</span>
-            </button>
-            <span className="text-slate-300">·</span>
-            <button
-              onClick={() => handleOpenCategoryFolder('image')}
-              className="text-[11px] font-bold text-slate-700 hover:text-emerald-600 flex items-center gap-1 cursor-pointer"
-            >
-              <FolderOpen className="w-3 h-3" />
-              <span>补充图片</span>
-            </button>
-          </div>
-        </div>
+  return <div className="space-y-6" data-testid="production-resources">
+    <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-xs">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div><h2 className="text-sm font-black text-[#1A1D2E]">生产资源储备</h2><p className="mt-1 text-xs text-[#64748B]">处理后的风景用于制作模板，点击“风景视频”管理原片裁切与可用素材。</p></div>
+        <span className="text-xs text-[#64748B]">共 <strong className="font-mono text-lg text-[#1A1D2E]">{metrics.totalResourceCount}</strong> 项资源</span>
       </div>
-
-      {/* 2. CATEGORY SWITCHER & WINDOWS FOLDER QUICK OPEN BAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {/* Category Pills */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl border border-black/[0.04] w-fit">
-          <button
-            onClick={() => setSelectedCategory('ALL')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              selectedCategory === 'ALL'
-                ? 'bg-white text-[#1A1D2E] shadow-sm'
-                : 'text-[#64748B] hover:text-[#1A1D2E]'
-            }`}
-          >
-            全部资源 ({resources.length})
-          </button>
-          <button
-            onClick={() => setSelectedCategory('lead_video')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedCategory === 'lead_video' ? 'bg-white text-[#1A1D2E] shadow-sm' : 'text-[#64748B] hover:text-[#1A1D2E]'}`}
-          >
-            <Video className="w-3.5 h-3.5 text-rose-600" />
-            <span>引流视频 ({resources.filter((item) => item.category === 'lead_video').length})</span>
-          </button>
-          <button
-            onClick={() => setSelectedCategory('real_video')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              selectedCategory === 'real_video'
-                ? 'bg-white text-[#1A1D2E] shadow-sm'
-                : 'text-[#64748B] hover:text-[#1A1D2E]'
-            }`}
-          >
-            <Video className="w-3.5 h-3.5 text-indigo-600" />
-            <span>真人视频 ({metrics.totalVideoCount})</span>
-          </button>
-          <button
-            onClick={() => setSelectedCategory('real_image')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              selectedCategory === 'real_image'
-                ? 'bg-white text-[#1A1D2E] shadow-sm'
-                : 'text-[#64748B] hover:text-[#1A1D2E]'
-            }`}
-          >
-            <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
-            <span>真人图片 ({metrics.totalImageCount})</span>
-          </button>
-          <button
-            onClick={() => setSelectedCategory('bgm')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              selectedCategory === 'bgm'
-                ? 'bg-white text-[#1A1D2E] shadow-sm'
-                : 'text-[#64748B] hover:text-[#1A1D2E]'
-            }`}
-          >
-            <Music className="w-3.5 h-3.5 text-purple-600" />
-            <span>BGM ({metrics.bgmCount})</span>
-          </button>
-        </div>
-
-        {/* Windows Folder Quick Open Actions */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleOpenCategoryFolder('lead_video')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-black/[0.08] hover:bg-slate-50 text-[#1A1D2E] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-rose-600" />
-            <span>打开引流目录</span>
-          </button>
-          <button
-            onClick={() => handleOpenCategoryFolder('video')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-black/[0.08] hover:bg-slate-50 text-[#1A1D2E] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-indigo-600" />
-            <span>打开视频目录</span>
-          </button>
-          <button
-            onClick={() => handleOpenCategoryFolder('image')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-black/[0.08] hover:bg-slate-50 text-[#1A1D2E] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-emerald-600" />
-            <span>打开图片目录</span>
-          </button>
-          <button
-            onClick={() => handleOpenCategoryFolder('bgm')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-black/[0.08] hover:bg-slate-50 text-[#1A1D2E] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-purple-600" />
-            <span>打开 BGM 目录</span>
-          </button>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {categories.map(({ id, name, Icon, color }) => <div key={id} className="rounded-xl border border-black/[0.05] bg-slate-50/70 p-4">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-[#1A1D2E]"><Icon className={`h-3.5 w-3.5 ${color}`} />{name}</div>
+          <div className="flex items-baseline justify-between gap-2"><span className="font-mono text-xl font-bold text-[#1A1D2E]">{id === 'scenery_video' ? metrics.videoCount : id === 'real_image' ? metrics.imageCount : metrics.leadVideoCount}<span className="ml-1 text-xs font-normal text-[#64748B]">{id === 'real_image' ? '张可用' : '条可用'}</span></span><span className="text-[11px] text-[#64748B]">共 {id === 'scenery_video' ? metrics.totalVideoCount : id === 'real_image' ? metrics.totalImageCount : metrics.leadVideoCount} {id === 'real_image' ? '张' : '条'}</span></div>
+        </div>)}
       </div>
-
-      {/* 3. SEARCH & TAG FILTER BAR */}
-      <div className="bg-white p-3.5 rounded-2xl border border-black/[0.06] shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="搜索物料文件名、特征标签..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-black/[0.08] bg-slate-50 text-xs font-medium text-[#1A1D2E] focus:bg-white focus:outline-none"
-          />
-        </div>
-
-        {/* Tags filter chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-xs">
-          <span className="text-slate-400 font-medium shrink-0 text-[11px]">标签:</span>
-          <button
-            onClick={() => setSelectedTag('ALL')}
-            className={`px-2 py-0.5 rounded-md font-semibold text-[11px] shrink-0 cursor-pointer ${
-              selectedTag === 'ALL'
-                ? 'bg-[#1A1D2E] text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            全部
-          </button>
-          {allTags.map(t => (
-            <button
-              key={t}
-              onClick={() => setSelectedTag(t)}
-              className={`px-2 py-0.5 rounded-md font-semibold text-[11px] shrink-0 cursor-pointer ${
-                selectedTag === t
-                  ? 'bg-[#1A1D2E] text-[#DDFD00]'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              #{t}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 4. RESOURCE GRID */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-        {filteredResources.map(res => {
-          const isBgm = res.category === 'bgm';
-          const isPlayingThis = playingBgmId === res.id;
-
-          return (
-            <div
-              key={res.id}
-              className="bg-white rounded-xl border border-black/[0.06] shadow-xs p-2.5 hover:shadow-md transition-all flex flex-col justify-between group min-w-0"
-            >
-              <div className="space-y-2">
-                {/* Visual Thumbnail or Audio Card Header */}
-                {res.category === 'real_video' || res.category === 'lead_video' ? (
-                  <button
-                    type="button"
-                    onClick={() => setPreviewResource({
-                      title: res.name, categoryName: res.categoryName, type: 'video', filePath: res.filePath,
-                      fileSizeMb: res.fileSizeMb, resolution: res.resolution, durationText: formatDuration(res.durationSeconds),
-                      tags: res.tags, thumbnailUrl: res.thumbnailUrl, mediaUrl: res.mediaUrl,
-                    })}
-                    className="relative rounded-lg overflow-hidden bg-slate-900 w-[108px] max-w-full aspect-[9/16] mx-auto flex items-center justify-center border border-black/[0.06] cursor-pointer"
-                    title="预览详情"
-                  >
-                    {res.thumbnailUrl && <img src={res.thumbnailUrl} alt={res.name} className="absolute inset-0 w-full h-full object-cover opacity-80" />}
-                    <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                      <Play className="w-4 h-4 ml-0.5" />
-                    </div>
-                    <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/60 text-white font-mono text-[10px] backdrop-blur-xs">
-                      {formatDuration(res.durationSeconds)}
-                    </span>
-                    <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-indigo-600/90 text-white font-bold text-[10px]">
-                      {res.categoryName}
-                    </span>
-                  </button>
-                ) : res.category === 'real_image' ? (
-                  <button
-                    type="button"
-                    onClick={() => setPreviewResource({
-                      title: res.name, categoryName: res.categoryName, type: 'image', filePath: res.filePath,
-                      fileSizeMb: res.fileSizeMb, resolution: res.resolution, durationText: formatDuration(res.durationSeconds),
-                      tags: res.tags, thumbnailUrl: res.thumbnailUrl, mediaUrl: res.mediaUrl,
-                    })}
-                    className="relative rounded-lg overflow-hidden bg-slate-950 w-[108px] max-w-full aspect-[9/16] mx-auto flex items-center justify-center border border-black/[0.06] cursor-pointer"
-                    title="预览详情"
-                  >
-                    <img
-                      src={res.thumbnailUrl || res.mediaUrl}
-                      alt={res.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-emerald-600/90 text-white font-bold text-[10px]">
-                      真人图片
-                    </span>
-                  </button>
-                ) : (
-                  <div className="relative rounded-lg overflow-hidden bg-purple-950 p-3 w-[108px] max-w-full aspect-[9/16] mx-auto flex flex-col justify-between text-white">
-                    <div className="flex items-center justify-between">
-                      <span className="px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-200 font-bold text-[10px]">
-                        BGM 音频
-                      </span>
-                      <Volume2 className="w-3.5 h-3.5 text-purple-300" />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <button
-                        onClick={() => setPlayingBgmId(isPlayingThis ? null : res.id)}
-                        className="w-9 h-9 rounded-full bg-[#DDFD00] text-[#1A1D2E] flex items-center justify-center font-bold hover:scale-105 transition-transform cursor-pointer"
-                      >
-                        {isPlayingThis ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-                      </button>
-                      <span className="font-mono text-[11px] text-purple-200">
-                        {formatDuration(res.durationSeconds)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Title and Specs */}
-                <div>
-                  <h4 className="font-bold text-xs text-[#1A1D2E] line-clamp-2 min-h-8 group-hover:text-indigo-600 transition-colors" title={res.name}>
-                    {res.name}
-                  </h4>
-                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                    {res.fileSizeMb} MB {res.resolution ? `· ${res.resolution}` : ''}
-                  </p>
-                  {res.probeStatus === 'pending' && (
-                    <p className="text-[11px] text-indigo-600 mt-0.5">正在识别视频信息…</p>
-                  )}
-                  {res.probeStatus === 'failed' && (
-                    <p className="text-[11px] text-amber-700 mt-0.5" title={res.probeError}>视频信息识别失败，不影响其他资料。</p>
-                  )}
-                </div>
-
-                {/* Tags */}
-                {res.tags && res.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {res.tags.slice(0, 2).map(t => (
-                      <span key={t} className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">
-                        #{t}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-            </div>
-          );
-        })}
-      </div>
-
-      {filteredResources.length === 0 && (
-        <div className="py-16 text-center text-slate-400 text-xs bg-white rounded-2xl border border-black/[0.06]">
-          没有找到符合筛选条件的生产物料
-        </div>
-      )}
-
-      {/* Light Media Preview Modal */}
-      <ResourcePreviewModal
-        isOpen={!!previewResource}
-        onClose={() => setPreviewResource(null)}
-        resource={previewResource}
-        onOpenFolder={onOpenFolder}
-      />
     </div>
-  );
+
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-black/[0.04] bg-slate-100/90 p-1" aria-label="资源分类">
+        <button type="button" onClick={() => setSelectedCategory('ALL')} aria-pressed={selectedCategory === 'ALL'} className={`rounded-xl px-3.5 py-1.5 text-xs font-bold ${selectedCategory === 'ALL' ? 'bg-white text-[#1A1D2E] shadow-sm' : 'text-[#64748B] hover:text-[#1A1D2E]'}`}>全部资源 ({resources.length})</button>
+        {categories.map(({ id, name, Icon, color }) => <button key={id} type="button" onClick={() => setSelectedCategory(id)} aria-pressed={selectedCategory === id} className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold ${selectedCategory === id ? 'bg-white text-[#1A1D2E] shadow-sm' : 'text-[#64748B] hover:text-[#1A1D2E]'}`}><Icon className={`h-3.5 w-3.5 ${color}`} />{name} ({resources.filter(item => item.category === id).length})</button>)}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {categories.map(({ id, folderLabel, color }) => <button key={id} type="button" onClick={() => void openCategory(id)} className="flex items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#1A1D2E] shadow-2xs hover:bg-slate-50"><FolderOpen className={`h-3.5 w-3.5 ${color}`} />{folderLabel}</button>)}
+      </div>
+    </div>
+
+    <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-xs sm:flex-row">
+      <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" /><input type="text" aria-label="搜索生产资源" placeholder="搜索物料文件名、特征标签..." value={searchTerm} onChange={event => setSearchTerm(event.target.value)} className="w-full rounded-xl border border-black/[0.08] bg-slate-50 py-1.5 pl-8 pr-3 text-xs font-medium text-[#1A1D2E] focus:bg-white focus:outline-none" /></div>
+      <div className="flex w-full items-center gap-1.5 overflow-x-auto text-xs sm:w-auto"><span className="shrink-0 text-[11px] text-slate-400">标签:</span>{['ALL', ...allTags].map(tag => <button key={tag} type="button" onClick={() => setSelectedTag(tag)} className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${selectedTag === tag ? 'bg-[#1A1D2E] text-[#DDFD00]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{tag === 'ALL' ? '全部' : `#${tag}`}</button>)}</div>
+    </div>
+
+    {selectedCategory === 'scenery_video' ? <SceneryWorkbench showToast={onShowToast} openReadyRequest={sceneryOpenRequest}/> : <><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+      {filteredResources.map(item => <article key={item.id} data-resource-id={item.id} className="group flex min-w-0 flex-col rounded-xl border border-black/[0.06] bg-white p-2.5 shadow-xs transition-all hover:shadow-md">
+        <button type="button" onClick={() => preview(item)} aria-label={`预览 ${item.name}`} className="relative mx-auto flex aspect-[9/16] w-[108px] max-w-full items-center justify-center overflow-hidden rounded-lg border border-black/[0.06] bg-slate-900">
+          {(item.thumbnailUrl || item.category === 'real_image' && item.mediaUrl) && <img src={item.thumbnailUrl || item.mediaUrl} alt="" className="absolute inset-0 h-full w-full object-contain" />}
+          {item.category !== 'real_image' && <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/30 text-white backdrop-blur-xs"><Play className="ml-0.5 h-4 w-4" /></span>}
+          {item.category !== 'real_image' && <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-white">{formatElapsedSeconds(item.durationSeconds, '—')}</span>}
+          <span className="absolute left-2 top-2 rounded bg-[#1A1D2E]/85 px-1.5 py-0.5 text-[10px] font-bold text-white">{item.categoryName}</span>
+        </button>
+        <h4 title={item.name} className="mt-2 line-clamp-2 min-h-8 break-all text-xs font-bold text-[#1A1D2E]">{item.name}</h4>
+        <p className="mt-0.5 text-[11px] text-slate-500">{item.fileSizeMb} MB {item.resolution ? `· ${item.resolution}` : ''}</p>
+        {(item.category === 'scenery_video' || item.category === 'real_image' && typeof item.usageLimit === 'number') && <p className="text-[11px] text-slate-600 mt-1">已用 {item.usageCount || 0}/{item.usageLimit || 5} · 占用 {item.reservedCount || 0} · 剩余 {item.remainingCount || 0}</p>}
+        {item.cleanupError && <p role="alert" className="mt-1 text-[11px] text-amber-700">自动清理未完成：{item.cleanupError}</p>}
+        {item.probeStatus === 'pending' && <p className="mt-0.5 text-[11px] text-indigo-600">正在识别视频信息…</p>}
+        {item.probeStatus === 'failed' && <p title={item.probeError} className="mt-0.5 text-[11px] text-amber-700">视频信息识别失败，不影响其他资料。</p>}
+        {item.tags?.length ? <div className="mt-2 flex flex-wrap gap-1">{item.tags.slice(0, 2).map(tag => <span key={tag} className="rounded bg-slate-100 px-1.5 text-[10px] text-slate-600">#{tag}</span>)}</div> : null}
+      </article>)}
+    </div>
+    {!filteredResources.length && <div className="rounded-2xl border border-black/[0.06] bg-white py-16 text-center text-xs text-slate-400">没有找到符合筛选条件的生产物料</div>}
+    </>}
+    <ResourcePreviewModal isOpen={!!previewResource} onClose={() => setPreviewResource(null)} resource={previewResource} onOpenFolder={onOpenFolder} />
+  </div>;
 };

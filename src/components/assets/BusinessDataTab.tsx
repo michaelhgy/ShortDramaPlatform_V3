@@ -1,4 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { AccountFetchModal } from './modals/AccountFetchModal';
+import { getV2Accounts, getV2RevenueCollectorDefinitions, type RevenueCollectorDefinition } from '../../api/v2Catalog';
+import { toBusinessAccount } from '../../adapters/catalog';
+import { AccountAvatar } from '../AccountAvatar';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAdaptivePageSize } from '../../hooks/useAdaptivePageSize';
 import {
   AccountBusinessItem,
@@ -15,6 +19,7 @@ import {
   Search,
   Plus,
   FileSpreadsheet,
+  Download,
   Edit2,
   History,
   CheckCircle,
@@ -29,16 +34,19 @@ import {
   ChevronRight,
   MessageSquare,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import { AccountModal } from './modals/AccountModal';
 import { AccountBatchImportModal } from './modals/AccountBatchImportModal';
 import { TheaterModal } from './modals/TheaterModal';
+import { isAvailableAccountStatus } from '../../services/accountVisibility';
 import { TheaterBatchImportModal } from './modals/TheaterBatchImportModal';
 import { SubTheaterModal } from './modals/SubTheaterModal';
 import { SubTheaterBatchImportModal } from './modals/SubTheaterBatchImportModal';
 import { DramaRenameModal } from './modals/DramaRenameModal';
 import { DramaBatchImportModal } from './modals/DramaBatchImportModal';
-import { createBusinessAccount, createBusinessAccountsBatch, createBusinessDrama, createBusinessDramasBatch, createBusinessSubTheater, createBusinessSubTheatersBatch, createBusinessTheater, createBusinessTheatersBatch, deleteBusinessAccount, deleteBusinessDrama, deleteBusinessSubTheater, deleteBusinessTheater, updateBusinessAccount, updateBusinessDrama, updateBusinessSubTheater, updateBusinessTheater } from '../../services/assetsCenterService';
+import { createBusinessAccount, createBusinessAccountsBatch, createBusinessDrama, createBusinessDramasBatch, createBusinessSubTheater, createBusinessSubTheatersBatch, createBusinessTheater, createBusinessTheatersBatch, deleteBusinessAccount, deleteBusinessDrama, deleteBusinessSubTheater, deleteBusinessTheater, updateBusinessAccount, updateBusinessAccountCollector, updateBusinessDrama, updateBusinessSubTheater, updateBusinessTheater } from '../../services/assetsCenterService';
+import { suggestRevenueCollectors } from '../../utils/revenueCollectors';
 import { dataSource } from '../../services/dataSource';
 
 interface BusinessDataTabProps {
@@ -51,14 +59,15 @@ interface BusinessDataTabProps {
   onUpdateSubTheaters: (subTheaters: SubTheaterBusinessItem[]) => void;
   onUpdateDramas: (dramas: DramaBusinessItem[]) => void;
   onNavigateToDramaProfile?: (dramaId: string) => void;
+  onManageQueryLinks?: () => void;
   onShowToast: (message: string) => void;
 }
 
 type BusinessSubCategory = 'accounts' | 'theaters' | 'sub_theaters' | 'dramas';
 
-const ALL_ACCOUNT_STATUSES: AccountBusinessStatus[] = ['正常', '观察', '限流', '二限', '实名', '封禁', '停用'];
+const ALL_ACCOUNT_STATUSES: AccountBusinessStatus[] = ['正常', '观察', '限流', '二限', '实名', '封禁', '停用', '注销'];
 const ACCOUNT_STATUS_ORDER: Record<AccountBusinessStatus, number> = {
-  '正常': 0, '观察': 1, '限流': 2, '二限': 3, '实名': 4, '封禁': 5, '停用': 6,
+  '正常': 0, '观察': 1, '限流': 2, '二限': 3, '实名': 4, '封禁': 5, '停用': 6, '注销': 7,
 };
 
 const AdaptivePagination: React.FC<{ total: number; page: number; totalPages: number; onChange: (page: number) => void }> = ({ total, page, totalPages, onChange }) => {
@@ -83,12 +92,28 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
   onUpdateSubTheaters,
   onUpdateDramas,
   onNavigateToDramaProfile,
+  onManageQueryLinks,
   onShowToast,
 }) => {
+  const latestAccounts = useRef(accounts);
+  latestAccounts.current = accounts;
+  const [collectorDefinitions, setCollectorDefinitions] = useState<RevenueCollectorDefinition[]>([]);
+  const [collectorError, setCollectorError] = useState('');
+  const [pendingCollectorAccounts, setPendingCollectorAccounts] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let active = true;
+    getV2RevenueCollectorDefinitions().then(result => {
+      if (active) { setCollectorDefinitions(result.definitions); setCollectorError(''); }
+    }).catch(() => { if (active) setCollectorError('采集器列表读取失败'); });
+    return () => { active = false; };
+  }, []);
+
   const [activeCategory, setActiveCategory] = useState<BusinessSubCategory>('accounts');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTheaterFilter, setSelectedTheaterFilter] = useState('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
+  const [selectedForDelete, setSelectedForDelete] = useState<Record<BusinessSubCategory, string[]>>({ accounts: [], theaters: [], sub_theaters: [], dramas: [] });
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   const [currentPages, setCurrentPages] = useState<Record<BusinessSubCategory, number>>({ accounts: 1, theaters: 1, sub_theaters: 1, dramas: 1 });
   const [tableElement, setTableElement] = useState<HTMLDivElement | null>(null);
@@ -103,6 +128,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<AccountBusinessItem | null>(null);
   const [isAccountBatchOpen, setIsAccountBatchOpen] = useState(false);
+  const [isAccountFetchOpen, setIsAccountFetchOpen] = useState(false);
 
   const [isTheaterModalOpen, setIsTheaterModalOpen] = useState(false);
   const [editingTheater, setEditingTheater] = useState<TheaterBusinessItem | null>(null);
@@ -143,6 +169,16 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
     ALL_ACCOUNT_STATUSES.forEach(s => {
       counts[s] = accounts.filter(a => a.status === s).length;
     });
+    return counts;
+  }, [accounts]);
+
+  const theaterAccountCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const account of accounts) {
+      if (isAvailableAccountStatus(account.status)) {
+        counts.set(account.theaterId, (counts.get(account.theaterId) || 0) + 1);
+      }
+    }
     return counts;
   }, [accounts]);
 
@@ -188,6 +224,17 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
     onShowToast(`已将账号「${acc.nickname}」状态切换为「${newStatus}」`);
   };
 
+  const handleQuickChangeCollector = async (account: AccountBusinessItem, collectorId: string) => {
+    if (pendingCollectorAccounts.has(account.id)) return;
+    setPendingCollectorAccounts(previous => new Set(previous).add(account.id));
+    try {
+      const updated = dataSource === 'mock' ? { ...account, revenueCollectorId: collectorId } : await updateBusinessAccountCollector(account.id, collectorId);
+      onUpdateAccounts(latestAccounts.current.map(item => item.id === account.id ? updated : item));
+      onShowToast('账号收益采集器已保存');
+    } catch (error) { onShowToast(error instanceof Error ? error.message : '采集器修改失败。'); }
+    finally { setPendingCollectorAccounts(previous => { const next = new Set(previous); next.delete(account.id); return next; }); }
+  };
+
   const handleDeleteAccount = (id: string, name: string) => {
     if (dataSource !== 'mock') {
       deleteBusinessAccount(id).then(() => { onUpdateAccounts(accounts.filter((item) => item.id !== id)); onShowToast(`已删除账号「${name}」`); }).catch((error: unknown) => onShowToast(error instanceof Error ? error.message : '账号删除失败。'));
@@ -222,13 +269,15 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
         try {
           const updated = await updateBusinessTheater(id, theaterData);
           onUpdateTheaters(theaters.map((item) => item.id === id ? updated : item));
+          onUpdateAccounts(accounts.map(account => account.theaterId === id ? { ...account, theaterName: updated.name, revenueCollectorId: updated.revenueCollectorIds?.includes(account.revenueCollectorId || '') ? account.revenueCollectorId : '' } : account));
           onShowToast(`已保存剧场「${updated.name}」`);
         } catch (error) {
           onShowToast(error instanceof Error ? error.message : '剧场保存失败。');
         }
         return;
       }
-      onUpdateTheaters(theaters.map(t => (t.id === id ? { ...theaterData, id } : t)));
+      onUpdateTheaters(theaters.map(t => (t.id === id ? { ...theaterData, id, revenueCollectorsConfirmed: true } : t)));
+      onUpdateAccounts(accounts.map(account => account.theaterId === id && !theaterData.revenueCollectorIds?.includes(account.revenueCollectorId || '') ? { ...account, revenueCollectorId: '' } : account));
       onShowToast(`已保存剧场「${theaterData.name}」参数配置`);
     } else {
       if (dataSource !== 'mock') {
@@ -390,6 +439,66 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
     if (dataSource !== 'mock') { deleteBusinessDrama(id).then(() => { onUpdateDramas(dramas.filter((item) => item.id !== id)); onShowToast(`已删除剧集「${name}」`); }).catch((error: unknown) => onShowToast(error instanceof Error ? error.message : '剧集删除失败。')); return; }
     onUpdateDramas(dramas.filter(d => d.id !== id));
     onShowToast(`已删除剧集「${name}」`);
+  };
+
+  const toggleDeleteSelection = (id: string, checked: boolean) => {
+    setSelectedForDelete((current) => {
+      const ids = current[activeCategory];
+      return { ...current, [activeCategory]: checked ? [...new Set([...ids, id])] : ids.filter((item) => item !== id) };
+    });
+  };
+
+  const currentFilteredIds = () => {
+    switch (activeCategory) {
+      case 'accounts': return filteredAccounts.map((item) => item.id);
+      case 'theaters': return filteredTheaters.map((item) => item.id);
+      case 'sub_theaters': return filteredSubTheaters.map((item) => item.id);
+      case 'dramas': return filteredDramas.map((item) => item.id);
+    }
+  };
+
+  const toggleFilteredSelection = (checked: boolean) => {
+    const visibleIds = currentFilteredIds();
+    setSelectedForDelete((current) => ({
+      ...current,
+      [activeCategory]: checked ? [...new Set([...current[activeCategory], ...visibleIds])] : current[activeCategory].filter((id) => !visibleIds.includes(id)),
+    }));
+  };
+
+  const handleBatchDelete = async () => {
+    const ids = selectedForDelete[activeCategory];
+    if (!ids.length || batchDeleting) return;
+    const categoryNames: Record<BusinessSubCategory, string> = { accounts: '账号', theaters: '剧场', sub_theaters: '子剧场', dramas: '剧集' };
+    if (!window.confirm(`确定批量删除选中的 ${ids.length} 条${categoryNames[activeCategory]}吗？有业务关联的记录会被系统拒绝删除，不会级联删除其他资料。`)) return;
+    setBatchDeleting(true);
+    const removeIds: string[] = [];
+    const failed: string[] = [];
+    const items = activeCategory === 'accounts' ? accounts : activeCategory === 'theaters' ? theaters : activeCategory === 'sub_theaters' ? subTheaters : dramas;
+    for (const id of ids) {
+      const item = items.find((entry) => entry.id === id);
+      if (!item) { removeIds.push(id); continue; }
+      const name = activeCategory === 'accounts' ? (item as AccountBusinessItem).nickname : activeCategory === 'theaters' ? (item as TheaterBusinessItem).name : activeCategory === 'sub_theaters' ? (item as SubTheaterBusinessItem).name : (item as DramaBusinessItem).currentName;
+      try {
+        if (dataSource !== 'mock') {
+          if (activeCategory === 'accounts') await deleteBusinessAccount(id);
+          else if (activeCategory === 'theaters') await deleteBusinessTheater(id);
+          else if (activeCategory === 'sub_theaters') await deleteBusinessSubTheater(id);
+          else await deleteBusinessDrama(id);
+        }
+        removeIds.push(id);
+      } catch (error) {
+        failed.push(`${name}：${error instanceof Error ? error.message : '删除失败'}`);
+      }
+    }
+    if (removeIds.length) {
+      if (activeCategory === 'accounts') onUpdateAccounts(accounts.filter((item) => !removeIds.includes(item.id)));
+      else if (activeCategory === 'theaters') onUpdateTheaters(theaters.filter((item) => !removeIds.includes(item.id)));
+      else if (activeCategory === 'sub_theaters') onUpdateSubTheaters(subTheaters.filter((item) => !removeIds.includes(item.id)));
+      else onUpdateDramas(dramas.filter((item) => !removeIds.includes(item.id)));
+    }
+    setSelectedForDelete((current) => ({ ...current, [activeCategory]: failed.length ? ids.filter((id) => !removeIds.includes(id)) : [] }));
+    setBatchDeleting(false);
+    onShowToast(failed.length ? `成功删除 ${removeIds.length} 条，${failed.length} 条未删除：${failed.slice(0, 2).join('；')}${failed.length > 2 ? '；…' : ''}` : `已批量删除 ${removeIds.length} 条${categoryNames[activeCategory]}`);
   };
 
   const handleBatchImportDramas = (
@@ -555,7 +664,19 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
         </div>
 
         {/* Global Operations for Active SubCategory */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {selectedForDelete[activeCategory].length > 0 && (
+            <button onClick={() => void handleBatchDelete()} disabled={batchDeleting} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-semibold hover:bg-rose-100 disabled:opacity-50">
+              <Trash2 className="w-3.5 h-3.5" />
+              {batchDeleting ? '正在删除…' : `批量删除 (${selectedForDelete[activeCategory].length})`}
+            </button>
+          )}
+          {currentFilteredIds().length > 0 && (
+            <label className="inline-flex items-center gap-1.5 px-2 text-xs text-slate-600 whitespace-nowrap">
+              <input type="checkbox" checked={currentFilteredIds().every((id) => selectedForDelete[activeCategory].includes(id))} onChange={(event) => toggleFilteredSelection(event.target.checked)} className="accent-rose-600" />
+              全选筛选结果
+            </label>
+          )}
           {activeCategory === 'accounts' && (
             <>
               <button
@@ -564,6 +685,9 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                 <span>批量导入账号</span>
+              </button>
+              <button type="button" data-testid="fetch-vcat-accounts" disabled={dataSource !== 'v2'} onClick={() => setIsAccountFetchOpen(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-black/[0.08] hover:bg-slate-50 text-[#1A1D2E] text-xs font-semibold shadow-2xs disabled:opacity-40">
+                <Download className="w-3.5 h-3.5 text-slate-500" /><span>获取账号</span>
               </button>
               <button
                 onClick={() => {
@@ -751,11 +875,11 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/90 text-[#64748B] font-bold border-b border-black/[0.06]">
                 <tr>
+                  <th className="py-3 px-2 w-9" aria-label="选择" />
                   <th className="py-3 px-4">账号昵称 / 平台ID</th>
                   <th className="py-3 px-4">所属剧场 / 子剧场</th>
                   <th className="py-3 px-4">账号状态 (点击切换)</th>
-                  <th className="py-3 px-4">报白时间</th>
-                  <th className="py-3 px-4">注册时间</th>
+                  <th className="py-3 px-4">收益采集器（点击切换）</th>
                   <th className="py-3 px-4">备注说明</th>
                   <th className="py-3 px-4 text-right">操作</th>
                 </tr>
@@ -763,15 +887,22 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
               <tbody className="divide-y divide-black/[0.04] text-slate-700">
                 {filteredAccounts.length > 0 ? (
                   paginatedAccounts.map(acc => {
+                    const availableCollectors = collectorDefinitions.filter(item => theaters.find(theater => theater.id === acc.theaterId)?.revenueCollectorIds?.includes(item.id));
                     return (
                       <tr key={acc.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-2"><input type="checkbox" aria-label={`选择账号 ${acc.nickname}`} checked={selectedForDelete.accounts.includes(acc.id)} onChange={(event) => toggleDeleteSelection(acc.id, event.target.checked)} className="accent-rose-600" /></td>
                         <td className="py-3 px-4">
-                          <div className="font-bold text-[#1A1D2E]">{acc.nickname}</div>
-                          <div className="text-[11px] font-mono text-[#64748B]">{acc.accountId}</div>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <AccountAvatar name={acc.nickname} url={acc.avatarUrl} />
+                            <div className="min-w-0">
+                              <div className="truncate font-bold text-[#1A1D2E]" title={acc.nickname}>{acc.nickname}</div>
+                              <div data-testid="business-account-platform-id" className="truncate whitespace-nowrap text-[11px] leading-4 font-mono text-[#64748B]" title={acc.accountId}>{acc.accountId}</div>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           <div className="font-semibold text-[#1A1D2E]">{acc.theaterName}</div>
-                          <div className="text-[11px] text-[#64748B]">{acc.subTheaterName}</div>
+                          <div className="text-[11px] text-[#64748B]">{acc.subTheaterName || '—'}</div>
                         </td>
                         <td className="py-3 px-4">
                           {/* Direct Inline Status Switcher */}
@@ -791,16 +922,11 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
-                            acc.whitelistedDate === '未报白'
-                              ? 'bg-rose-50 text-rose-600 border border-rose-100'
-                              : 'bg-emerald-50 text-emerald-700 font-mono'
-                          }`}>
-                            {acc.whitelistedDate}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-mono text-[#64748B] text-[11px]">
-                          {acc.registeredDate}
+                          <select aria-label={`${acc.nickname}收益采集器`} value={acc.revenueCollectorId || ''} onChange={event => void handleQuickChangeCollector(acc, event.target.value)} disabled={!!collectorError || pendingCollectorAccounts.has(acc.id) || availableCollectors.length === 0} title={collectorError || '选择后立即保存'} className="max-w-44 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-slate-200 bg-slate-50 cursor-pointer disabled:opacity-50">
+                            <option value="">{collectorError || (availableCollectors.length ? '待配置' : '剧场未配置采集器')}</option>
+                            {acc.revenueCollectorId && !availableCollectors.some(item => item.id === acc.revenueCollectorId) && <option value={acc.revenueCollectorId}>采集器暂不可用</option>}
+                            {availableCollectors.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                          </select>
                         </td>
                         <td className="py-3 px-4 max-w-xs">
                           <span className="text-[11px] text-slate-600 line-clamp-1" title={acc.notes}>
@@ -843,11 +969,14 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/90 text-[#64748B] font-bold border-b border-black/[0.06]">
                 <tr>
+                  <th className="py-3 px-2 w-9" aria-label="选择" />
                   <th className="py-3 px-4">剧场名称</th>
+                  <th className="py-3 px-4">收益采集器</th>
                   <th className="py-3 px-4">默认分成比例</th>
                   <th className="py-3 px-4">默认税率</th>
                   <th className="py-3 px-4">下属子剧场</th>
                   <th className="py-3 px-4">关联剧集数</th>
+                  <th className="py-3 px-4 whitespace-nowrap">关联账号</th>
                   <th className="py-3 px-4">启用状态</th>
                   <th className="py-3 px-4 text-right">操作</th>
                 </tr>
@@ -856,9 +985,11 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                 {filteredTheaters.length > 0 ? (
                   paginatedTheaters.map(th => (
                     <tr key={th.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-2"><input type="checkbox" aria-label={`选择剧场 ${th.name}`} checked={selectedForDelete.theaters.includes(th.id)} onChange={(event) => toggleDeleteSelection(th.id, event.target.checked)} className="accent-rose-600" /></td>
                       <td className="py-3 px-4 font-bold text-[#1A1D2E]">
                         {th.name}
                       </td>
+                      <td className="py-3 px-4"><button className="text-left text-[11px] text-slate-600 hover:text-slate-900 cursor-pointer" onClick={() => { setEditingTheater(th); setIsTheaterModalOpen(true); }}>{th.revenueCollectorsConfirmed ? (th.revenueCollectorIds?.map(id => collectorDefinitions.find(item => item.id === id)?.name || id).join('、') || '未配置') : (suggestRevenueCollectors(th.name, collectorDefinitions).length ? '已匹配，待复核' : '待配置')}</button></td>
                       <td className="py-3 px-4 font-mono font-bold text-emerald-700">
                         {th.defaultCommissionRate}%
                       </td>
@@ -870,6 +1001,9 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-600">
                         {th.dramasCount || 0} 部
+                      </td>
+                      <td aria-label={`${th.name}关联账号`} className="py-3 px-4 font-mono text-slate-600 whitespace-nowrap">
+                        {theaterAccountCounts.get(th.id) || 0} 个
                       </td>
                       <td className="py-3 px-4">
                         <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${
@@ -896,7 +1030,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-slate-400">
                       未找到符合条件的剧场记录
                     </td>
                   </tr>
@@ -915,6 +1049,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/90 text-[#64748B] font-bold border-b border-black/[0.06]">
                 <tr>
+                  <th className="py-3 px-2 w-9" aria-label="选择" />
                   <th className="py-3 px-4">子剧场名称</th>
                   <th className="py-3 px-4">所属主剧场</th>
                   <th className="py-3 px-4">实际生效分成</th>
@@ -928,6 +1063,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                 {filteredSubTheaters.length > 0 ? (
                   paginatedSubTheaters.map(st => (
                     <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-2"><input type="checkbox" aria-label={`选择子剧场 ${st.name}`} checked={selectedForDelete.sub_theaters.includes(st.id)} onChange={(event) => toggleDeleteSelection(st.id, event.target.checked)} className="accent-rose-600" /></td>
                       <td className="py-3 px-4 font-bold text-[#1A1D2E]">
                         {st.name}
                       </td>
@@ -983,7 +1119,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <td colSpan={8} className="py-12 text-center text-slate-400">
                       未找到符合条件的子剧场记录
                     </td>
                   </tr>
@@ -1002,6 +1138,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/90 text-[#64748B] font-bold border-b border-black/[0.06]">
                 <tr>
+                  <th className="py-3 px-2 w-9" aria-label="选择" />
                   <th className="py-3 px-4">当前生效剧名</th>
                   <th className="py-3 px-4">所属剧场</th>
                   <th className="py-3 px-4">历史剧名沉淀 (支持搜索/切换)</th>
@@ -1014,6 +1151,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                 {paginatedDramas.length > 0 ? (
                   paginatedDramas.map(dr => (
                     <tr key={dr.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-2"><input type="checkbox" aria-label={`选择剧集 ${dr.currentName}`} checked={selectedForDelete.dramas.includes(dr.id)} onChange={(event) => toggleDeleteSelection(dr.id, event.target.checked)} className="accent-rose-600" /></td>
                       <td className="py-3 px-4">
                         <div className="font-bold text-[#1A1D2E] text-xs">
                           {dr.currentName}
@@ -1077,7 +1215,7 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-slate-400">
                       未找到符合条件的剧集档案
                     </td>
                   </tr>
@@ -1091,6 +1229,8 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
       )}
 
       {/* Modals Mounting */}
+      {isAccountFetchOpen && <AccountFetchModal theaters={theaters} onClose={() => setIsAccountFetchOpen(false)} onTheaterCreated={theater => onUpdateTheaters([...theaters.filter(t => t.id !== theater.id),theater])} onImported={async () => { const response = await getV2Accounts(); onUpdateAccounts(response.items.map(toBusinessAccount)); }} />}
+
       <AccountModal
         isOpen={isAccountModalOpen}
         onClose={() => {
@@ -1098,7 +1238,9 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
           setEditingAccount(null);
         }}
         account={editingAccount}
-        theaters={theaters.filter((item) => item.status === '启用')}
+        collectorDefinitions={collectorDefinitions}
+        collectorError={collectorError}
+        theaters={theaters.filter((item) => item.status === '启用' || item.id === editingAccount?.theaterId)}
         subTheaters={subTheaters.filter((item) => item.status === '启用')}
         onSave={handleSaveAccount}
         onDelete={handleDeleteAccount}
@@ -1118,6 +1260,9 @@ export const BusinessDataTab: React.FC<BusinessDataTabProps> = ({
           setEditingTheater(null);
         }}
         theater={editingTheater}
+        collectorDefinitions={collectorDefinitions}
+        collectorError={collectorError}
+        onManageQueryLinks={onManageQueryLinks}
         onSave={handleSaveTheater}
         onDelete={handleDeleteTheater}
       />

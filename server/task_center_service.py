@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from server.account_visibility import hide_cancelled_rows
 
 try:
     from server import v2_file_service as service
@@ -111,7 +112,7 @@ def _claim_next_template_job() -> str | None:
                 "SELECT j.id FROM template_jobs j JOIN production_tasks t ON t.id=j.task_id "
                 "WHERE j.status='queued' ORDER BY " + _manual_order_key(conn) +
                 "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, "
-                "t.planned_publish_at, j.created_at, j.version_no LIMIT 1"
+                "substr(t.planned_publish_at,1,10), t.created_at, j.created_at, j.version_no LIMIT 1"
             ).fetchone()
             if not row:
                 return None
@@ -164,7 +165,7 @@ def _claim_next_final_video() -> str | None:
                 # 同一生产任务内按素材登记序号推进。重试时创建时间不能让
                 # -3 跑到 -2 前面；序号是生产素材的业务顺序，不从文件名临时解析。
                 + "ORDER BY " + _manual_order_key(conn)
-                + "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at, "
+                + "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, substr(t.planned_publish_at,1,10), t.created_at, "
                 + "CASE WHEN f.sequence_no IS NULL THEN 1 ELSE 0 END, f.sequence_no, f.file_name, v.created_at LIMIT 1"
             )
             row = conn.execute(query).fetchone()
@@ -200,7 +201,7 @@ def _claim_next_export_attempt() -> str | None:
                 # 模板仍是所有视频导出的最高优先级。成片则先按所属生产任务
                 # 优先级，再按素材序号；首次导出和重新导出没有额外插队权。
                 + _manual_order_key(conn)
-                + "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at, "
+                + "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, substr(t.planned_publish_at,1,10), t.created_at, "
                 "CASE WHEN j.subject_type='final' AND f.sequence_no IS NULL THEN 1 ELSE 0 END, "
                 "CASE WHEN j.subject_type='final' THEN f.sequence_no ELSE 0 END, "
                 "CASE WHEN j.subject_type='final' THEN f.file_name ELSE j.draft_name END, "
@@ -351,6 +352,10 @@ def set_executor_paused(executor_id: str, paused: bool) -> dict[str, Any]:
         conn.close()
 
 
+from server.ffmpeg_diagnostics import observe_snapshot
+
+
+@observe_snapshot('task_center')
 def task_center_snapshot() -> dict[str, Any]:
     """Return the task-center view model; no Mock data is inserted."""
     conn = service.connection()
@@ -367,6 +372,7 @@ def task_center_snapshot() -> dict[str, Any]:
             "AND COALESCE(t.release_status, 'unregistered') <> 'registered' "
             "ORDER BY j.created_at DESC, j.version_no DESC"
         ).fetchall()
+        rows = hide_cancelled_rows(conn, rows)
     finally:
         conn.close()
     tasks = [_task_item(row) for row in rows]
@@ -393,8 +399,9 @@ def task_center_snapshot() -> dict[str, Any]:
             "'draft_ready','generation_failed','generation_timeout') "
             "AND COALESCE(t.release_status, 'unregistered') <> 'registered' "
             "ORDER BY CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, "
-            "t.planned_publish_at, t.created_at, v.created_at"
+            "substr(t.planned_publish_at,1,10), t.created_at, v.created_at"
         ).fetchall()
+        final_rows = hide_cancelled_rows(final_conn, final_rows)
     finally:
         final_conn.close()
     final_items = [_final_task_item(row) for row in final_rows]
@@ -410,6 +417,7 @@ def task_center_snapshot() -> dict[str, Any]:
             "AND (a.status <> 'completed' OR a.finished_at >= datetime('now', '-7 day')) "
             "ORDER BY a.created_at DESC"
         ).fetchall()
+        export_rows = hide_cancelled_rows(export_conn, export_rows)
     finally:
         export_conn.close()
     standalone_exports: list[dict[str, Any]] = []
@@ -495,7 +503,13 @@ def task_center_snapshot() -> dict[str, Any]:
         conn.close()
     for item in tasks:
         item["orderRank"] = order_ranks.get(str(item.get("productionTaskId") or ""), 0)
+    from server.ffmpeg_templates.service import get_maker
+    from server.ffmpeg_finals.service import get_composer
+    from server.scenery.service import get_library
     return {
+        "finalComposition": get_composer().snapshot(),
+        "sceneryProcessing": get_library().snapshot(),
+        "templateGeneration": get_maker().snapshot(),
         "executors": executors,
         "tasks": tasks,
         "dramaPriorities": drama_priorities,
@@ -535,14 +549,15 @@ def _drama_priorities(conn: Any) -> list[dict[str, Any]]:
         + release_filter + " "
         "GROUP BY t.id "
         "ORDER BY CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, "
-        "t.planned_publish_at, t.created_at"
+        "substr(t.planned_publish_at,1,10), t.created_at"
     ).fetchall()
+    rows = hide_cancelled_rows(conn, rows)
     priorities: list[dict[str, Any]] = []
     for rank, row in enumerate(rows, start=1):
         has_template = bool(str(row["latest_template_status"] or ""))
         total_tasks = int(row["final_total"] or 0) + int(has_template)
         completed_tasks = int(row["final_completed"] or 0) + int(str(row["latest_template_status"] or "") == "draft_ready")
-        planned_publish_at = str(row["planned_publish_at"] or "")
+        planned_publish_at = str(row["planned_publish_at"] or "")[:10]
         priorities.append({
             "productionTaskId": str(row["id"]),
             "accountName": str(row["account_name"] or "未知账号"),
@@ -559,7 +574,7 @@ def _drama_priorities(conn: Any) -> list[dict[str, Any]]:
 def _priority_time_label(planned_publish_at: str) -> str:
     """Keep the compact clock label expected by the existing banner UI."""
     normalized = planned_publish_at.replace("T", " ")
-    return normalized[11:16] if len(normalized) >= 16 else (planned_publish_at or "未设置")
+    return normalized[:10] if normalized else "未设置"
 
 
 def _executor_snapshot(manager: Any, executor_id: str, tasks: list[dict[str, Any]]) -> dict[str, Any]:
@@ -650,7 +665,7 @@ def _export_task_item(row: Any) -> dict[str, Any]:
         "accountName": str(row["account_name"] or "未知账号"), "dramaName": str(row["drama_name"] or "未知剧集"),
         "title": f"{row['account_name'] or '未知账号'} × 《{row['drama_name'] or '未知剧集'}》 · {subject}",
         "draftStage": {"status": "done", "progress": 100}, "videoStage": {"status": status, "rawStatus": raw, "progress": 100 if status == "done" else 0, "durationSeconds": duration_seconds, "durationFormatted": duration_formatted, "errorDetail": detail},
-        "scheduledPublishTime": str(row["planned_publish_at"] or ""), "priorityRank": _production_priority_rank(row), "priorityTag": "模板优先" if str(row["subject_type"]) == "template" else "成片导出",
+        "scheduledPublishTime": str(row["planned_publish_at"] or "")[:10], "priorityRank": _production_priority_rank(row), "priorityTag": "模板优先" if str(row["subject_type"]) == "template" else "成片导出",
         "status": status, "progress": 100 if status == "done" else 0, "createdAt": str(row["created_at"]),
         "startedAt": str(row["started_at"] or "") or None, "completedAt": str(row["finished_at"] or "") or None,
         "durationSeconds": duration_seconds, "durationFormatted": duration_formatted, "isTimeout": status == "timeout", "hasValidDraft": True,
@@ -686,7 +701,7 @@ def _final_task_item(row: Any) -> dict[str, Any]:
         "title": f"{row['account_name'] or '未知账号'} × 《{row['drama_name'] or '未知剧集'}》 · 成片制作",
         "draftStage": {"status": draft_status, "progress": progress, "durationSeconds": duration_seconds, "durationFormatted": duration_formatted, "errorDetail": error or None},
         "videoStage": {"status": "idle", "progress": 0},
-        "scheduledPublishTime": str(row["planned_publish_at"] or ""), "priorityRank": _production_priority_rank(row), "priorityTag": "成片制作",
+        "scheduledPublishTime": str(row["planned_publish_at"] or "")[:10], "priorityRank": _production_priority_rank(row), "priorityTag": "成片制作",
         "status": overall, "progress": progress, "createdAt": str(row["created_at"]),
         "startedAt": started_at or None, "completedAt": finished_at or None,
         "durationSeconds": duration_seconds, "durationFormatted": duration_formatted,
@@ -702,7 +717,7 @@ def _final_task_item(row: Any) -> dict[str, Any]:
 # 否则界面显示的位次和实际取任务的顺序会不一致（"手动排序 = 最高调度优先"就落空了）。
 MANUAL_ORDER_FIRST_SQL = "CASE WHEN t.manual_order > 0 THEN 0 ELSE 1 END, t.manual_order, "
 _DEFAULT_UNIT_ORDER = (
-    "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at"
+    "CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, substr(t.planned_publish_at,1,10), t.created_at"
 )
 
 
@@ -746,7 +761,7 @@ def _ordered_units(conn: Any) -> tuple[list[str], list[str]]:
     显示顺序规则（2026-09-19 用户拍板）：
       1. 已做完的整部剧沉到最后
       2. 手动调过的按 manual_order 从小到大
-      3. 没调过的按业务规则：计划发布时间早 → 开工时间早
+      3. 没调过的按业务规则：计划发布日期早 → 开工时间早
 
     手动调整只在**未完成**的单位之间进行 —— 已完成的根本不需要排优先级，
     让它们参与手动排序会让用户点了"置顶"却看不到任何变化。
@@ -760,7 +775,7 @@ def _ordered_units(conn: Any) -> tuple[list[str], list[str]]:
     incomplete: list[tuple[int, str, str, str]] = []
     complete: list[tuple[str, str, str]] = []
     for row in rows:
-        planned = str(row["planned_publish_at"] or "") or "9999-12-31"
+        planned = str(row["planned_publish_at"] or "")[:10] or "9999-12-31"
         created = str(row["created_at"] or "")
         task_id = str(row["id"])
         if _unit_is_complete(conn, task_id):
@@ -845,7 +860,7 @@ def _production_priority_rank(row: Any) -> int:
     try:
         rows = conn.execute(
             "SELECT t.id FROM production_tasks t WHERE EXISTS (SELECT 1 FROM template_jobs j WHERE j.task_id=t.id) OR EXISTS (SELECT 1 FROM production_video_tasks v WHERE v.task_id=t.id) "
-            "ORDER BY CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, t.planned_publish_at, t.created_at"
+            "ORDER BY CASE WHEN t.planned_publish_at='' THEN 1 ELSE 0 END, substr(t.planned_publish_at,1,10), t.created_at"
         ).fetchall()
         ranks = {str(candidate["id"]): rank for rank, candidate in enumerate(rows, start=1)}
         _PRIORITY_CACHE = (now, ranks)
@@ -878,7 +893,7 @@ def _task_item(row: Any) -> dict[str, Any]:
         "id": str(row["id"]), "productionTaskId": str(row["task_id"] or ""), "taskCategory": "template", "accountName": str(row["account_name"] or "未知账号"),
         "dramaName": str(row["drama_name"] or "未知剧集"), "title": f"{row['account_name'] or '未知账号'} × 《{row['drama_name'] or '未知剧集'}》 · 模板制作",
         "draftStage": {"status": draft_status, "progress": progress, "durationSeconds": duration_seconds, "durationFormatted": duration_formatted, "errorDetail": error or None},
-        "videoStage": {"status": "idle", "progress": 0}, "scheduledPublishTime": str(row["planned_publish_at"] or ""),
+        "videoStage": {"status": "idle", "progress": 0}, "scheduledPublishTime": str(row["planned_publish_at"] or "")[:10],
         "priorityRank": _production_priority_rank(row), "priorityTag": "模板任务", "status": overall, "progress": progress,
         "createdAt": str(row["created_at"]), "startedAt": str(row["started_at"] or "") or None,
         "completedAt": str(row["finished_at"] or "") or None, "durationSeconds": duration_seconds, "durationFormatted": duration_formatted,

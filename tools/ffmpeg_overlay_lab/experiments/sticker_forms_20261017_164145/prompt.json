@@ -1,0 +1,33 @@
+{
+  "purpose": "上下贴纸五种形态的单张15格方向样式板，供选择后单独生成",
+  "tool": "built-in image_gen",
+  "transparent_background": true,
+  "prompt": "Use case: stylized-concept.\nAsset type: ONE art-direction contact sheet for subtle decorative stickers placed at the top or bottom of live-action short-drama videos.\n\nCreate one portrait sheet, approximately 3:5 aspect ratio, with EXACTLY 15 clearly separated motif studies in a regular layout of THREE COLUMNS and FIVE ROWS. Each study stays fully inside its own equal-sized cell, centered, with substantial transparent padding. Keep the five rows and three columns aligned. This is a single comparison sheet, not fifteen finished individual exports.\n\nShared drawing style: delicate flat 2D hand-drawn outline art in matte warm white and light neutral gray. Thin clean continuous strokes, open interiors, almost no solid fill. Simple recognizable shapes, restrained detail, ample negative space. Consistent stroke weight and visual scale across the sheet. Quiet decorative drawings that can harmonize with human footage. The outlines must remain readable; do not fade all strokes to near-invisibility.\n\nROW 1 — standalone small objects, three different silhouettes:\nColumn 1: one simple teacup with handle and two short curling steam lines, no saucer or environment.\nColumn 2: one ginkgo leaf on a short stem, open outline with only a few simplified inner lines.\nColumn 3: one compact camera, simple rounded outline and circular lens, no brand.\n\nROW 2 — small grouped motifs:\nColumn 1: a sparse asymmetrical cluster of three tiny five-petal flowers and two small leaves.\nColumn 2: one small crescent moon loosely accompanied by three tiny four-point twinkles, a compact decorative grouping.\nColumn 3: two differently angled oval leaves with a thin short branch and two little buds.\n\nROW 3 — corner-shaped ornaments:\nColumn 1: a small open L-shaped botanical sprig, short vertical stem and short horizontal leafy extension, as if growing inward from a bottom-left corner.\nColumn 2: two fine graceful curves making an open top-right corner, with three tiny hollow circles.\nColumn 3: a small open bottom-right corner ornament made of short water-ripple curls. Keep the shape local to the corner, not a long horizontal band.\n\nROW 4 — hanging or emerging shapes:\nColumn 1: three short thin hanging strings of unequal lengths ending in a tiny moon, star and hollow circle; all ends complete and visible.\nColumn 2: one slender curved drooping flower sprig, taller than wide.\nColumn 3: three fine grass or reed shoots fanning gently upward from a small base, taller than wide.\n\nROW 5 — short abstract and scattered marks:\nColumn 1: three short flowing wave arcs with different lengths, loosely offset.\nColumn 2: a small airy arrangement of two open oval rings, three tiny dots and two short dashes.\nColumn 3: one short gently curved dotted trail with a few tiny line accents.\n\nReal transparent background throughout all unused space. No colored squares, no paper texture, no filled panels, no cell borders or grid lines. No text, labels, letters or numbers; numbering is added separately. No shadows, gradients, metallic surfaces, crystal material, embossing, 3D rendering, bright glow, dense filigree, full rectangular frames or long full-width bands. All fifteen drawings must be complete, separate and uncropped.",
+  "rows": [
+    [
+      "01 茶杯",
+      "02 银杏叶",
+      "03 相机"
+    ],
+    [
+      "04 小花簇",
+      "05 星月组合",
+      "06 枝叶小簇"
+    ],
+    [
+      "07 枝叶角饰",
+      "08 弧线角饰",
+      "09 水纹角饰"
+    ],
+    [
+      "10 垂挂小物",
+      "11 下垂花枝",
+      "12 向上细叶"
+    ],
+    [
+      "13 短段水波",
+      "14 圆环散点",
+      "15 虚线轨迹"
+    ]
+  ]
+}

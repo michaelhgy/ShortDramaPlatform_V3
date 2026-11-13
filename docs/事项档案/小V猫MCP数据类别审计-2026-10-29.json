@@ -1,0 +1,1017 @@
+{
+  "capturedAt": "2026-10-29T23:42:06",
+  "dateRange": [
+    "2026-10-22",
+    "2026-10-28"
+  ],
+  "toolListCount": 115,
+  "readOnlyToolCount": 49,
+  "nonReadOnlyToolCount": 66,
+  "toolNames": [
+    "vcat_list_accounts",
+    "vcat_get_overview",
+    "vcat_get_account_stats",
+    "vcat_get_order_stats",
+    "vcat_refresh_account_stats",
+    "vcat_get_publish_options",
+    "vcat_list_publish_tasks",
+    "vcat_get_publish_task_stat",
+    "vcat_list_drafts",
+    "vcat_create_draft",
+    "vcat_create_publish_task",
+    "vcat_publish_draft",
+    "vcat_cancel_publish_task",
+    "vcat_set_publish_priority",
+    "vcat_list_posts",
+    "vcat_get_post",
+    "vcat_get_post_daily",
+    "vcat_get_post_stat",
+    "vcat_get_post_trend",
+    "vcat_export_posts",
+    "vcat_clear_posts",
+    "vcat_get_post_sync",
+    "vcat_start_post_sync",
+    "vcat_cancel_post_sync",
+    "vcat_list_post_sync_records",
+    "vcat_list_batch_tasks",
+    "vcat_get_batch_task",
+    "vcat_list_batch_task_records",
+    "vcat_create_del_post_task",
+    "vcat_create_update_visible_task",
+    "vcat_create_post_comment_task",
+    "vcat_create_reply_comment_task",
+    "vcat_create_del_post_single_task",
+    "vcat_create_update_visible_single_task",
+    "vcat_copy_batch_task",
+    "vcat_resume_batch_task",
+    "vcat_cancel_batch_task",
+    "vcat_delete_batch_task",
+    "vcat_clear_batch_tasks",
+    "vcat_list_orders",
+    "vcat_get_order_overview",
+    "vcat_get_order_daily",
+    "vcat_get_order_sync_status",
+    "vcat_sync_orders",
+    "vcat_sync_order_daily",
+    "vcat_cancel_order_daily_sync",
+    "vcat_list_shop_goods",
+    "vcat_search_shop_goods",
+    "vcat_create_add_shop_goods_task",
+    "vcat_create_remove_shop_goods_task",
+    "vcat_create_download_order_task",
+    "vcat_list_shop_tasks",
+    "vcat_create_shop_monitor_task",
+    "vcat_list_monitor_records",
+    "vcat_get_goods_sales",
+    "vcat_get_shop_options",
+    "vcat_clear_orders",
+    "vcat_list_monitor_tasks",
+    "vcat_get_flow_report",
+    "vcat_run_monitor_task",
+    "vcat_set_monitor_status",
+    "vcat_get_comment_summary",
+    "vcat_list_comments",
+    "vcat_draft_reply",
+    "vcat_get_unread_messages",
+    "vcat_list_message_sessions",
+    "vcat_get_session_messages",
+    "vcat_set_account_group",
+    "vcat_set_account_tags",
+    "vcat_set_account_remark",
+    "vcat_set_account_location",
+    "vcat_top_account",
+    "vcat_sort_accounts",
+    "vcat_remove_account",
+    "vcat_list_groups",
+    "vcat_create_group",
+    "vcat_update_group",
+    "vcat_delete_group",
+    "vcat_sort_groups",
+    "vcat_set_group_proxy",
+    "vcat_set_group_subuser_visible",
+    "vcat_list_tags",
+    "vcat_create_tag",
+    "vcat_update_tag",
+    "vcat_delete_tag",
+    "vcat_list_proxies",
+    "vcat_add_proxies",
+    "vcat_update_proxy",
+    "vcat_delete_proxy",
+    "vcat_test_proxy",
+    "vcat_bind_account_proxy",
+    "vcat_list_login_links",
+    "vcat_create_login_link",
+    "vcat_delete_login_link",
+    "vcat_get_share_accounts",
+    "vcat_import_share_accounts",
+    "vcat_import_accounts_by_cookie",
+    "vcat_add_blank_accounts",
+    "vcat_list_duplicate_accounts",
+    "vcat_dedupe_accounts",
+    "vcat_list_verify_results",
+    "vcat_get_verify_result",
+    "vcat_list_punish_feeds",
+    "vcat_get_verify_auto_setting",
+    "vcat_list_verify_logs",
+    "vcat_verify_accounts",
+    "vcat_verify_account",
+    "vcat_refresh_account_feeds",
+    "vcat_delete_punish_post",
+    "vcat_hide_punish_post",
+    "vcat_get_verify_links",
+    "vcat_save_verify_auto_setting",
+    "vcat_cancel_verify",
+    "vcat_clear_verify_results",
+    "vcat_clear_verify_logs"
+  ],
+  "currentValidAccountCount": 10,
+  "readOnlyProbes": {
+    "vcat_list_accounts": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 24,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 24,
+        "listItemKeys": [
+          "avatar",
+          "fansTotal",
+          "groupName",
+          "loginStatus",
+          "nickname",
+          "platform",
+          "platformName",
+          "tags",
+          "uid"
+        ]
+      }
+    },
+    "vcat_get_overview": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "platforms",
+          "total",
+          "yesterday"
+        ],
+        "platformsCount": 1,
+        "platformsItemKeys": [
+          "accounts",
+          "fans",
+          "platform",
+          "platformName",
+          "postCount",
+          "view30Days"
+        ]
+      }
+    },
+    "vcat_get_account_stats": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "dateRange",
+          "list",
+          "page",
+          "pageSize",
+          "sortBy",
+          "total"
+        ],
+        "total": 13,
+        "page": 1,
+        "pageSize": 100,
+        "dateRangeCount": 2,
+        "dateRangeItemKeys": [],
+        "listCount": 13,
+        "listItemKeys": [
+          "comment",
+          "fansAdd",
+          "fansNet",
+          "fansReduce",
+          "fansTotal",
+          "favorite",
+          "forward",
+          "incomeTotal",
+          "like",
+          "nickname",
+          "platform",
+          "platformName",
+          "postTotal",
+          "uid",
+          "view"
+        ]
+      }
+    },
+    "vcat_get_order_stats": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "platform",
+          "platformName"
+        ],
+        "listCount": 24,
+        "listItemKeys": [
+          "days30",
+          "days7",
+          "nickname",
+          "platform",
+          "platformName",
+          "today",
+          "uid",
+          "yesterday"
+        ]
+      }
+    },
+    "vcat_get_publish_options": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "platforms"
+        ],
+        "platformsCount": 1,
+        "platformsItemKeys": [
+          "contentTypes",
+          "example",
+          "fields",
+          "notes",
+          "platform",
+          "platformName"
+        ]
+      }
+    },
+    "vcat_list_publish_tasks": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 10,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 10,
+        "listItemKeys": [
+          "_source",
+          "account",
+          "batchSource",
+          "createdAt",
+          "desc",
+          "localId",
+          "platform",
+          "platformName",
+          "postEndTime",
+          "postType",
+          "priority",
+          "publishType",
+          "status",
+          "statusCode",
+          "timing",
+          "title",
+          "uid",
+          "videoPath"
+        ]
+      }
+    },
+    "vcat_get_publish_task_stat": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "accountList",
+          "dailyList",
+          "dateRange",
+          "overview"
+        ],
+        "dateRangeCount": 2,
+        "dateRangeItemKeys": [],
+        "accountListCount": 1,
+        "accountListItemKeys": [
+          "createCount",
+          "nickname",
+          "platform",
+          "platformName",
+          "successCount",
+          "successRate",
+          "todayCreateCount",
+          "todaySuccessCount",
+          "uid"
+        ],
+        "dailyListCount": 1,
+        "dailyListItemKeys": [
+          "createCount",
+          "date",
+          "successCount",
+          "successRate"
+        ]
+      }
+    },
+    "vcat_list_drafts": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 17,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 17,
+        "listItemKeys": [
+          "accounts",
+          "content",
+          "draftId",
+          "title",
+          "type",
+          "typeKey",
+          "updatedAt"
+        ]
+      }
+    },
+    "vcat_list_posts": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 584,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 100,
+        "listItemKeys": [
+          "account",
+          "comment",
+          "cover",
+          "desc",
+          "fansAdd",
+          "forward",
+          "fullView",
+          "like",
+          "love",
+          "platform",
+          "platformName",
+          "postId",
+          "postTime",
+          "postType",
+          "postTypeCode",
+          "publishStatus",
+          "status",
+          "statusText",
+          "timing",
+          "title",
+          "uid",
+          "url",
+          "view",
+          "viewTime"
+        ]
+      }
+    },
+    "vcat_get_post_stat": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "accountTotal",
+          "accounts",
+          "buckets",
+          "dateRange",
+          "granularity",
+          "heatmap",
+          "platforms",
+          "summary",
+          "timeline",
+          "types",
+          "video"
+        ],
+        "dateRangeCount": 2,
+        "dateRangeItemKeys": [],
+        "platformsCount": 1,
+        "platformsItemKeys": [
+          "avgView",
+          "fansAdd",
+          "interact",
+          "interactRate",
+          "interactView",
+          "platform",
+          "platformName",
+          "posts",
+          "punish",
+          "view",
+          "viewPosts"
+        ],
+        "typesCount": 1,
+        "typesItemKeys": [
+          "avgView",
+          "fansAdd",
+          "interact",
+          "interactRate",
+          "interactView",
+          "postType",
+          "postTypeName",
+          "posts",
+          "punish",
+          "view",
+          "viewPosts"
+        ],
+        "bucketsCount": 6,
+        "bucketsItemKeys": [
+          "key",
+          "label",
+          "posts"
+        ],
+        "heatmapCount": 34,
+        "heatmapItemKeys": [
+          "hour",
+          "posts",
+          "view",
+          "weekday"
+        ],
+        "accountsCount": 8,
+        "accountsItemKeys": [
+          "avgView",
+          "fansAdd",
+          "interact",
+          "interactRate",
+          "interactView",
+          "lastPostTime",
+          "nickname",
+          "platform",
+          "platformName",
+          "posts",
+          "punish",
+          "uid",
+          "view",
+          "viewPosts"
+        ],
+        "videoCount": 1,
+        "videoItemKeys": [
+          "fullView",
+          "platform",
+          "platformName",
+          "view2s",
+          "view5s",
+          "viewTime"
+        ]
+      }
+    },
+    "vcat_get_post_trend": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "coverPosts",
+          "daily",
+          "dateRange",
+          "days",
+          "top"
+        ],
+        "dateRangeCount": 2,
+        "dateRangeItemKeys": [],
+        "daysCount": 7,
+        "daysItemKeys": [],
+        "dailyCount": 7,
+        "dailyItemKeys": [
+          "comment",
+          "date",
+          "fansAdd",
+          "favorite",
+          "forward",
+          "like",
+          "view"
+        ],
+        "topCount": 19,
+        "topItemKeys": [
+          "account",
+          "comment",
+          "cover",
+          "desc",
+          "fansAdd",
+          "forward",
+          "fullView",
+          "inc",
+          "like",
+          "love",
+          "platform",
+          "platformName",
+          "postId",
+          "postTime",
+          "postType",
+          "postTypeCode",
+          "publishStatus",
+          "status",
+          "statusText",
+          "timing",
+          "title",
+          "uid",
+          "url",
+          "view",
+          "viewTime"
+        ]
+      }
+    },
+    "vcat_get_post_sync": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "configured",
+          "localCount",
+          "looping",
+          "loopingText",
+          "task"
+        ]
+      }
+    },
+    "vcat_list_post_sync_records": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "taskId",
+          "total",
+          "type"
+        ],
+        "total": 16,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 16,
+        "listItemKeys": [
+          "account",
+          "recordId",
+          "text",
+          "time",
+          "uid"
+        ]
+      }
+    },
+    "vcat_list_batch_tasks": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 0,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_list_orders": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "textLength",
+          "textType"
+        ]
+      }
+    },
+    "vcat_get_order_overview": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "textLength",
+          "textType"
+        ]
+      }
+    },
+    "vcat_get_order_daily": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "dateRange",
+          "list",
+          "page",
+          "pageSize",
+          "sum",
+          "total"
+        ],
+        "total": 0,
+        "page": 1,
+        "pageSize": 100,
+        "dateRangeCount": 2,
+        "dateRangeItemKeys": [],
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_get_order_sync_status": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "textLength",
+          "textType"
+        ]
+      }
+    },
+    "vcat_list_shop_tasks": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 0,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_get_shop_options": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "textLength",
+          "textType"
+        ]
+      }
+    },
+    "vcat_list_monitor_tasks": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "running",
+          "total"
+        ],
+        "total": 1,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 1,
+        "listItemKeys": [
+          "accounts",
+          "enabled",
+          "id",
+          "interval",
+          "lastNotice",
+          "lastRun",
+          "lastSuccess",
+          "remark",
+          "status",
+          "type",
+          "typeName"
+        ],
+        "runningCount": 0,
+        "runningItemKeys": []
+      }
+    },
+    "vcat_list_monitor_records": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "notice",
+          "page",
+          "pageSize",
+          "taskId",
+          "taskName",
+          "type",
+          "typeName"
+        ],
+        "page": 1,
+        "pageSize": 100
+      }
+    },
+    "vcat_get_flow_report": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 0,
+        "page": 1,
+        "pageSize": 50,
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_get_comment_summary": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "newCount",
+          "unreplyCount"
+        ]
+      }
+    },
+    "vcat_list_comments": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "dateRange",
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 0,
+        "page": 1,
+        "pageSize": 100,
+        "dateRangeCount": 2,
+        "dateRangeItemKeys": [],
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_get_unread_messages": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "sessions",
+          "totalUnread"
+        ],
+        "sessionsCount": 0,
+        "sessionsItemKeys": []
+      }
+    },
+    "vcat_list_message_sessions": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "dateRange",
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 0,
+        "page": 1,
+        "pageSize": 100,
+        "dateRangeCount": 2,
+        "dateRangeItemKeys": [],
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_list_groups": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "total"
+        ],
+        "total": 3,
+        "listCount": 3,
+        "listItemKeys": [
+          "accountCount",
+          "id",
+          "name",
+          "serverHost",
+          "serverId",
+          "sort",
+          "subUserVisible"
+        ]
+      }
+    },
+    "vcat_list_tags": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "total"
+        ],
+        "total": 1,
+        "listCount": 1,
+        "listItemKeys": [
+          "accountCount",
+          "id",
+          "name"
+        ]
+      }
+    },
+    "vcat_list_proxies": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "total"
+        ],
+        "total": 0,
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_list_login_links": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "total"
+        ],
+        "total": 0,
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_list_duplicate_accounts": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "groups",
+          "totalDuplicates",
+          "totalGroups"
+        ],
+        "groupsCount": 0,
+        "groupsItemKeys": []
+      }
+    },
+    "vcat_list_verify_results": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "abnormalCount",
+          "list",
+          "page",
+          "pageSize",
+          "total",
+          "verifiedCount"
+        ],
+        "total": 24,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 24,
+        "listItemKeys": [
+          "abnormal",
+          "abnormalPostCount",
+          "groupName",
+          "heatStatus",
+          "lastVerifyTime",
+          "liveStatus",
+          "loginStatus",
+          "nickname",
+          "platform",
+          "platformName",
+          "uid",
+          "verified",
+          "videoStatus"
+        ]
+      }
+    },
+    "vcat_list_punish_feeds": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "total": 87,
+        "page": 1,
+        "pageSize": 100,
+        "listCount": 87,
+        "listItemKeys": [
+          "cover",
+          "exportId",
+          "groupName",
+          "nickname",
+          "platform",
+          "platformName",
+          "publishTime",
+          "punishState",
+          "title",
+          "uid"
+        ]
+      }
+    },
+    "vcat_get_verify_auto_setting": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "closeFace",
+          "excludeSticky",
+          "interval",
+          "noticeItems",
+          "openAuto",
+          "openNotice",
+          "perAccounts",
+          "postAction",
+          "postKeywords"
+        ],
+        "noticeItemsCount": 3,
+        "noticeItemsItemKeys": [],
+        "postKeywordsCount": 0,
+        "postKeywordsItemKeys": []
+      }
+    },
+    "vcat_list_verify_logs": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "total"
+        ],
+        "total": 0,
+        "listCount": 0,
+        "listItemKeys": []
+      }
+    },
+    "vcat_list_shop_goods": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "textLength",
+          "textType"
+        ]
+      }
+    },
+    "vcat_search_shop_goods": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "textLength",
+          "textType"
+        ]
+      }
+    },
+    "vcat_get_verify_result": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "nickname",
+          "platform",
+          "platformName",
+          "uid",
+          "verified"
+        ]
+      }
+    },
+    "vcat_get_verify_links": {
+      "status": "success",
+      "shape": {
+        "kind": "object",
+        "keys": [
+          "list",
+          "total"
+        ],
+        "total": 10,
+        "listCount": 10,
+        "listItemKeys": [
+          "nickname",
+          "success",
+          "uid",
+          "url"
+        ]
+      }
+    }
+  }
+}

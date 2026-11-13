@@ -38,13 +38,13 @@ export const TheaterBatchImportModal: React.FC<TheaterBatchImportModalProps> = (
       if (parts.length < 1) continue;
 
       const name = parts[0];
-      const commissionRate = parts[1] ? Number(parts[1].replace('%', '')) : 70;
+      const commissionRate = parts[1] ? Number(parts[1].replace('%', '')) : 40;
       const taxRate = parts[2] ? Number(parts[2].replace('%', '')) : 6;
       const status: '启用' | '停用' = parts[3] === '停用' ? '停用' : '启用';
 
       results.push({
         name,
-        defaultCommissionRate: isNaN(commissionRate) ? 70 : commissionRate,
+        defaultCommissionRate: isNaN(commissionRate) ? 40 : commissionRate,
         defaultTaxRate: isNaN(taxRate) ? 6 : taxRate,
         status,
         subTheatersCount: 0,

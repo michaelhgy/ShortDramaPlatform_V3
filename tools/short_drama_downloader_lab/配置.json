@@ -1,0 +1,8 @@
+{
+  "uid": 408333,
+  "agentid": 82,
+  "analysis_api": "https://sy2.ahao.sale/api.php/Index/livePhotoAnalysis",
+  "download_root": "原片",
+  "request_interval_seconds": 0.7,
+  "download_timeout_seconds": 180
+}

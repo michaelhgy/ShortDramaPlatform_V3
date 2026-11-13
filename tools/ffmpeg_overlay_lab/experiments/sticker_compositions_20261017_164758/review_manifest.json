@@ -1,0 +1,370 @@
+{
+  "tool": "built-in image_gen",
+  "generation_calls": 2,
+  "source_boards": [
+    {
+      "id": "board_1",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-d2281ea6-6492-4029-86e6-e85f111b6005.png",
+      "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/boards/board_1.png",
+      "sha256": "eaac135184e58595a0da099b068486d883f9f67d00428a102082766630a89065",
+      "width": 1448,
+      "height": 1086,
+      "tool_wall_seconds": 65.709
+    },
+    {
+      "id": "board_2",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-23c67d10-548d-434b-a222-0f6baead7458.png",
+      "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/boards/board_2.png",
+      "sha256": "6ffd363dd0b8d08847493f425284d2f94df74cd8a33f7299b11a055d512eef73",
+      "width": 1448,
+      "height": 1086,
+      "tool_wall_seconds": 25.343
+    }
+  ],
+  "sets": [
+    {
+      "id": "01",
+      "name": "疏叶对角",
+      "theme": "长枝与少量椭圆叶片",
+      "layout": "左上主枝向内舒展，右下短枝呼应；斜向、疏密不等",
+      "silhouette": "长斜枝、开放叶形",
+      "prompt": "LEFT PANEL: BOTANICAL DIAGONAL. A slender leafy branch grows from the top-left region inward along a gentle diagonal, tapering into the top region's open space. The bottom-right region has a smaller complementary branch with the same oval leaf shape and a few tiny buds. Top has greater visual weight, bottom is lighter. The other two corners are largely empty. Long sparse organic stems, no flowers or stars.",
+      "asset": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/01_疏叶对角.png",
+      "source_board": "board_1",
+      "crop_x_range": [
+        0,
+        482
+      ],
+      "canvas": [
+        1080,
+        2400
+      ],
+      "fully_transparent_fraction": 0.938532,
+      "center_alpha_max": 0,
+      "preview_opacity": 0.7,
+      "placement": {
+        "source_region_bounds": [
+          [
+            26,
+            30,
+            456,
+            337
+          ],
+          [
+            141,
+            803,
+            307,
+            254
+          ]
+        ],
+        "common_uniform_scale": 1.1869436201780414,
+        "scaled_sizes": [
+          [
+            541,
+            400
+          ],
+          [
+            364,
+            301
+          ]
+        ],
+        "top_xy": [
+          24,
+          24
+        ],
+        "bottom_xy": [
+          692,
+          2075
+        ],
+        "method": "same-theme top/bottom kept together; scaled uniformly and anchored within edge regions"
+      }
+    },
+    {
+      "id": "02",
+      "name": "云水合抱",
+      "theme": "云卷与水波",
+      "layout": "上方中央浅拱云线，下方中央低弧水波；上下环抱",
+      "silhouette": "浅弧、流动曲线、两端舒展",
+      "prompt": "MIDDLE PANEL: CLOUD-AND-WATER EMBRACE. A shallow airy arch of two or three simple cloud curls and fine curved lines spans the upper region, centered and lighter at the ends. In the lower region, a shallow upward-opening composition of smooth water ripple contours echoes the arch. Mostly flowing abstract curved strokes, few cloud curls and no filled cloud bodies. Both top and bottom feel like a light embrace around the empty middle, without side rails.",
+      "asset": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/02_云水合抱.png",
+      "source_board": "board_1",
+      "crop_x_range": [
+        482,
+        965
+      ],
+      "canvas": [
+        1080,
+        2400
+      ],
+      "fully_transparent_fraction": 0.860738,
+      "center_alpha_max": 0,
+      "preview_opacity": 0.7,
+      "placement": {
+        "source_region_bounds": [
+          [
+            482,
+            82,
+            483,
+            154
+          ],
+          [
+            489,
+            875,
+            476,
+            166
+          ]
+        ],
+        "common_uniform_scale": 2.1366459627329193,
+        "scaled_sizes": [
+          [
+            1032,
+            329
+          ],
+          [
+            1017,
+            355
+          ]
+        ],
+        "top_xy": [
+          24,
+          24
+        ],
+        "bottom_xy": [
+          31,
+          2021
+        ],
+        "method": "same-theme top/bottom kept together; scaled uniformly and anchored within edge regions"
+      }
+    },
+    {
+      "id": "03",
+      "name": "花草下重",
+      "theme": "小野花与细草",
+      "layout": "下方中央直立花草为主，上方两侧各少量小花回应",
+      "silhouette": "下方竖向花茎成簇，上方小型散组",
+      "prompt": "RIGHT PANEL: MEADOW BOTTOM-FOCUSED. The lower region has a compact upright grouping of three simple small wildflowers at different heights with a few slender grass shoots, centered but asymmetrical. The upper region has only two tiny related flower-and-leaf accents separated near the upper left and upper right. Lower region carries most visual weight. Fine open-petal outlines and short stems, no sweeping long branch, no moon or cloud imagery.",
+      "asset": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/03_花草下重.png",
+      "source_board": "board_1",
+      "crop_x_range": [
+        965,
+        1448
+      ],
+      "canvas": [
+        1080,
+        2400
+      ],
+      "fully_transparent_fraction": 0.938486,
+      "center_alpha_max": 0,
+      "preview_opacity": 0.7,
+      "placement": {
+        "source_region_bounds": [
+          [
+            965,
+            114,
+            455,
+            144
+          ],
+          [
+            965,
+            725,
+            452,
+            329
+          ]
+        ],
+        "common_uniform_scale": 1.21580547112462,
+        "scaled_sizes": [
+          [
+            553,
+            175
+          ],
+          [
+            550,
+            400
+          ]
+        ],
+        "top_xy": [
+          263,
+          24
+        ],
+        "bottom_xy": [
+          265,
+          1976
+        ],
+        "method": "same-theme top/bottom kept together; scaled uniformly and anchored within edge regions"
+      }
+    },
+    {
+      "id": "04",
+      "name": "星月垂挂",
+      "theme": "月牙、细线和少量星形",
+      "layout": "上方偏右不等长垂挂为主，下方偏左短弧回应",
+      "silhouette": "上方竖直短线，下方小弧线",
+      "prompt": "LEFT PANEL: CELESTIAL HANGING. Three short hanging threads of unequal lengths within the top-right region end in a tiny crescent, simple four-point twinkle and hollow circle. In the lower-left region a small shallow dotted arc with two tiny related twinkles quietly echoes this celestial theme. Top is the main focal grouping, bottom is a small secondary counterweight. The hanging lines remain entirely inside the top 18 percent. No curtain across the entire top and no full star field.",
+      "asset": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/04_星月垂挂.png",
+      "source_board": "board_2",
+      "crop_x_range": [
+        0,
+        482
+      ],
+      "canvas": [
+        1080,
+        2400
+      ],
+      "fully_transparent_fraction": 0.967437,
+      "center_alpha_max": 0,
+      "preview_opacity": 0.7,
+      "placement": {
+        "source_region_bounds": [
+          [
+            300,
+            22,
+            154,
+            208
+          ],
+          [
+            61,
+            897,
+            232,
+            145
+          ]
+        ],
+        "common_uniform_scale": 1.9230769230769231,
+        "scaled_sizes": [
+          [
+            296,
+            400
+          ],
+          [
+            446,
+            279
+          ]
+        ],
+        "top_xy": [
+          760,
+          24
+        ],
+        "bottom_xy": [
+          24,
+          2097
+        ],
+        "method": "same-theme top/bottom kept together; scaled uniformly and anchored within edge regions"
+      }
+    },
+    {
+      "id": "05",
+      "name": "几何四角",
+      "theme": "开口圆弧、圆环、短线",
+      "layout": "四角局部呼应，中央与边缘中段留空",
+      "silhouette": "短几何弧、四角开放、分量均衡",
+      "prompt": "MIDDLE PANEL: OPEN GEOMETRIC FOUR CORNERS. Localized ornaments sit at the four corners only: two fine partial concentric arcs and a small hollow ring at upper left, a shorter related arc pair at upper right, and complementary shorter arc-and-dash arrangements in the lower two corners. Coherent modern geometric rhythm, similar curve radii and stroke weight. Balanced but not exact mirrored copies. All arcs are short and open, mostly neutral empty space, no complete enclosing frame or vertical side rail, no botanical or celestial subjects.",
+      "asset": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/05_几何四角.png",
+      "source_board": "board_2",
+      "crop_x_range": [
+        482,
+        965
+      ],
+      "canvas": [
+        1080,
+        2400
+      ],
+      "fully_transparent_fraction": 0.943204,
+      "center_alpha_max": 0,
+      "preview_opacity": 0.7,
+      "placement": {
+        "source_region_bounds": [
+          [
+            510,
+            25,
+            432,
+            173
+          ],
+          [
+            510,
+            867,
+            432,
+            181
+          ]
+        ],
+        "common_uniform_scale": 2.2099447513812156,
+        "scaled_sizes": [
+          [
+            955,
+            382
+          ],
+          [
+            955,
+            400
+          ]
+        ],
+        "top_xy": [
+          62,
+          24
+        ],
+        "bottom_xy": [
+          62,
+          1976
+        ],
+        "method": "same-theme top/bottom kept together; scaled uniformly and anchored within edge regions"
+      }
+    },
+    {
+      "id": "06",
+      "name": "书茶偏轴",
+      "theme": "阅读与茶杯、翻页和蒸汽曲线",
+      "layout": "上方中偏左的小书，下方中偏右的茶杯；隐含S形走势",
+      "silhouette": "上方扁宽书页，下方小杯轮廓与短蒸汽",
+      "prompt": "RIGHT PANEL: QUIET READING-AND-TEA OFFSET. One small open book in the upper region slightly left of center, with two fine short page-turning curves. In the lower region slightly right of center, one small teacup and two short steam curls that echo the book's page curves. A deliberate offset S-like visual rhythm is implied only by the two groups; no connecting line crosses the middle. Book and cup have simple unfilled outlines, similar line weight and modest scale. No other random objects, no words on pages, no leaves, flowers or stars.",
+      "asset": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/06_书茶偏轴.png",
+      "source_board": "board_2",
+      "crop_x_range": [
+        965,
+        1448
+      ],
+      "canvas": [
+        1080,
+        2400
+      ],
+      "fully_transparent_fraction": 0.956807,
+      "center_alpha_max": 0,
+      "preview_opacity": 0.7,
+      "placement": {
+        "source_region_bounds": [
+          [
+            1033,
+            45,
+            249,
+            155
+          ],
+          [
+            1187,
+            846,
+            195,
+            207
+          ]
+        ],
+        "common_uniform_scale": 1.932367149758454,
+        "scaled_sizes": [
+          [
+            481,
+            300
+          ],
+          [
+            377,
+            400
+          ]
+        ],
+        "top_xy": [
+          192,
+          24
+        ],
+        "bottom_xy": [
+          535,
+          1976
+        ],
+        "method": "same-theme top/bottom kept together; scaled uniformly and anchored within edge regions"
+      }
+    }
+  ],
+  "visual_acceptance": "USER_PENDING",
+  "note": "Six direction studies, not a validated 500-set library"
+}

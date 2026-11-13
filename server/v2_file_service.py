@@ -12,6 +12,7 @@ import json
 import mimetypes
 import os
 import re
+from contextlib import closing
 import sqlite3
 import sys
 import uuid
@@ -29,6 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from server import revenue_collectors
 from server.tool_resolver import ToolResolutionError, resolve_ffmpeg, resolve_ffprobe
 from server.runtime_process import no_window_kwargs
 from server.runtime_guard import assert_port_available, start_write_lock_watchdog
@@ -36,6 +38,13 @@ from server.runtime_guard import assert_port_available, start_write_lock_watchdo
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 BGM_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
+# V3 production resources; legacy files and index rows remain in place.
+PRODUCTION_RESOURCE_CATEGORIES = {
+    "scenery_video": ("风景视频", VIDEO_EXTENSIONS),
+    "real_image": ("真人图片", IMAGE_EXTENSIONS),
+    "lead_video": ("引流视频", VIDEO_EXTENSIONS),
+}
+
 HOST = os.environ.get("V2_FILE_SERVICE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("V2_FILE_SERVICE_PORT", "8782"))
 STANDARD_SYSTEM_ROOT_NAME = "短剧推广运营系统"
@@ -47,7 +56,11 @@ DATABASE_INITIALIZATION_LOCK = threading.Lock()
 # 版本一致时 _initialize_connection 完全跳过那套结构脚本——它在 250MB 库上要十几到几十秒，
 # 期间独占写锁，会把同时打开的页面请求全部堵死
 # （表现为"启动慢 / 刷新不出来 / database is locked"）。
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 13
+FEATURE_TABLES = {'v3_publish_documents', 'v3_cover_projects', 'v3_cover_templates',
+                  'v3_flower_assets', 'v3_flower_preferences', 'v3_flower_usage_events',
+                  'v3_catalog_entries', 'v3_catalog_links', 'v3_catalog_availability', 'v3_account_data_runs', 'v3_account_data_snapshots', 'v3_account_post_snapshots',
+                  'v3_catalog_avatars', 'v3_catalog_task_mounts', 'v3_analytics_collection_runs'}
 # 变更日志（v2_change_events）是"数据变了就通知前端刷新"的游标表，**不是审计日志**。
 # 它由 30 多个触发器自动写入，长期累积会拖慢每一次写操作
 # （2026-09-17 故障：累积到 343 万行，把整个数据库拖垮）。
@@ -296,6 +309,41 @@ def prune_change_events_if_due() -> int:
         conn.close()
 
 
+def _upgrade_feature_schema(conn: sqlite3.Connection) -> None:
+    """Add feature tables only; never recreate or edit existing business rows."""
+    present = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not FEATURE_TABLES.issubset(present):
+        from server.publishing.service import initialize as initialize_publishing
+        from server.cover_editor import initialize as initialize_covers
+        initialize_publishing(conn)
+        initialize_covers(conn)
+        from server.drama_catalog import initialize as initialize_catalogue
+        initialize_catalogue(conn)
+        from server.account_data import initialize as initialize_account_data
+        initialize_account_data(conn)
+        from server.analytics_data import initialize as initialize_analytics_data
+        initialize_analytics_data(conn)
+    else:
+        # Account-data schema is additive and may gain evidence columns while
+        # the feature tables already exist.  Its initializer is idempotent.
+        from server.account_data import initialize as initialize_account_data
+        initialize_account_data(conn)
+    from server.drama_catalog import ensure_availability_schema
+    ensure_availability_schema(conn)
+    from server.revenue_collection_state import initialize as initialize_revenue_state
+    initialize_revenue_state(conn)
+    from server.operations_collection import initialize as initialize_operations
+    initialize_operations(conn)
+    # This path is used for already-current installations too.
+    file_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_files)")}
+    if "midroll_endroll_strategy" not in file_columns:
+        conn.execute("ALTER TABLE production_files ADD COLUMN midroll_endroll_strategy TEXT NOT NULL DEFAULT ''")
+    task_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(production_tasks)")}
+    if "delivery_completed_at" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN delivery_completed_at TEXT NOT NULL DEFAULT ''")
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
 def _initialize_connection() -> sqlite3.Connection:
     """Create or migrate one database once for each service process/path."""
     path = db_path()
@@ -312,8 +360,13 @@ def _initialize_connection() -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode = WAL")
     except sqlite3.OperationalError:
         pass
-    if int(conn.execute("PRAGMA user_version").fetchone()[0]) == SCHEMA_VERSION:
-        # 结构已是最新：只读一个版本号就返回，绝不重跑那套 DDL。
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version in (5, 6, 7, 8, 9, 10, 11, 12, SCHEMA_VERSION):
+        # v5 already has the base schema. Add only the new feature tables;
+        # also repair databases marked current that missed an additive table.
+        _upgrade_feature_schema(conn)
+        from server.account_data import recover_interrupted as recover_account_data_runs
+        recover_account_data_runs(conn)
         _recover_interrupted_revenue_runs(conn)
         _prune_change_events(conn)
         conn.commit()
@@ -360,6 +413,7 @@ def _initialize_connection() -> sqlite3.Connection:
             duration_seconds REAL NOT NULL DEFAULT 0,
             thumbnail_path TEXT NOT NULL DEFAULT '',
             resolution TEXT NOT NULL DEFAULT '',
+            midroll_endroll_strategy TEXT NOT NULL DEFAULT '',
             missing_scan_count INTEGER NOT NULL DEFAULT 0,
             UNIQUE(task_id, file_path)
         );
@@ -695,6 +749,8 @@ def _initialize_connection() -> sqlite3.Connection:
         conn.execute("ALTER TABLE production_tasks ADD COLUMN release_status TEXT NOT NULL DEFAULT 'unregistered'")
     if "actual_release_time" not in task_columns:
         conn.execute("ALTER TABLE production_tasks ADD COLUMN actual_release_time TEXT NOT NULL DEFAULT ''")
+    if "delivery_completed_at" not in task_columns:
+        conn.execute("ALTER TABLE production_tasks ADD COLUMN delivery_completed_at TEXT NOT NULL DEFAULT ''")
     for column in ("release_province", "release_city", "release_district", "release_detail_address"):
         if column not in task_columns:
             conn.execute(f"ALTER TABLE production_tasks ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
@@ -734,6 +790,9 @@ def _initialize_connection() -> sqlite3.Connection:
         conn.execute("ALTER TABLE production_files ADD COLUMN missing_scan_count INTEGER NOT NULL DEFAULT 0")
     if "resolution" not in file_columns:
         conn.execute("ALTER TABLE production_files ADD COLUMN resolution TEXT NOT NULL DEFAULT ''")
+    if "midroll_endroll_strategy" not in file_columns:
+        # 单素材覆盖；空串 = 跟随当前生产任务规则。
+        conn.execute("ALTER TABLE production_files ADD COLUMN midroll_endroll_strategy TEXT NOT NULL DEFAULT ''")
     if "file_identity" not in resource_columns:
         conn.execute("ALTER TABLE resource_index ADD COLUMN file_identity TEXT NOT NULL DEFAULT ''")
     if "probe_status" not in resource_columns:
@@ -900,6 +959,20 @@ def _initialize_connection() -> sqlite3.Connection:
           INSERT INTO v2_change_events(change_type,entity_id,updated_at) VALUES ('revenue_changed',NEW.id,NEW.updated_at);
         END;
     """)
+    from server.publishing.service import initialize as initialize_publishing
+    initialize_publishing(conn)
+    from server.cover_editor import initialize as initialize_covers
+    initialize_covers(conn)
+    from server.drama_catalog import initialize as initialize_catalogue
+    initialize_catalogue(conn)
+    from server.account_data import initialize as initialize_account_data
+    initialize_account_data(conn)
+    from server.analytics_data import initialize as initialize_analytics_data
+    initialize_analytics_data(conn)
+    from server.revenue_collection_state import initialize as initialize_revenue_state
+    initialize_revenue_state(conn)
+    from server.account_data import recover_interrupted as recover_account_data_runs
+    recover_account_data_runs(conn)
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     _recover_interrupted_revenue_runs(conn)
     _prune_change_events(conn)
@@ -1015,10 +1088,12 @@ def parse_created_date(value: str) -> str:
 
 
 def parse_planned_publish_at(value: str) -> str:
+    if not value.strip():
+        return ''
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M").strftime("%Y-%m-%dT%H:%M")
+        return datetime.fromisoformat(value.strip()).date().isoformat()
     except ValueError as exc:
-        raise ValueError("计划发布时间必须是有效的日期和时间") from exc
+        raise ValueError("计划发布日期必须是有效日期（YYYY-MM-DD）") from exc
 
 
 def task_created_date() -> str:
@@ -1187,6 +1262,8 @@ def _cleanup_missing_resource_index(active_ids: set[str], conn: sqlite3.Connecti
             if resource_id in active_ids:
                 continue
             category = str(row["category"])
+            if category not in PRODUCTION_RESOURCE_CATEGORIES:
+                continue  # V3 does not reconcile retired V2 resource categories.
             thumbnail = Path(str(row["thumbnail_path"] or ""))
             if category not in {"lead_video", "bgm"} and thumbnail.is_file():
                 thumbnail.unlink(missing_ok=True)
@@ -1259,26 +1336,51 @@ def format_media_duration(seconds: float) -> str:
 
 
 def canonical_sequence(path: Path, drama_name: str) -> int | None:
-    match = re.fullmatch(rf"{re.escape(drama_name)}-(\d+)", path.stem, flags=re.IGNORECASE)
+    match = re.fullmatch(rf"(?:羊-)?{re.escape(drama_name)}-(\d+)", path.stem, flags=re.IGNORECASE)
     return int(match.group(1)) if match and int(match.group(1)) > 0 else None
 
 
-def rename_without_overwrite(directory: Path, files: list[Path], drama_name: str) -> list[Path]:
-    used = {n for path in files if (n := canonical_sequence(path, drama_name)) is not None}
-    assignments: list[tuple[Path, Path]] = []
-    next_number = max(used, default=0) + 1
+def is_sheep_material(path: Path, drama_name: str) -> bool:
+    # Recognise our own names first: a drama title can itself contain “羊头”.
+    if re.fullmatch(rf"{re.escape(drama_name)}-\d+", path.stem, flags=re.IGNORECASE):
+        return False
+    return "羊头" in path.stem or bool(re.fullmatch(
+        rf"羊-{re.escape(drama_name)}-\d+", path.stem, flags=re.IGNORECASE))
+
+
+def material_rename_plan(directory: Path, files: list[Path], drama_name: str, reserved_sequence: int = 0) -> list[tuple[Path, Path]]:
+    """Keep numbered files fixed; append new groups starting with the tail type."""
+    targets: dict[Path, Path] = {}
+    numbered: dict[int, Path] = {}
+    pending: dict[bool, list[Path]] = {False: [], True: []}
     for path in files:
         number = canonical_sequence(path, drama_name)
         if number is None:
-            while next_number in used:
-                next_number += 1
-            number, next_number = next_number, next_number + 1
-            used.add(number)
-        assignments.append((path, directory / f"{drama_name}-{number}{path.suffix.lower()}"))
+            pending[is_sheep_material(path, drama_name)].append(path)
+        else:
+            if number in numbered:
+                raise ValueError(f"已有素材序号 {number} 重复，请先核对文件名；本次未重命名")
+            numbered[number] = path
+            targets[path] = path
+    last_number = max(numbered, default=0)
+    sheep_first = is_sheep_material(numbered[last_number], drama_name) if numbered else False
+    next_number = max(last_number, reserved_sequence) + 1
+    for sheep_group in (sheep_first, not sheep_first):
+        prefix = "羊-" if sheep_group else ""
+        for path in sorted(pending[sheep_group], key=lambda p: natural_key(p.name)):
+            targets[path] = directory / f"{prefix}{drama_name}-{next_number}{path.suffix.lower()}"
+            next_number += 1
+    assignments = [(path, targets[path]) for path in files]
     originals = {path.resolve() for path in files}
     if any(target.exists() and target.resolve() not in originals for _, target in assignments):
         raise ValueError("自动重命名会覆盖已有文件，已停止")
+    return assignments
+
+
+def rename_without_overwrite(directory: Path, files: list[Path], drama_name: str, reserved_sequence: int = 0) -> list[Path]:
+    assignments = material_rename_plan(directory, files, drama_name, reserved_sequence)
     staged: list[tuple[Path, Path, Path]] = []
+    completed: set[Path] = set()
     try:
         for source, target in assignments:
             if source.resolve() == target.resolve():
@@ -1288,25 +1390,40 @@ def rename_without_overwrite(directory: Path, files: list[Path], drama_name: str
             staged.append((source, temporary, target))
         for _, temporary, target in staged:
             temporary.rename(target)
+            completed.add(temporary)
     except OSError as exc:
+        # Undo completed destinations to their staging paths first, so cycles
+        # cannot collide with an original path that is still occupied.
+        for _, temporary, target in staged:
+            if temporary in completed:
+                target.rename(temporary)
         for original, temporary, target in reversed(staged):
-            current = temporary if temporary.exists() else target
-            if current.exists():
-                current.rename(original)
+            if temporary.exists():
+                temporary.rename(original)
         raise RuntimeError(f"自动重命名失败，已尝试回滚：{exc}") from exc
     return [target for _, target in assignments]
 
 
 def task_response(task: sqlite3.Row) -> dict[str, object]:
-    return {
+    from server.drama_catalog import task_metadata
+    mount_connection = connection()
+    try:
+        mount = task_metadata(mount_connection, str(task["id"]))
+        account = mount_connection.execute('SELECT id FROM accounts WHERE nickname=?', (task['account_name'],)).fetchone()
+    finally: mount_connection.close()
+    return {**mount,
         "id": str(task["id"]),
         "source_id": str(task["source_id"]),
         "created_date": str(task["created_date"]),
+        "account_id": str(account["id"]) if account else "",
         "account_name": str(task["account_name"]),
         "drama_name": str(task["drama_name"]),
-        "planned_publish_at": str(task["planned_publish_at"]),
+        "planned_publish_at": str(task["planned_publish_at"] or "")[:10],
+        "manual_order": int(task["manual_order"] or 0),
+        "created_at": str(task["created_at"]),
         "release_status": str(task["release_status"] or "unregistered"),
         "actual_release_time": str(task["actual_release_time"] or ""),
+        "delivery_completed_at": str(task["delivery_completed_at"] or ""),
         "release_province": str(task["release_province"] or ""),
         "release_city": str(task["release_city"] or ""),
         "release_district": str(task["release_district"] or ""),
@@ -1331,7 +1448,7 @@ def list_theaters() -> dict[str, object]:
             "FROM theaters t "
             "ORDER BY CASE t.status WHEN '启用' THEN 0 ELSE 1 END, t.name COLLATE NOCASE"
         ).fetchall()
-        return {"items": [dict(row) for row in rows]}
+        return {"items": [revenue_collectors.theater_record(conn, dict(row)) for row in rows]}
     finally:
         conn.close()
 
@@ -1345,9 +1462,10 @@ def list_accounts() -> dict[str, object]:
             "ORDER BY CASE a.status "
             "WHEN '正常' THEN 0 WHEN '观察' THEN 1 WHEN '限流' THEN 2 "
             "WHEN '二限' THEN 3 WHEN '实名' THEN 4 WHEN '封禁' THEN 5 "
-            "WHEN '停用' THEN 6 ELSE 99 END, a.created_at DESC"
+            "WHEN '停用' THEN 6 WHEN '注销' THEN 7 ELSE 99 END, a.created_at DESC"
         ).fetchall()
-        return {"items": [dict(row) for row in rows]}
+        from server.drama_catalog import account_metadata
+        return {"items": [revenue_collectors.account_record(conn, account_metadata(conn, dict(row))) for row in rows]}
     finally:
         conn.close()
 
@@ -1358,7 +1476,8 @@ def get_account(account_id: str) -> dict[str, object]:
         row = conn.execute("SELECT a.*, t.name AS theater_name FROM accounts a JOIN theaters t ON t.id=a.theater_id WHERE a.id=?", (account_id,)).fetchone()
         if not row:
             raise ValueError("账号不存在")
-        return dict(row)
+        from server.drama_catalog import account_metadata
+        return revenue_collectors.account_record(conn, account_metadata(conn, dict(row)))
     finally:
         conn.close()
 
@@ -1393,11 +1512,13 @@ def list_dramas() -> dict[str, object]:
             )) AS active_production_count
             FROM dramas d JOIN theaters t ON t.id=d.theater_id
             ORDER BY active_production_count DESC, last_scheduled_at DESC, production_count DESC, d.current_name COLLATE NOCASE""").fetchall()
+        from server.drama_catalog import all_drama_metadata, drama_metadata
+        metadata = all_drama_metadata(conn)
         items = []
         for row in rows:
             item = dict(row)
             item["history_names"] = [str(value[0]) for value in conn.execute("SELECT alias_name FROM drama_aliases WHERE drama_id=? ORDER BY created_at", (row["id"],)).fetchall()]
-            items.append(item)
+            items.append(drama_metadata(item, metadata))
         return {"items": items}
     finally:
         conn.close()
@@ -1421,7 +1542,8 @@ def get_drama(drama_id: str) -> dict[str, object]:
             raise ValueError("剧集不存在")
         item = dict(row)
         item["history_names"] = [str(value[0]) for value in conn.execute("SELECT alias_name FROM drama_aliases WHERE drama_id=? ORDER BY created_at", (drama_id,)).fetchall()]
-        return item
+        from server.drama_catalog import all_drama_metadata, drama_metadata
+        return drama_metadata(item, all_drama_metadata(conn))
     finally:
         conn.close()
 
@@ -1768,28 +1890,10 @@ def ingest_wechat_index_capture_inbox(data_root: Path) -> dict[str, int]:
 
 
 def upload_drama_cover(drama_id: str, payload: dict[str, object]) -> dict[str, object]:
-    conn = connection()
-    try:
-        row = conn.execute("SELECT current_name FROM dramas WHERE id=?", (drama_id,)).fetchone()
-        if not row:
-            raise ValueError("剧集不存在")
-        filename = Path(str(payload.get("filename") or "")).name
-        extension = Path(filename).suffix.lower()
-        if extension not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
-            raise ValueError("封面只支持 JPG、PNG、WEBP 或 GIF 图片")
-        encoded = str(payload.get("content_base64") or "")
-        if "," in encoded:
-            encoded = encoded.split(",", 1)[1]
-        data = base64.b64decode(encoded, validate=True)
-        cover_dir = WORKSPACE / "剧集资料" / str(row["current_name"]) / "封面"
-        cover_dir.mkdir(parents=True, exist_ok=True)
-        target = cover_dir / f"{row['current_name']}-封面{extension}"
-        target.write_bytes(data)
-        conn.execute("UPDATE drama_profiles SET cover_path=?, updated_at=? WHERE drama_id=?", (str(target), now_text(), drama_id))
-        conn.commit()
-        return {"drama_id": drama_id, "file_path": str(target), "filename": target.name}
-    finally:
-        conn.close()
+    if Path(str(payload.get('filename') or '')).suffix.lower() not in {'.jpg', '.jpeg', '.png', '.webp', '.gif'}:
+        raise ValueError('封面只支持 JPG、PNG、WEBP 或 GIF 图片')
+    from server.cover_editor import CoverStore
+    return CoverStore(WORKSPACE, connection).replace_original(drama_id, payload, str(payload.get('kind') or 'drama'))
 
 
 def create_drama_profile(drama_id: str) -> dict[str, object]:
@@ -1812,13 +1916,103 @@ def create_drama_profile(drama_id: str) -> dict[str, object]:
 def list_drama_profiles() -> dict[str, object]:
     conn = connection()
     try:
-        return {"items": [dict(row) for row in conn.execute("SELECT * FROM drama_profiles").fetchall()]}
+        from server.drama_catalog import all_drama_metadata, drama_metadata
+        metadata = all_drama_metadata(conn)
+        rows = conn.execute("""SELECT p.*, d.current_name, t.name AS theater_name
+            FROM drama_profiles p JOIN dramas d ON d.id=p.drama_id
+            JOIN theaters t ON t.id=d.theater_id""").fetchall()
+        download_root = Path(str(get_v2_settings().get("drama_download_root") or "")).expanduser()
+        items = []
+        for row in rows:
+            item = drama_metadata(dict(row), metadata)
+            item.update(scan_downloaded_drama_files(download_root, str(row["theater_name"]), str(row["current_name"]), str(row["master_path"])))
+            items.append(item)
+        return {"items": items}
     finally:
         conn.close()
 
 
+def _episode_number_from_filename(name: str) -> int | None:
+    match = re.search(r"第\s*(\d+)\s*集", name, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"(?:^|[-_\s])0*(\d{1,4})(?:[-_\s.]|$)", Path(name).stem)
+    return int(match.group(1)) if match else None
+
+
+def scan_downloaded_drama_files(download_root: Path, theater_name: str, drama_name: str, legacy_master_path: str) -> dict[str, object]:
+    """Scan the configured original-video root and return real episode counts."""
+    candidates: list[Path] = []
+    legacy = Path(legacy_master_path) if legacy_master_path else None
+    if download_root and download_root.is_dir():
+        candidates.extend([download_root / theater_name / drama_name, download_root / drama_name])
+    if legacy and legacy.is_dir():
+        candidates.append(legacy)
+    folder = next(
+        (candidate for candidate in candidates if candidate.is_dir() and any(
+            file.is_file() and file.suffix.lower() in VIDEO_EXTENSIONS for file in candidate.rglob("*")
+        )),
+        legacy or (download_root / theater_name / drama_name),
+    )
+    files = sorted(
+        (file for file in folder.rglob("*") if file.is_file() and file.suffix.lower() in VIDEO_EXTENSIONS),
+        key=lambda file: (_episode_number_from_filename(file.name) or 10**9, file.name.lower()),
+    ) if folder.is_dir() else []
+    episode_numbers = sorted({number for number in (_episode_number_from_filename(file.name) for file in files) if number is not None})
+    items = []
+    total_size = 0
+    for file in files:
+        try:
+            size = file.stat().st_size
+        except OSError:
+            size = 0
+        total_size += size
+        items.append({
+            "episode": _episode_number_from_filename(file.name) or len(items) + 1,
+            "filename": file.name,
+            "fileSizeMb": round(size / 1024 / 1024, 2),
+            "durationText": "—",
+            "resolution": "—",
+            "path": str(file),
+        })
+    total_size_gb = round(total_size / 1024 / 1024 / 1024, 3)
+    return {
+        "download_root_path": str(download_root) if download_root else "",
+        "downloaded_folder_path": str(folder),
+        "downloaded_episode_count": len(episode_numbers) if episode_numbers else len(files),
+        "downloaded_episode_numbers": episode_numbers,
+        "downloaded_total_size_gb": total_size_gb,
+        "master_path": str(folder),
+        "master_files": items,
+        "master_file_count": len(files),
+        "master_total_size_gb": total_size_gb,
+    }
+
+
+def production_resource_folder(category: str) -> Path:
+    if category not in PRODUCTION_RESOURCE_CATEGORIES:
+        raise ValueError("不支持的生产资源类别")
+    workspace, _ = require_configured_paths()
+    folder = (workspace / "生成资源" / PRODUCTION_RESOURCE_CATEGORIES[category][0]).resolve()
+    if not folder.is_relative_to(workspace):
+        raise ValueError("资源目录不属于当前工作目录")
+    return folder
+
+
+def open_production_resource_folder(category: str) -> dict[str, object]:
+    folder = production_resource_folder(category)
+    folder.mkdir(parents=True, exist_ok=True)
+    os.startfile(str(folder))
+    return {"opened": True}
+
+
 def list_production_resources() -> dict[str, object]:
-    roots = (("真人视频", "real_video", "真人视频", VIDEO_EXTENSIONS), ("真人图片", "real_image", "真人图片", IMAGE_EXTENSIONS), ("BGM", "bgm", "BGM", BGM_EXTENSIONS), ("引流视频", "lead_video", "引流视频", VIDEO_EXTENSIONS))
+    roots = tuple((folder, category, folder, extensions) for category, (folder, extensions) in PRODUCTION_RESOURCE_CATEGORIES.items())
+    from server.scenery.service import get_library
+    scenery_assets = {a['path']: a for a in get_library().ready_assets() if a['valid']}
+    from server.ffmpeg_templates.photo_library import PhotoLibrary
+    photo_workspace,photo_data=require_configured_paths()
+    photo_assets={a['path']:a for a in sorted(PhotoLibrary(photo_workspace,photo_data).refresh(),key=lambda a:a['valid'])}
     items: list[dict[str, object]] = []
     active_ids: set[str] = set()
     probes_to_queue: list[tuple[str, Path, str, os.stat_result]] = []
@@ -1828,10 +2022,12 @@ def list_production_resources() -> dict[str, object]:
         conn = connection()
         try:
             for folder, category, category_name, extensions in roots:
-                root = WORKSPACE / "生成资源" / folder
+                root = production_resource_folder(category)
                 root.mkdir(parents=True, exist_ok=True)
                 for path in sorted(root.rglob("*")):
                     if not path.is_file() or path.suffix.lower() not in extensions:
+                        continue
+                    if category == 'scenery_video' and str(path) not in scenery_assets:
                         continue
                     stat = path.stat()
                     file_identity = _file_identity(stat)
@@ -1869,6 +2065,14 @@ def list_production_resources() -> dict[str, object]:
                             thumbnail_path=thumbnail_path, probe_status=probe_status, probe_error=probe_error, conn=conn,
                         )
                     items.append({"id": resource_id, "name": path.name, "category": category, "categoryName": category_name, "filePath": str(path), "fileSizeMb": round(stat.st_size / 1024 / 1024, 2), "status": "used" if category != "lead_video" and path.name.startswith("已使用") else "available", "addedAt": date.fromtimestamp(stat.st_mtime).isoformat(), "tags": [], "durationSeconds": duration_seconds, "resolution": resolution, "thumbnailUrl": f"/api/v2/production-resources/{resource_id}/thumbnail" if thumbnail_path else "", "mediaUrl": f"/api/v2/production-resources/{resource_id}/media" if path.suffix.lower() in VIDEO_EXTENSIONS or path.suffix.lower() in IMAGE_EXTENSIONS else "", "probeStatus": probe_status, "probeError": probe_error})
+            for item in items:
+                if item['category'] == 'scenery_video':
+                    a = scenery_assets[item['filePath']]
+                    item.update(usageCount=a['used'], reservedCount=a['reserved'], usageLimit=a['limit'], remainingCount=a['remaining'], status='available' if a['remaining'] else 'used')
+                elif item['category']=='real_image' and item['filePath'] in photo_assets:
+                    a=photo_assets[item['filePath']]
+                    item.update(usageCount=a['used'],reservedCount=a['reserved'],usageLimit=a['limit'],remainingCount=a['remaining'] if a['valid'] else 0,
+                                cleanupError=a['error'],status='available' if a['valid'] and a['remaining'] else 'used')
             _cleanup_missing_resource_index(active_ids, conn)
             conn.commit()
         finally:
@@ -1879,41 +2083,25 @@ def list_production_resources() -> dict[str, object]:
 
 
 def production_resource_media(resource_id: str, *, thumbnail: bool = False) -> Path:
-    """Resolve a scanned resource by id, constrained to the configured workspace."""
+    """Resolve active V3 media using its stable indexed filesystem identity."""
     indexed = _resource_index_row(resource_id)
-    if indexed and thumbnail:
-        source = Path(str(indexed["file_path"] or ""))
-        try:
-            source_stat = source.stat()
-        except OSError:
-            source_stat = None
-        candidate = Path(str(indexed["thumbnail_path"] or "")).resolve()
-        if (source_stat is not None and int(indexed["file_size_bytes"]) == source_stat.st_size
-                and int(indexed["file_mtime_ns"]) == source_stat.st_mtime_ns
-                and candidate.is_file() and candidate.is_relative_to(WORKSPACE.resolve())):
-            return candidate
-    roots = ("真人视频", "真人图片", "BGM", "引流视频")
-    for folder in roots:
-        root = (WORKSPACE / "生成资源" / folder).resolve()
-        if not root.is_dir():
-            continue
-        for path in root.rglob("*"):
-            if not path.is_file() or hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:24] != resource_id:
-                continue
-            if thumbnail:
-                stat = path.stat()
-                current = _resource_index_row(resource_id)
-                if current and int(current["file_size_bytes"]) == stat.st_size and int(current["file_mtime_ns"]) == stat.st_mtime_ns:
-                    thumbnail_path = str(current["thumbnail_path"] or "")
-                else:
-                    duration, resolution, thumbnail_path = probe_resource_metadata(path, resource_id)
-                    _upsert_resource_index(resource_id=resource_id, category=str(current["category"] if current else "lead_video"), category_name=str(current["category_name"] if current else "引流视频"), path=path, stat=stat, file_identity=_file_identity(stat), duration=duration, resolution=resolution, thumbnail_path=thumbnail_path, probe_status="ready")
-                candidate = Path(thumbnail_path) if thumbnail_path else Path()
-                if candidate.is_file():
-                    return candidate.resolve()
-                raise ValueError("资源缩略图不存在")
-            return path.resolve()
-    raise ValueError("生产资源不存在")
+    if indexed is None or str(indexed["category"]) not in PRODUCTION_RESOURCE_CATEGORIES:
+        raise ValueError("生产资源不存在")
+    source = Path(str(indexed["file_path"])).resolve()
+    root = production_resource_folder(str(indexed["category"]))
+    extensions = PRODUCTION_RESOURCE_CATEGORIES[str(indexed["category"])][1]
+    if not source.is_relative_to(root) or not source.is_file() or source.suffix.lower() not in extensions:
+        raise ValueError("生产资源不存在")
+    stat = source.stat()
+    if stat.st_size != int(indexed["file_size_bytes"]) or stat.st_mtime_ns != int(indexed["file_mtime_ns"]):
+        raise ValueError("资源文件已变化，请刷新生产资源")
+    if not thumbnail:
+        return source
+    value = str(indexed["thumbnail_path"] or "")
+    candidate = Path(value).resolve() if value else None
+    if candidate and candidate.is_file() and (candidate == source or candidate.is_relative_to(DATA_ROOT.resolve())):
+        return candidate
+    raise ValueError("资源缩略图正在识别或不存在")
 
 
 # ---------------------------------------------------------------------------
@@ -2093,9 +2281,26 @@ def write_template_copy(*, blessing: object, drama_prompt: object) -> None:
     _write_template_copy_file(blessing=resolved_blessing, drama_prompt=resolved_drama)
 
 
-def _parse_insertion_slot(value: object, label: str) -> dict[str, object]:
+def _seconds_value(value: object, label: str, *, default: float) -> float:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{label}必须是非负秒数")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label}必须是非负秒数") from exc
+    if not 0 <= result <= 24 * 60 * 60:
+        raise ValueError(f"{label}必须在 0 到 86400 秒之间")
+    return round(result, 3)
+
+
+def _parse_insertion_slot(value: object, label: str, *, midroll: bool = False) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"{label}设置格式不正确")
+    allowed = {"enabled", "mode", "file"} | ({"min_source_duration_seconds", "position_start_seconds", "position_end_seconds"} if midroll else set())
+    if set(value) - allowed:
+        raise ValueError(f"{label}设置包含未知字段")
     enabled = value.get("enabled", True)
     if not isinstance(enabled, bool):
         raise ValueError(f"{label}的开关必须是布尔值")
@@ -2111,12 +2316,23 @@ def _parse_insertion_slot(value: object, label: str) -> dict[str, object]:
     if mode == "latest":
         file_name = ""
     elif not (promotion_video_dir() / file_name).is_file():
-        # 保留"上一次就指定的那一条"是允许的：素材可能只是被临时移走，
+        # 保留“上一次就指定的那一条”是允许的：素材可能只是被临时移走，
         # 生成时会明确报错，不该在保存这一步就把其他参数一起卡住。
         if file_name != _stored_locked_file(label):
             raise ValueError(f"{label}指定的素材不存在：{file_name}，请重新选择")
-    return {"enabled": enabled, "mode": mode, "file": file_name}
-
+    result: dict[str, object] = {"enabled": enabled, "mode": mode, "file": file_name}
+    if midroll:
+        minimum = _seconds_value(value.get("min_source_duration_seconds"), "中插最短视频时长", default=120)
+        position_start = _seconds_value(value.get("position_start_seconds"), "中插位置下限", default=120)
+        position_end = _seconds_value(value.get("position_end_seconds"), "中插位置上限", default=120)
+        if position_start <= 0 or position_start > position_end:
+            raise ValueError("中插位置必须大于 0，且下限不能大于上限")
+        result.update({
+            "min_source_duration_seconds": minimum,
+            "position_start_seconds": position_start,
+            "position_end_seconds": position_end,
+        })
+    return result
 
 def _stored_locked_file(label: str) -> str:
     """读取当前存储里某个插片位锁定的文件名；没有则返回空串。"""
@@ -2144,14 +2360,74 @@ def _stored_strategy() -> object:
 
 
 def normalize_midroll_endroll_strategy(payload: dict[str, object]) -> dict[str, object]:
-    """校验并规范化界面提交的插片策略。"""
+    """校验并规范化全局或任务级的完整插片策略。"""
     unknown = set(payload) - {"midroll", "endroll"}
     if unknown:
         raise ValueError(f"成片插片设置包含未知字段：{', '.join(sorted(unknown))}")
     return {
-        "midroll": _parse_insertion_slot(payload.get("midroll"), "中插"),
+        "midroll": _parse_insertion_slot(payload.get("midroll"), "中插", midroll=True),
         "endroll": _parse_insertion_slot(payload.get("endroll"), "尾插"),
     }
+
+
+def normalize_insertion_override(payload: dict[str, object]) -> dict[str, object]:
+    """校验单素材的局部覆盖；未出现的插片位继续继承任务规则。"""
+    unknown = set(payload) - {"midroll", "endroll"}
+    if unknown:
+        raise ValueError(f"单素材插片设置包含未知字段：{', '.join(sorted(unknown))}")
+    result: dict[str, object] = {}
+    allowed = {"enabled", "mode", "file", "min_source_duration_seconds", "position_start_seconds", "position_end_seconds"}
+    for key, label in (("midroll", "中插"), ("endroll", "尾插")):
+        value = payload.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, dict):
+            raise ValueError(f"{label}单素材覆盖格式不正确")
+        extra = set(value) - allowed
+        if extra:
+            raise ValueError(f"{label}单素材覆盖包含未知字段：{', '.join(sorted(extra))}")
+        slot: dict[str, object] = {}
+        if "enabled" in value:
+            if not isinstance(value["enabled"], bool):
+                raise ValueError(f"{label}的开关必须是布尔值")
+            slot["enabled"] = value["enabled"]
+        if "mode" in value:
+            mode = str(value.get("mode") or "latest")
+            if mode not in {"latest", "locked"}:
+                raise ValueError(f"{label}的取材方式不正确")
+            slot["mode"] = mode
+        if "file" in value:
+            if not isinstance(value.get("file"), str):
+                raise ValueError(f"{label}指定的素材名格式不正确")
+            slot["file"] = Path(str(value.get("file") or "")).name
+        for field, field_label in (
+            ("min_source_duration_seconds", f"{label}最短视频时长"),
+            ("position_start_seconds", f"{label}位置下限"),
+            ("position_end_seconds", f"{label}位置上限"),
+        ):
+            if field in value:
+                slot[field] = _seconds_value(value[field], field_label, default=0)
+        if "position_start_seconds" in slot and slot["position_start_seconds"] <= 0:
+            raise ValueError("中插位置必须大于0")
+        if "position_start_seconds" in slot and "position_end_seconds" in slot and slot["position_start_seconds"] > slot["position_end_seconds"]:
+            raise ValueError(f"{label}位置下限不能大于上限")
+        if key == "endroll" and any(field in slot for field in ("min_source_duration_seconds", "position_start_seconds", "position_end_seconds")):
+            raise ValueError("尾插不支持中插时间参数")
+        if slot:
+            result[key] = slot
+    return result
+
+
+def merge_insertion_strategy(base: dict[str, object], override: object) -> dict[str, object]:
+    """将单素材局部覆盖合并到已解析的任务策略。"""
+    result = {key: dict(value) for key, value in base.items() if isinstance(value, dict)}
+    if not isinstance(override, dict):
+        return result
+    for key in ("midroll", "endroll"):
+        value = override.get(key)
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key].update(value)
+    return result
 
 
 def resolve_midroll_endroll_strategy(stored: object) -> dict[str, object]:
@@ -2161,7 +2437,8 @@ def resolve_midroll_endroll_strategy(stored: object) -> dict[str, object]:
     这样"老库 + 新代码"生成的成片与改动前完全一致。
     """
     default = {
-        "midroll": {"enabled": True, "mode": "latest", "file": ""},
+        # 120 秒是旧剪映链路的原有位置，保持旧库升级后的默认行为不变。
+        "midroll": {"enabled": True, "mode": "latest", "file": "", "min_source_duration_seconds": 120, "position_start_seconds": 120, "position_end_seconds": 120},
         "endroll": {"enabled": True, "mode": "latest", "file": ""},
     }
     if not isinstance(stored, dict):
@@ -2178,12 +2455,19 @@ def resolve_midroll_endroll_strategy(stored: object) -> dict[str, object]:
             "mode": mode if mode in {"latest", "locked"} else "latest",
             "file": Path(str(slot.get("file") or "")).name,
         }
+        if key == "midroll":
+            resolved[key].update({
+                "min_source_duration_seconds": _seconds_value(slot.get("min_source_duration_seconds"), "中插最短视频时长", default=120),
+                "position_start_seconds": _seconds_value(slot.get("position_start_seconds"), "中插位置下限", default=120),
+                "position_end_seconds": _seconds_value(slot.get("position_end_seconds"), "中插位置上限", default=120),
+            })
     return resolved
 
 
 DEFAULT_SETTINGS = {
     "data_drive": "",
     "data_root_dir": "",
+    "drama_download_root": r"Z:\04短剧原片",
     "raw_material_retention_days": 7,
     "short_term_cleanup_hours": 24,
     "publish_presets": ["12:00", "18:30", "19:45", "21:00"],
@@ -2199,6 +2483,7 @@ DEFAULT_SETTINGS = {
     # 关闭时：跳过全部分析与处理，直接用原素材合成（仍按 900 秒上限截断时长）。
     "final_raw_material_process": True,
     "video_export_debug": False,
+    "work_page_interval_seconds": 2.0,
     "revenue_auto_collection_enabled": True,
     "revenue_auto_collection_times": ["06:00", "12:30", "18:00"],
     "local_vision_ai_mode": "compatibility",
@@ -2268,6 +2553,8 @@ def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
     for key in ("jianying_executable", "jianying_draft_root", "jianying_user_data_root"):
         if not isinstance(values[key], str):
             raise ValueError("剪映路径设置格式不正确")
+    if not isinstance(values["drama_download_root"], str) or not values["drama_download_root"].strip():
+        raise ValueError("短剧原片下载目录必须是有效路径")
     executable = str(values["jianying_executable"]).strip()
     draft_root = str(values["jianying_draft_root"]).strip()
     user_data_root = str(values["jianying_user_data_root"]).strip()
@@ -2283,6 +2570,8 @@ def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
         raise ValueError("成片生成超时时间必须为 1-180 分钟")
     if not isinstance(values["video_export_timeout_min"], int) or not 1 <= values["video_export_timeout_min"] <= 120:
         raise ValueError("视频导出超时时间必须为 1-120 分钟")
+    from server.publishing.online_posts import validate_page_interval
+    values["work_page_interval_seconds"] = validate_page_interval(values["work_page_interval_seconds"])
     if not isinstance(values["revenue_auto_collection_enabled"], bool):
         raise ValueError("收益自动采集开关必须是布尔值")
     if values["local_vision_ai_mode"] not in {"compatibility", "quality", "disabled"}:
@@ -2320,7 +2609,7 @@ def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
         conn.close()
 
 
-def select_v2_path(kind: str) -> dict[str, str]:
+def select_v2_path(kind: str, title: str = '') -> dict[str, str]:
     """Open a native Windows chooser for the two path settings."""
     if kind not in {"file", "directory"}:
         raise ValueError("不支持的路径选择类型")
@@ -2337,7 +2626,7 @@ def select_v2_path(kind: str) -> dict[str, str]:
             if kind == "file":
                 selected = filedialog.askopenfilename(title="选择剪映程序", filetypes=[("剪映程序", "*.exe"), ("所有文件", "*.*")])
             else:
-                selected = filedialog.askdirectory(title="选择剪映草稿目录", mustexist=True)
+                selected = filedialog.askdirectory(title=title or "选择剪映草稿目录", mustexist=True)
         finally:
             root.destroy()
     except Exception as exc:  # noqa: BLE001
@@ -2387,8 +2676,10 @@ def create_theater(payload: dict[str, object]) -> dict[str, object]:
     conn = connection()
     try:
         conn.execute("INSERT INTO theaters VALUES (:id,:name,:default_commission_rate,:default_tax_rate,:status,:created_at,:updated_at)", item)
+        if "revenue_collector_ids" in payload:
+            revenue_collectors.set_theater(conn,item["id"],payload["revenue_collector_ids"])
         conn.commit()
-        return item
+        return revenue_collectors.theater_record(conn,item)
     except sqlite3.IntegrityError as exc:
         raise ValueError("剧场名称已存在") from exc
     finally:
@@ -2414,8 +2705,13 @@ def create_theaters_batch(payload: dict[str, object]) -> dict[str, object]:
         if not 0 <= commission <= 100 or not 0 <= tax <= 100 or status not in {"启用", "停用"}:
             raise ValueError(f"第 {index} 行剧场的分成、税率或状态不正确")
         stamp = now_text()
+        if "revenue_collector_ids" in raw:
+            values = raw["revenue_collector_ids"]
+            if not isinstance(values, list) or any(not isinstance(value, str) or not revenue_collectors.definition(value) for value in values):
+                raise ValueError(f"第 {index} 行请选择软件中已有的收益采集器")
         prepared.append({"id": uuid.uuid4().hex, "name": name, "default_commission_rate": commission,
-                         "default_tax_rate": tax, "status": status, "created_at": stamp, "updated_at": stamp})
+                         "default_tax_rate": tax, "status": status, "created_at": stamp, "updated_at": stamp,
+                         **({"revenue_collector_ids": raw["revenue_collector_ids"]} if "revenue_collector_ids" in raw else {})})
     conn = connection()
     try:
         existing = {str(row[0]) for row in conn.execute(
@@ -2426,8 +2722,11 @@ def create_theaters_batch(payload: dict[str, object]) -> dict[str, object]:
             conn.executemany(
                 "INSERT INTO theaters VALUES (:id,:name,:default_commission_rate,:default_tax_rate,:status,:created_at,:updated_at)", new_items
             )
+        for item in new_items:
+            if "revenue_collector_ids" in item:
+                revenue_collectors.set_theater(conn, item["id"], item["revenue_collector_ids"])
         conn.commit()
-        return {"items": new_items, "created_count": len(new_items), "skipped_names": sorted(existing)}
+        return {"items": [revenue_collectors.theater_record(conn, item) for item in new_items], "created_count": len(new_items), "skipped_names": sorted(existing)}
     except sqlite3.IntegrityError as exc:
         conn.rollback()
         raise ValueError("剧场导入失败，未写入任何数据") from exc
@@ -2451,9 +2750,11 @@ def update_theater(theater_id: str, payload: dict[str, object]) -> dict[str, obj
             "UPDATE theaters SET name=?, default_commission_rate=?, default_tax_rate=?, status=?, updated_at=? WHERE id=?",
             (name, commission, tax, status, now_text(), theater_id),
         )
+        if "revenue_collector_ids" in payload:
+            revenue_collectors.set_theater(conn,theater_id,payload["revenue_collector_ids"])
         conn.commit()
         updated = conn.execute("SELECT * FROM theaters WHERE id=?", (theater_id,)).fetchone()
-        return {**dict(updated), "accounts_count": conn.execute("SELECT COUNT(*) FROM accounts WHERE theater_id=?", (theater_id,)).fetchone()[0]}
+        return {**revenue_collectors.theater_record(conn, dict(updated)), "accounts_count": conn.execute("SELECT COUNT(*) FROM accounts WHERE theater_id=?", (theater_id,)).fetchone()[0]}
     except sqlite3.IntegrityError as exc:
         raise ValueError("剧场名称已存在") from exc
     finally:
@@ -2468,10 +2769,16 @@ def delete_theater(theater_id: str) -> None:
             raise ValueError("剧场不存在")
         account_count = conn.execute("SELECT COUNT(*) FROM accounts WHERE theater_id=?", (theater_id,)).fetchone()[0]
         sub_theater_count = conn.execute("SELECT COUNT(*) FROM sub_theaters WHERE theater_id=?", (theater_id,)).fetchone()[0]
+        drama_count = conn.execute("SELECT COUNT(*) FROM dramas WHERE theater_id=?", (theater_id,)).fetchone()[0]
         if sub_theater_count:
             raise ValueError(f"剧场“{row['name']}”已有 {sub_theater_count} 个子剧场，不能删除。请先处理子剧场。")
         if account_count:
             raise ValueError(f"剧场“{row['name']}”已关联 {account_count} 个账号，不能删除。请先处理关联账号。")
+        if drama_count:
+            raise ValueError(f"剧场“{row['name']}”已关联 {drama_count} 部剧集，不能删除。请先处理关联剧集。")
+        conn.execute("DELETE FROM v3_account_revenue_collectors WHERE theater_id=?", (theater_id,))
+        conn.execute("DELETE FROM v3_theater_revenue_collectors WHERE theater_id=?", (theater_id,))
+        conn.execute("DELETE FROM v3_theater_revenue_collector_settings WHERE theater_id=?", (theater_id,))
         conn.execute("DELETE FROM theaters WHERE id=?", (theater_id,))
         conn.commit()
     finally:
@@ -2580,7 +2887,7 @@ def create_account(payload: dict[str, object]) -> dict[str, object]:
     if not theater_id:
         raise ValueError("账号必须选择所属剧场")
     status = str(payload.get("status") or "正常")
-    if status not in {"正常", "观察", "限流", "二限", "实名", "封禁", "停用"}:
+    if status not in {"正常", "观察", "限流", "二限", "实名", "封禁", "停用", "注销"}:
         raise ValueError("账号状态不正确")
     channel_id = str(payload.get("channel_id") or "").strip()
     reporting_date = str(payload.get("reporting_date") or "").strip()
@@ -2603,8 +2910,10 @@ def create_account(payload: dict[str, object]) -> dict[str, object]:
         if conn.execute("SELECT 1 FROM accounts WHERE channel_id=?", (channel_id,)).fetchone():
             raise ValueError("平台iD已存在")
         conn.execute("INSERT INTO accounts VALUES (:id,:nickname,:channel_id,:theater_id,:sub_theater_name,:status,:reporting_date,:registration_date,:notes,:created_at,:updated_at)", item)
+        revenue_collectors.set_account(conn,item["id"],theater_id,payload.get("revenue_collector_id", ""))
         conn.commit()
-        return item
+        theater_name = conn.execute("SELECT name FROM theaters WHERE id=?", (theater_id,)).fetchone()[0]
+        return revenue_collectors.account_record(conn,dict(item, theater_name=theater_name))
     except sqlite3.IntegrityError as exc:
         raise ValueError("账号昵称已存在") from exc
     finally:
@@ -2622,9 +2931,13 @@ def create_accounts_batch(payload: dict[str, object]) -> dict[str, object]:
         for raw in raw_items:
             if not isinstance(raw, dict):
                 raise ValueError("账号导入格式不正确")
-            nickname = str(raw.get("nickname") or "").strip()
+            nickname = safe_component(str(raw.get("nickname") or ""), "账号昵称")
             channel_id = str(raw.get("channel_id") or "").strip()
             theater_name = str(raw.get("theater_name") or "").strip()
+            if not channel_id:
+                raise ValueError("平台iD不能为空")
+            if not theater_name:
+                raise ValueError(f"账号“{nickname}”必须填写所属剧场")
             theater = conn.execute("SELECT id, name, status FROM theaters WHERE name=?", (theater_name,)).fetchone()
             if not theater:
                 raise ValueError(f"账号“{nickname}”所属剧场不存在")
@@ -2642,7 +2955,7 @@ def create_accounts_batch(payload: dict[str, object]) -> dict[str, object]:
             if duplicate:
                 skipped.append(nickname or channel_id)
                 continue
-            item = create_account({**raw, "theater_id": str(theater["id"])})
+            item = create_account({**raw, "nickname": nickname, "theater_id": str(theater["id"]), "status": str(raw.get("status") or "").strip() or "正常"})
             item["theater_name"] = str(theater["name"])
             created.append(item)
         return {"items": created, "created_count": len(created), "skipped_names": skipped}
@@ -2660,7 +2973,7 @@ def update_account(account_id: str, payload: dict[str, object]) -> dict[str, obj
         channel_id = str(payload.get("channel_id", row["channel_id"])).strip()
         theater_id = str(payload.get("theater_id", row["theater_id"])).strip()
         status = str(payload.get("status", row["status"]))
-        if not channel_id or status not in {"正常", "观察", "限流", "二限", "实名", "封禁", "停用"}:
+        if not channel_id or status not in {"正常", "观察", "限流", "二限", "实名", "封禁", "停用", "注销"}:
             raise ValueError("账号资料或状态不正确")
         reporting_date = str(payload.get("reporting_date", row["reporting_date"])).strip()
         registration_date = str(payload.get("registration_date", row["registration_date"])).strip()
@@ -2676,9 +2989,12 @@ def update_account(account_id: str, payload: dict[str, object]) -> dict[str, obj
                      (nickname, channel_id, theater_id, str(payload.get("sub_theater_name", row["sub_theater_name"])), status,
                       "" if reporting_date == "未报白" else reporting_date, registration_date,
                       str(payload.get("notes", row["notes"])), now_text(), account_id))
+        if "revenue_collector_id" in payload or theater_id != row["theater_id"]:
+            revenue_collectors.set_account(conn,account_id,theater_id,payload.get("revenue_collector_id", ""))
         conn.commit()
         updated = conn.execute("SELECT a.*, t.name AS theater_name FROM accounts a JOIN theaters t ON t.id=a.theater_id WHERE a.id=?", (account_id,)).fetchone()
-        return dict(updated)
+        from server.drama_catalog import account_metadata
+        return revenue_collectors.account_record(conn, account_metadata(conn, dict(updated)))
     except sqlite3.IntegrityError as exc:
         raise ValueError("账号昵称或账号 ID 已存在") from exc
     finally:
@@ -2694,6 +3010,7 @@ def delete_account(account_id: str) -> None:
         task_count = conn.execute("SELECT COUNT(*) FROM production_tasks WHERE account_name=?", (row["nickname"],)).fetchone()[0]
         if task_count:
             raise ValueError(f"账号“{row['nickname']}”已有生产任务，不能删除")
+        conn.execute("DELETE FROM v3_account_revenue_collectors WHERE account_id=?", (account_id,))
         conn.execute("DELETE FROM accounts WHERE id=?", (account_id,))
         conn.commit()
     finally:
@@ -2706,15 +3023,20 @@ def create_task(payload: dict[str, object]) -> dict[str, object]:
     account = safe_component(str(payload.get("account_name") or ""), "账号")
     drama = safe_component(str(payload.get("drama_name") or ""), "剧集")
     planned_publish_at = parse_planned_publish_at(str(payload.get("planned_publish_at") or ""))
+    if payload.get("mount_source") and not planned_publish_at:
+        raise ValueError("请选择计划日期")
     root, materials, template, finals = task_paths(created_date, account, drama)
-    for directory in (materials, template, finals):
-        directory.mkdir(parents=True, exist_ok=True)
     stamp = now_text()
     task_id = uuid.uuid4().hex
     conn = connection()
     try:
+        from server.drama_catalog import validate_mount, save_task_mount, task_metadata
+        mount = validate_mount(conn, payload, account, drama)
         existing = conn.execute("SELECT * FROM production_tasks WHERE source_id=?", (source_id,)).fetchone()
         if existing:
+            saved_mount = task_metadata(conn, str(existing["id"]))
+            if mount and (saved_mount["mount_source"] != mount["source"] or saved_mount["mount_external_id"] != mount["external_id"]):
+                raise ValueError("该账号今日已有这部剧的任务，挂载方式不同，请在原任务处理后再安排")
             return task_response(existing)
         account_row = conn.execute("SELECT status FROM accounts WHERE nickname=?", (account,)).fetchone()
         if account_row and str(account_row["status"]) != "正常":
@@ -2724,7 +3046,12 @@ def create_task(payload: dict[str, object]) -> dict[str, object]:
             (created_date, account, drama),
         ).fetchone()
         if same_identity:
+            saved_mount = task_metadata(conn, str(same_identity["id"]))
+            if mount and (saved_mount["mount_source"] != mount["source"] or saved_mount["mount_external_id"] != mount["external_id"]):
+                raise ValueError("该账号今日已有这部剧的任务，挂载选择不同，请先处理原任务")
             return task_response(same_identity)
+        for directory in (materials, template, finals):
+            directory.mkdir(parents=True, exist_ok=True)
         conn.execute(
             """
             INSERT INTO production_tasks (
@@ -2734,10 +3061,13 @@ def create_task(payload: dict[str, object]) -> dict[str, object]:
             """,
             (task_id, source_id, created_date, account, drama, str(root), str(materials), str(template), str(finals), planned_publish_at, "materials_pending", int(bool(get_v2_settings()["final_video_manual_check"])), stamp, stamp),
         )
+        save_task_mount(conn, task_id, mount)
         conn.commit()
     finally:
         conn.close()
     return {
+        "mount_source": mount["source"] if mount else "",
+        "mount_external_id": mount["external_id"] if mount else "",
         "id": task_id, "source_id": source_id, "created_date": created_date,
         "account_name": account, "drama_name": drama, "planned_publish_at": planned_publish_at,
         "paths": {"root": str(root), "materials": str(materials), "template": str(template), "finals": str(finals)},
@@ -2959,6 +3289,10 @@ def _final_display_status(video: object, *, final_current_id: str, exporter_curr
                           output_exists: bool) -> str:
     """Return the sole user-facing state for one submitted finished-video task."""
     raw = str(video["status"] or "")
+    if raw.startswith("ffmpeg_"):
+        if raw == "ffmpeg_done":
+            return "video_exported" if output_exists else "video_error"
+        return {"ffmpeg_waiting": "video_queued", "ffmpeg_running": "video_exporting"}.get(raw, "video_error")
     attempt_id = str(video["export_attempt_id"] or "")
     export = str(video["export_status"] or "")
     if export == "completed":
@@ -3028,20 +3362,34 @@ def _task_display_status(*, task: sqlite3.Row, material_count: int, pending_mate
         return "awaiting_release"
     if template_status == "video_ready":
         return "awaiting_final_generation"
-    if template_status in {"draft_queued", "draft_generating", "draft_retrying", "draft_ready", "video_queued", "video_exporting"}:
-        return "template_processing"
-    if template_status in {"draft_error", "video_error"}:
-        return "template_error"
     if material_count:
         return "awaiting_template"
     return "awaiting_scan" if pending_material_count else "awaiting_material"
 
 
+def _ffmpeg_plan_durations() -> dict[str, float]:
+    """Read submitted final lengths without initializing/writing the template library."""
+    if DATA_ROOT is None:
+        return {}
+    database = Path(DATA_ROOT) / "database" / "v3_template_library.db"
+    if not database.is_file():
+        return {}
+    try:
+        with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as library:
+            return {str(row[0]): float(row[1]) / 30 for row in library.execute(
+                "SELECT id,json_extract(plan,'$.frames') FROM final_jobs WHERE json_valid(plan)"
+            ) if row[1] is not None and float(row[1]) > 0}
+    except (sqlite3.Error, ValueError, TypeError):
+        return {}
+
+
 def list_tasks(task_id: str | None = None) -> dict[str, object]:
+    from server.account_visibility import hide_cancelled_rows
     conn = connection()
     try:
         items: list[dict[str, object]] = []
         current_tasks = _executor_current_tasks(conn)
+        final_durations = _ffmpeg_plan_durations()
         if task_id:
             rows = conn.execute(
                 "SELECT * FROM production_tasks WHERE id=? AND COALESCE(cleanup_status, 'active')='active'",
@@ -3051,7 +3399,7 @@ def list_tasks(task_id: str | None = None) -> dict[str, object]:
             rows = conn.execute(
                 "SELECT * FROM production_tasks WHERE COALESCE(cleanup_status, 'active')='active' ORDER BY created_at DESC"
             ).fetchall()
-        for row in rows:
+        for row in hide_cancelled_rows(conn, rows):
             item = task_response(row)
             material_directory = Path(str(row["material_path"]))
             scanned_paths = {
@@ -3069,7 +3417,7 @@ def list_tasks(task_id: str | None = None) -> dict[str, object]:
                     if file.is_file() and file.suffix.lower() in VIDEO_EXTENSIONS and str(file.resolve()) not in scanned_paths
                 )
             material_rows = conn.execute(
-                "SELECT * FROM production_files WHERE task_id=? AND file_type='original_material' AND status='available' ORDER BY sequence_no, file_name",
+                "SELECT * FROM production_files WHERE task_id=? AND file_type='original_material' AND status IN ('available','deletion_failed') ORDER BY sequence_no, file_name",
                 (str(row["id"]),),
             ).fetchall()
             item["materials"] = [
@@ -3084,9 +3432,10 @@ def list_tasks(task_id: str | None = None) -> dict[str, object]:
                     "resolution": str(file["resolution"] or ""),
                     "scanned_at": str(file["updated_at"]),
                     "status": str(file["status"]),
+                    "insertion_strategy": _material_insertion_strategy(file),
                 }
                 for file in material_rows
-                if Path(str(file["file_path"])).is_file()
+                if Path(str(file["file_path"])).is_file() or file["status"] == "deletion_failed"
             ]
             video_rows = conn.execute(
                 "SELECT v.*, f.sequence_no, f.file_name, f.file_path, f.size_bytes, f.duration_seconds AS source_duration_seconds, "
@@ -3121,6 +3470,7 @@ def list_tasks(task_id: str | None = None) -> dict[str, object]:
                 item["videos"].append({
                     "id": str(video["id"]),
                     "source_material_id": str(video["source_material_id"]),
+                    "engine": "ffmpeg" if str(video["status"]).startswith("ffmpeg_") else "jianying",
                     "status": str(video["status"]),
                     "error_message": str(video["error_message"] or ""),
                     "generation_started_at": str(video["started_at"] or ""),
@@ -3133,6 +3483,7 @@ def list_tasks(task_id: str | None = None) -> dict[str, object]:
                     "draft_path": str(video["draft_path"]),
                     "output_path": str(formal_output) if output_exists else str(video["output_path"] or ""),
                     "output_exists": output_exists,
+                    "output_media_version": f"{formal_output.stat().st_mtime_ns}:{formal_output.stat().st_size}" if output_exists else "",
                     "output_size_bytes": formal_output.stat().st_size if output_exists else 0,
                     "export_job_id": str(video["export_job_id"] or ""),
                     "export_attempt_id": str(video["export_attempt_id"] or ""),
@@ -3141,7 +3492,7 @@ def list_tasks(task_id: str | None = None) -> dict[str, object]:
                     "export_error_message": str(video["export_error_message"] or ""),
                     "export_started_at": str(video["export_started_at"] or ""),
                     "export_finished_at": str(video["export_finished_at"] or ""),
-                    "output_duration_seconds": _verified_export_duration(conn, str(video["export_attempt_id"] or "")),
+                    "output_duration_seconds": (final_durations.get(str(video["id"]), round(float(video["source_duration_seconds"] or 0)*30)/30) if str(video["status"]).startswith("ffmpeg_") else _verified_export_duration(conn, str(video["export_attempt_id"] or ""))),
                     "display_status": display_status,
                 }
                 )
@@ -3195,6 +3546,10 @@ def list_tasks(task_id: str | None = None) -> dict[str, object]:
         conn.close()
 
 
+from server.ffmpeg_diagnostics import observe_snapshot
+
+
+@observe_snapshot('production_summary')
 def list_task_summaries() -> dict[str, object]:
     """Return only the fields needed to render production task cards.
 
@@ -3262,12 +3617,15 @@ def register_release(task_id: str, payload: object) -> dict[str, object]:
             raise ValueError("生产任务不存在")
         pending = conn.execute(
             "SELECT COUNT(*) FROM production_video_tasks v JOIN production_files f ON f.id=v.source_material_id "
-            "WHERE v.task_id=? AND f.status='available' AND "
+            "WHERE v.task_id=? AND f.status='available' AND v.status!='ffmpeg_done' AND "
             "(v.status!='draft_ready' OR v.output_path='' OR NOT EXISTS "
             "(SELECT 1 FROM export_attempts a JOIN export_jobs j ON j.id=a.job_id "
             "WHERE j.subject_type='final' AND j.subject_id=v.id AND a.status='completed'))",
             (task_id,),
         ).fetchone()[0]
+        new_finals = conn.execute("SELECT output_path FROM production_video_tasks WHERE task_id=? AND status='ffmpeg_done'", (task_id,)).fetchall()
+        if any(not Path(str(row[0])).is_file() for row in new_finals):
+            raise ValueError("成片文件缺失，暂不能登记发布")
         if int(pending) > 0:
             raise ValueError("还有成片没有导出完成，暂不能登记发布")
         account_name = str(conn.execute("SELECT account_name FROM production_tasks WHERE id=?", (task_id,)).fetchone()[0])
@@ -3344,7 +3702,7 @@ def _is_within(path: Path, root: Path) -> bool:
 
 
 def _task_external_draft_paths(conn: sqlite3.Connection, task_id: str) -> list[Path]:
-    """Return only V2-recorded Jianying drafts inside the configured draft root.
+    """Return only legacy recorded drafts inside the configured legacy draft root.
 
     A database path alone must never allow a cleanup operation to remove an
     arbitrary user folder.  V2 owns a draft only when it is both recorded on
@@ -3388,7 +3746,7 @@ def _task_material_thumbnail_paths(conn: sqlite3.Connection, task_id: str) -> li
 
 
 def _task_source_output_paths(conn: sqlite3.Connection, task_id: str) -> list[Path]:
-    """Exact, recorded exporter leftovers from Jianying's uncontrollable default folder."""
+    """Exact, recorded exporter leftovers from legacy export attempts."""
     rows = conn.execute(
         "SELECT a.source_output_path FROM export_attempts a "
         "JOIN export_jobs j ON j.id=a.job_id "
@@ -3396,6 +3754,11 @@ def _task_source_output_paths(conn: sqlite3.Connection, task_id: str) -> list[Pa
         (task_id,),
     ).fetchall()
     return [Path(str(row["source_output_path"])).expanduser() for row in rows]
+
+
+def _task_ffmpeg_cache_paths(task_id: str) -> list[Path]:
+    from server.ffmpeg_finals.lifecycle import task_cache_paths
+    return task_cache_paths(DATA_ROOT, task_id)
 
 
 def _task_process_cleanup_paths(conn: sqlite3.Connection, task: sqlite3.Row) -> list[Path]:
@@ -3414,6 +3777,7 @@ def _task_process_cleanup_paths(conn: sqlite3.Connection, task: sqlite3.Row) -> 
     paths.extend(_task_material_thumbnail_paths(conn, task_id))
     paths.extend(_task_source_output_paths(conn, task_id))
     paths.extend(_task_reserved_resource_paths(conn, task_id))
+    paths.extend(_task_ffmpeg_cache_paths(task_id))
     return paths
 
 
@@ -3570,7 +3934,7 @@ def _prune_empty_subdirectories(directory: Path, removed: list[str]) -> None:
 
 
 def _due_at_or_backfill(conn: sqlite3.Connection, task: sqlite3.Row, column: str, delta: timedelta) -> datetime | None:
-    """Use the release-time snapshot; only legacy blank rows are backfilled once."""
+    """Use saved deadlines; blank rows use delivery time or the legacy release anchor."""
     value = str(task[column] or "").strip()
     if value:
         try:
@@ -3578,7 +3942,8 @@ def _due_at_or_backfill(conn: sqlite3.Connection, task: sqlite3.Row, column: str
         except ValueError:
             return None
     try:
-        released = datetime.fromisoformat(str(task["actual_release_time"] or "").replace("T", " "))
+        anchor = str(task["delivery_completed_at"] or task["actual_release_time"] or "")
+        released = datetime.fromisoformat(anchor.replace("T", " "))
     except ValueError:
         return None
     due = released + delta
@@ -3634,13 +3999,25 @@ def cleanup_preview(task_id: str) -> dict[str, object]:
             paths.extend(_task_material_thumbnail_paths(conn, task_id))
             paths.extend(_task_source_output_paths(conn, task_id))
             paths.extend(_task_reserved_resource_paths(conn, task_id))
+            paths.extend(_task_ffmpeg_cache_paths(task_id))
             retained = []
+        from server.ffmpeg_finals.lifecycle import active_task_jobs
+        blocked = bool(active_task_jobs(DATA_ROOT, task_id))
         deleted = _cleanup_file_items(paths)
         total = sum(int(x["size_bytes"]) for x in deleted)
-        return {"isRegisteredRelease": registered, "taskTitle": f"{task['account_name']} × 《{task['drama_name']}》", "accountName": str(task["account_name"]), "dramaName": str(task["drama_name"]), "currentStage": str(task["status"]), "canExecute": True, "estimatedSpaceMb": round(total / 1024 / 1024, 2), "estimatedSpaceText": _format_storage_size(total), "itemsToDelete": [{"name": x["name"], "sizeMb": round(int(x["size_bytes"]) / 1024 / 1024, 2), "sizeText": _format_storage_size(int(x["size_bytes"]))} for x in deleted], "itemsToRetain": [f"原素材：{x['name']}" for x in retained] + (["账号、剧集、发布时间、发布地址和清理记录"] if registered else [])}
+        return {"isRegisteredRelease": registered, "taskTitle": f"{task['account_name']} × 《{task['drama_name']}》", "accountName": str(task["account_name"]), "dramaName": str(task["drama_name"]), "currentStage": str(task["status"]), "canExecute": not blocked, "blockingReason": "当前剧集有成片正在排队或合成，请先完成或取消等待任务" if blocked else "", "estimatedSpaceMb": round(total / 1024 / 1024, 2), "estimatedSpaceText": _format_storage_size(total), "itemsToDelete": [{"name": x["name"], "sizeMb": round(int(x["size_bytes"]) / 1024 / 1024, 2), "sizeText": _format_storage_size(int(x["size_bytes"]))} for x in deleted], "itemsToRetain": [f"原素材：{x['name']}" for x in retained] + (["账号、剧集、发布时间、发布地址和清理记录"] if registered else []) + ["公共模板、模板复用缓存和已消耗的模板使用次数"]}
     finally: conn.close()
 
 def execute_cleanup(task_id: str) -> dict[str, object]:
+    from server.ffmpeg_finals.lifecycle import final_job_lock
+    with final_job_lock(DATA_ROOT):
+        return _execute_cleanup_locked(task_id)
+
+
+def _execute_cleanup_locked(task_id: str) -> dict[str, object]:
+    from server.ffmpeg_finals.lifecycle import active_task_jobs, purge_task_records
+    if active_task_jobs(DATA_ROOT, task_id):
+        raise ValueError("当前剧集有FFmpeg成片正在排队或合成，请先完成或取消等待任务")
     preview = cleanup_preview(task_id)
     conn = connection(); deleted: list[str] = []; errors: list[str] = []
     try:
@@ -3663,6 +4040,7 @@ def execute_cleanup(task_id: str) -> dict[str, object]:
             paths.extend(_task_material_thumbnail_paths(conn, task_id))
             paths.extend(_task_source_output_paths(conn, task_id))
             paths.extend(_task_reserved_resource_paths(conn, task_id))
+            paths.extend(_task_ffmpeg_cache_paths(task_id))
             deleted, errors = _remove_paths(paths)
             # "删除剧集"把任务目录整棵删掉后，账号／日期目录可能跟着空掉，一并回收。
             # 这个函数自带保护：目录还在、或还有内容时它自己会停手。
@@ -3701,11 +4079,21 @@ def execute_cleanup(task_id: str) -> dict[str, object]:
                 conn.execute(statement, (task_id,))
             conn.execute("DELETE FROM production_tasks WHERE id=?", (task_id,))
         conn.commit()
+        if not errors:
+            purge_task_records(DATA_ROOT, task_id)
         return {"status": status, "deleted": deleted, "errors": errors}
     finally: conn.close()
 
 def run_due_cleanup() -> dict[str, int]:
+    from server.ffmpeg_finals.lifecycle import final_job_lock
+    with final_job_lock(DATA_ROOT):
+        return _run_due_cleanup_locked()
+
+
+def _run_due_cleanup_locked() -> dict[str, int]:
     """Run due post-release cleanup in two independent stages."""
+    from server.ffmpeg_finals.lifecycle import active_task_jobs, purge_task_records
+    settled_ids = []
     conn = connection(); process_count = raw_count = 0
     try:
         settings = get_v2_settings()
@@ -3718,7 +4106,7 @@ def run_due_cleanup() -> dict[str, int]:
         rows = conn.execute(
             "SELECT * FROM production_tasks WHERE release_status='registered' "
             "AND cleanup_status IN ('active','process_cleaned','partial','raw_partial') "
-            "AND actual_release_time<>'' "
+            "AND (delivery_completed_at<>'' OR actual_release_time<>'') "
             "AND ("
             "  (cleanup_status IN ('active','partial') AND (process_cleanup_at='' OR process_cleanup_at<=?)) "
             "  OR (cleanup_status IN ('process_cleaned','raw_partial') AND (raw_cleanup_at='' OR raw_cleanup_at<=?))"
@@ -3726,6 +4114,8 @@ def run_due_cleanup() -> dict[str, int]:
             (now_text_value, now_text_value),
         ).fetchall()
         for task in rows:
+            if active_task_jobs(DATA_ROOT, str(task["id"])):
+                continue
             process_due = _due_at_or_backfill(conn, task, "process_cleanup_at", timedelta(hours=int(settings["short_term_cleanup_hours"])))
             raw_due = _due_at_or_backfill(conn, task, "raw_cleanup_at", timedelta(days=int(settings["raw_material_retention_days"])))
             if process_due is None or raw_due is None:
@@ -3740,6 +4130,7 @@ def run_due_cleanup() -> dict[str, int]:
                 if not errors:
                     conn.execute("UPDATE production_files SET thumbnail_path='', updated_at=? WHERE task_id=?", (stamp, str(task["id"])))
                     purge_executor_traces_for_task(conn, str(task["id"]))
+                    settled_ids.append(str(task["id"]))
                 process_count += 1
             current = conn.execute("SELECT cleanup_status FROM production_tasks WHERE id=?", (str(task["id"]),)).fetchone()
             # A partial process cleanup must be retried first.  Never destroy
@@ -3756,9 +4147,11 @@ def run_due_cleanup() -> dict[str, int]:
                 # 原素材一清空，素材／剧集／账号／日期 就成了空壳；收尾时顺手回收，
                 # 回收到的目录一起写进这次清理记录，方便回溯"什么被删了"。
                 deleted.extend(prune_empty_task_directories(Path(str(task["root_path"]))))
-            conn.execute("INSERT INTO cleanup_records VALUES (?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex, str(task["id"]), "scheduled_raw", status, json.dumps(deleted, ensure_ascii=False), json.dumps(["素材登记信息、账号、剧集、发布时间、发布地址、收益和爆款关联"], ensure_ascii=False), "\n".join(errors), stamp, stamp))
+            conn.execute("INSERT INTO cleanup_records VALUES (?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex, str(task["id"]), "scheduled_raw", status, json.dumps(deleted, ensure_ascii=False), json.dumps(["素材素材登记信息、账号、剧集、官方作品发布时间、发布记录、收益和爆款关联"], ensure_ascii=False), "\n".join(errors), stamp, stamp))
             raw_count += 1
         conn.commit()
+        for task_id in settled_ids:
+            purge_task_records(DATA_ROOT, task_id)
         return {"process": process_count, "raw": raw_count}
     finally: conn.close()
 
@@ -3929,6 +4322,22 @@ def create_finished_video_tasks_batch(task_id: str, source_material_ids: list[st
         conn.close()
 
 
+def _material_insertion_strategy(material: object) -> dict[str, object] | None:
+    """读取单素材局部插片覆盖；空串 = 跟随当前任务规则。"""
+    try:
+        raw = material["midroll_endroll_strategy"]  # type: ignore[index]
+    except (KeyError, IndexError, TypeError):
+        return None
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def _task_insertion_strategy(task: object) -> dict[str, object] | None:
     """读取任务级插片覆盖；``None`` = 这个任务跟随参数中心的全局默认。"""
     try:
@@ -3954,14 +4363,14 @@ def update_task_insertion_strategy(task_id: str, strategy: object) -> dict[str, 
     if strategy is None:
         stored = ""
     elif isinstance(strategy, dict):
-        stored = json.dumps(normalize_midroll_endroll_strategy(strategy), ensure_ascii=False)
+        stored = json.dumps(normalize_insertion_override(strategy), ensure_ascii=False)
     else:
         raise ValueError("任务级插片设置格式不正确")
     conn = connection()
     try:
         updated = conn.execute(
             "UPDATE production_tasks SET midroll_endroll_strategy=?, updated_at=? "
-            "WHERE id=? AND COALESCE(cleanup_status, 'active')='active'",
+            "WHERE id=? AND COALESCE(cleanup_status, 'active')='active' AND release_status<>'registered'",
             (stored, now_text(), task_id),
         ).rowcount
         if updated != 1:
@@ -3971,6 +4380,34 @@ def update_task_insertion_strategy(task_id: str, strategy: object) -> dict[str, 
     finally:
         conn.close()
 
+
+
+def update_material_insertion_strategy(material_id: str, strategy: object) -> dict[str, object]:
+    """设置或清除单个素材的插片覆盖；``None`` = 跟随剧集。"""
+    if strategy is None:
+        stored = ""
+    elif isinstance(strategy, dict):
+        stored = json.dumps(normalize_insertion_override(strategy), ensure_ascii=False)
+    else:
+        raise ValueError("单素材插片设置格式不正确")
+    conn = connection()
+    try:
+        row = conn.execute(
+            "SELECT f.task_id FROM production_files f JOIN production_tasks t ON t.id=f.task_id "
+            "WHERE f.id=? AND f.file_type='original_material' AND f.status='available' "
+            "AND COALESCE(t.cleanup_status,'active')='active' AND COALESCE(t.release_status,'unregistered')<>'registered'",
+            (material_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("素材不存在")
+        conn.execute(
+            "UPDATE production_files SET midroll_endroll_strategy=?, updated_at=? WHERE id=?",
+            (stored, now_text(), material_id),
+        )
+        conn.commit()
+        return get_task_details(str(row["task_id"]))
+    finally:
+        conn.close()
 
 def update_task_manual_check(task_id: str, enabled: bool) -> dict[str, object]:
     """Update the live manual-check policy for one production drama."""
@@ -4077,7 +4514,8 @@ def repair_empty_task_date(task_id: str, target_date: str) -> dict[str, object]:
 
 def scan_task(task_id: str) -> dict[str, object]:
     # 扫描包含哈希、视频探测和首帧缓存；同一时间只运行一个，避免大批量文件并发占满磁盘。
-    with SCAN_LOCK:
+    from server.ffmpeg_finals.lifecycle import final_job_lock, task_jobs
+    with SCAN_LOCK, final_job_lock(DATA_ROOT):
       conn = connection()
       try:
         task = conn.execute("SELECT * FROM production_tasks WHERE id=?", (task_id,)).fetchone()
@@ -4085,8 +4523,38 @@ def scan_task(task_id: str) -> dict[str, object]:
             raise ValueError("生产任务不存在")
         directory = Path(str(task["material_path"]))
         directory.mkdir(parents=True, exist_ok=True)
-        files = sorted((item for item in directory.iterdir() if item.is_file() and item.suffix.lower() in VIDEO_EXTENSIONS), key=lambda item: natural_key(item.name))
-        renamed = rename_without_overwrite(directory, files, str(task["drama_name"]))
+        drama_name = str(task["drama_name"])
+        files = sorted((item for item in directory.iterdir() if item.is_file() and item.suffix.lower() in VIDEO_EXTENSIONS),
+                       key=lambda item: (is_sheep_material(item, drama_name), natural_key(item.name)))
+        deleted_rows = conn.execute("SELECT file_path,sequence_no FROM production_files WHERE task_id=? AND file_type='original_material' AND status='deleted'", (task_id,)).fetchall()
+        if any(Path(row["file_path"]).exists() for row in deleted_rows):
+            raise ValueError("已删除素材的原路径出现同名文件，请先核对并更名，避免复用历史编号")
+        reserved_sequence = max((int(row["sequence_no"] or 0) for row in deleted_rows), default=0)
+        assignments = material_rename_plan(directory, files, drama_name, reserved_sequence)
+        records = {str(Path(row["file_path"]).resolve()): row for row in conn.execute(
+            "SELECT id,file_path FROM production_files WHERE task_id=? AND file_type='original_material'", (task_id,))}
+        moving = [(records[str(source.resolve())], target) for source, target in assignments
+                  if source.resolve() != target.resolve() and str(source.resolve()) in records]
+        moving_ids = {str(row["id"]) for row, _ in moving}
+        if moving and (task_jobs(DATA_ROOT, task_id) or conn.execute(
+                "SELECT 1 FROM production_video_tasks WHERE task_id=? LIMIT 1", (task_id,)).fetchone()):
+            raise ValueError("现有素材的非标准文件名需要修改，但该任务已有成片制作记录。请先核对这些素材文件名。")
+        for source, target in assignments:
+            target_record = records.get(str(target.resolve()))
+            source_record = records.get(str(source.resolve()))
+            if (target_record is not None and str(target_record["id"]) not in moving_ids
+                    and (source_record is None or target_record["id"] != source_record["id"])):
+                raise ValueError("重命名目标仍被已有素材记录占用，已停止以保留原记录")
+        # Preserve material IDs for any legacy non-canonical paths being fixed.
+        # Stage DB paths too: several renamed paths can form a cycle.
+        for row, _ in moving:
+            conn.execute("UPDATE production_files SET file_path=? WHERE id=?",
+                         (str(directory / f".__v3_record__{uuid.uuid4().hex}"), row["id"]))
+        for row, target in moving:
+            conn.execute("UPDATE production_files SET file_path=?,file_name=?,sequence_no=? WHERE id=?",
+                         (str(target), target.name, canonical_sequence(target, drama_name), row["id"]))
+        renamed = rename_without_overwrite(directory, files, str(task["drama_name"]), reserved_sequence)
+        conn.commit()
         stamp = now_text()
         items: list[dict[str, object]] = []
         for original, path in zip(files, renamed):
@@ -4100,7 +4568,7 @@ def scan_task(task_id: str) -> dict[str, object]:
                 "(id,task_id,file_type,original_name,file_name,file_path,md5,sha256,size_bytes,sequence_no,status,created_at,updated_at,duration_seconds,thumbnail_path,resolution,missing_scan_count) "
                 "VALUES (?, ?, 'original_material', ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?, ?, 0) "
                 "ON CONFLICT(task_id, file_path) DO UPDATE SET "
-                "original_name=excluded.original_name, file_name=excluded.file_name, md5=excluded.md5, sha256=excluded.sha256, "
+                "file_name=excluded.file_name, md5=excluded.md5, sha256=excluded.sha256, "
                 "size_bytes=excluded.size_bytes, sequence_no=excluded.sequence_no, duration_seconds=excluded.duration_seconds, "
                 "thumbnail_path=excluded.thumbnail_path, resolution=excluded.resolution, status='available', missing_scan_count=0, updated_at=excluded.updated_at",
                 (uuid.uuid4().hex, task_id, original.name, path.name, str(path), md5, sha256, path.stat().st_size, sequence, stamp, stamp, duration_seconds, thumbnail_path, resolution),
@@ -4112,7 +4580,7 @@ def scan_task(task_id: str) -> dict[str, object]:
             items.append({"name": path.name, "path": str(path), "sequence_no": sequence, "md5": md5, "size_bytes": path.stat().st_size})
         current_paths = {str(path) for path in renamed}
         recorded_paths = conn.execute(
-            "SELECT id, file_path FROM production_files WHERE task_id=? AND file_type='original_material'",
+            "SELECT id, file_path FROM production_files WHERE task_id=? AND file_type='original_material' AND status NOT IN ('deleted','deletion_failed')",
             (task_id,),
         ).fetchall()
         for recorded in recorded_paths:
@@ -4136,6 +4604,7 @@ def scan_task(task_id: str) -> dict[str, object]:
                 conn.execute("DELETE FROM production_files WHERE id=?", (material_id,))
         conn.execute("UPDATE production_tasks SET status=?, updated_at=? WHERE id=?", ("materials_scanned", stamp, task_id))
         conn.commit()
+        items.sort(key=lambda item: (item["sequence_no"], natural_key(str(item["name"]))))
         return {"task_id": task_id, "directory": str(directory), "discovered": len(files), "items": items}
       finally:
           conn.close()
@@ -4428,7 +4897,7 @@ def template_video_media(task_id: str) -> Path:
     return candidate
 
 
-REVENUE_COLLECTION_START_LOCK = threading.Lock()
+from server.revenue_queue import START_LOCK as REVENUE_COLLECTION_START_LOCK
 
 
 def start_revenue_collection(
@@ -4439,12 +4908,14 @@ def start_revenue_collection(
     account_ids: list[str] | None = None,
     trigger_source: str = "manual",
     scheduled_slots: list[str] | None = None,
+    initial_backfill: bool = True,
 ) -> dict[str, object]:
     """Create one V2 revenue run and execute it in the background.
 
     Manual requests and automatic schedule checks intentionally share this
     entry point so they persist the same account-level evidence and results.
     """
+    from server.revenue_collection_state import clock as revenue_clock
     if trigger_source not in {"manual", "automatic"}:
         raise ValueError("收益采集触发来源不正确")
     if not start_date or not end_date:
@@ -4455,9 +4926,12 @@ def start_revenue_collection(
     with REVENUE_COLLECTION_START_LOCK:
         conn = connection()
         try:
+            active = conn.execute("SELECT id,status,total_units FROM v2_revenue_collection_runs WHERE status IN ('queued','running') ORDER BY created_at DESC LIMIT 1").fetchone()
+            if active:
+                return {"run_id": active["id"], "status": active["status"], "total_units": active["total_units"], "reused": True}
             from server.v2_revenue_service import estimate_collection_units
-            run_id, now = uuid.uuid4().hex, datetime.now().isoformat(timespec="seconds")
-            total_units = estimate_collection_units(conn, start_date, end_date, theater_names, account_ids)
+            run_id, now = uuid.uuid4().hex, revenue_clock().isoformat(timespec="seconds")
+            total_units = estimate_collection_units(conn, start_date, end_date, theater_names, account_ids, skip_completed=True, initial_backfill=initial_backfill)
             conn.execute(
                 """INSERT INTO v2_revenue_collection_runs
                    (id, status, start_date, end_date, trigger_source, scheduled_slots_json, total_units, created_at, updated_at)
@@ -4472,30 +4946,56 @@ def start_revenue_collection(
         worker_conn = connection()
         try:
             from server.v2_revenue_service import collect_supported_theaters
-            started = datetime.now().isoformat(timespec="seconds")
+            started = revenue_clock().isoformat(timespec="seconds")
             worker_conn.execute("UPDATE v2_revenue_collection_runs SET status='running', started_at=?, updated_at=? WHERE id=?", (started, started, run_id))
             worker_conn.commit()
 
             def report(item: dict[str, object]) -> None:
                 status = str(item.get("status") or "failed")
-                if status == "running":
-                    worker_conn.execute("UPDATE v2_revenue_collection_runs SET current_theater=?, current_account=?, updated_at=? WHERE id=?", (str(item.get("theater_name") or ""), str(item.get("account_name") or ""), datetime.now().isoformat(timespec="seconds"), run_id))
+                if status in ("running", "verification_required"):
+                    worker_conn.execute("UPDATE v2_revenue_collection_runs SET current_theater=?, current_account=?, updated_at=? WHERE id=?", (str(item.get("theater_name") or ""), str(item.get("account_name") or ""), revenue_clock().isoformat(timespec="seconds"), run_id))
                 else:
                     worker_conn.execute(
                         """UPDATE v2_revenue_collection_runs SET completed_units=completed_units+1,
                            success_units=success_units+?, no_data_units=no_data_units+?, failed_units=failed_units+?,
                            current_theater=?, current_account=?, updated_at=? WHERE id=?""",
                         (1 if status == "success" else 0, 1 if status == "no_data" else 0, 1 if status == "failed" else 0,
-                         str(item.get("theater_name") or ""), str(item.get("account_name") or ""), datetime.now().isoformat(timespec="seconds"), run_id),
+                         str(item.get("theater_name") or ""), str(item.get("account_name") or ""), revenue_clock().isoformat(timespec="seconds"), run_id),
                     )
                 worker_conn.commit()
 
-            collect_supported_theaters(worker_conn, start_date, end_date, theater_names, account_ids, report)
-            finished = datetime.now().isoformat(timespec="seconds")
-            worker_conn.execute("UPDATE v2_revenue_collection_runs SET status='completed', finished_at=?, updated_at=? WHERE id=?", (finished, finished, run_id))
+            result = collect_supported_theaters(worker_conn, start_date, end_date, theater_names, account_ids, report, skip_completed=True, save_qingning_details=False, initial_backfill=initial_backfill, collection_run_id=run_id)
+            # Independent accounts have already run. Keep this worker idle, with no
+            # database transaction, until the human validates or defers the source.
+            from server.pingyue_collector import challenge_state
+            waiting = [item for item in result['items'] if item['status'] == 'verification_required']
+            deferred_accounts = set()
+            while waiting:
+                remaining = []
+                for item in waiting:
+                    phase = challenge_state(item['verification_id'])
+                    if phase == 'pending':
+                        remaining.append(item)
+                    elif phase == 'ready':
+                        resumed = collect_supported_theaters(worker_conn, start_date, end_date, theater_names,
+                            [item['account_id']], report, skip_completed=True, save_qingning_details=False,
+                            initial_backfill=initial_backfill, collection_run_id=run_id)
+                        result['backfills'] = [b for b in result['backfills'] if b['account_id'] != item['account_id']] + resumed['backfills']
+                        remaining.extend(r for r in resumed['items'] if r['status'] == 'verification_required')
+                    else:
+                        deferred_accounts.add(item['account_id'])
+                waiting = remaining
+                if waiting:
+                    threading.Event().wait(.5)
+            finished = revenue_clock().isoformat(timespec="seconds")
+            pending = sum(not item.get("complete") for item in result.get("backfills", []))
+            message = f"{pending} 个账号首次补采尚未完成，下次继续未完成部分" if pending else ""
+            if deferred_accounts:
+                message += ("；" if message else "") + f"{len(deferred_accounts)} 个账号人工验证待完成，下次继续"
+            worker_conn.execute("UPDATE v2_revenue_collection_runs SET status='completed', total_units=completed_units, error_message=?, finished_at=?, updated_at=? WHERE id=?", (message, finished, finished, run_id))
             worker_conn.commit()
         except Exception as exc:  # noqa: BLE001
-            failed = datetime.now().isoformat(timespec="seconds")
+            failed = revenue_clock().isoformat(timespec="seconds")
             worker_conn.execute("UPDATE v2_revenue_collection_runs SET status='failed', error_message=?, finished_at=?, updated_at=? WHERE id=?", (str(exc), failed, failed, run_id))
             worker_conn.commit()
         finally:
@@ -4549,6 +5049,125 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
+        if path == "/api/v3/version":
+            from server.product_version import get_product_version
+            self._json(HTTPStatus.OK, get_product_version())
+            return
+        if path == "/api/v3/gpt-relay":
+            try:
+                from server.gpt_relay import get_config
+                self._json(HTTPStatus.OK, get_config())
+            except (ValueError, RuntimeError, OSError) as exc:
+                self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc)})
+            return
+        if path == "/api/v2/drama-download/read-task":
+            from server.drama_download_reader import status
+            self._json(HTTPStatus.OK, status())
+            return
+        if path == "/api/v2/drama-download/links":
+            from server.drama_download_reader import link_manifest
+            self._json(HTTPStatus.OK, link_manifest())
+            return
+        match = re.fullmatch(r"/api/v3/work-covers/([a-f0-9]{64})", path)
+        if match:
+            from server.work_media import WorkMediaCache
+            cover = WorkMediaCache(DATA_ROOT / 'cache' / 'work-covers').path(match[1])
+            if not cover.is_file():
+                self._json(HTTPStatus.NOT_FOUND, {"error": "作品封面暂不可用"})
+                return
+            self._binary(cover, "image/png", cache_control="private, max-age=31536000, immutable")
+            return
+        if path == '/api/v3/operations-dashboard/optimization/analysis':
+            from server.optimization_analysis import groups
+            try:
+                with closing(connection()) as conn:
+                    self._json(HTTPStatus.OK, groups(conn))
+            except ValueError as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {'error': str(exc)})
+            return
+        if path == '/api/v3/operations-dashboard/optimization/actions/records':
+            from server.work_history import action_records
+            query=parse_qs(urlparse(self.path).query)
+            try:
+                with closing(connection()) as conn:
+                    result=action_records(conn,int(query.get('page',['1'])[0]),int(query.get('page_size',['10'])[0]),
+                        int(query['snapshot'][0]) if 'snapshot' in query else None)
+                self._json(HTTPStatus.OK,result)
+            except ValueError as exc:
+                self._json(HTTPStatus.BAD_REQUEST,{'error':str(exc)})
+            return
+        if path == '/api/v3/operations-dashboard/collection/records':
+            from server.collection_jobs import manager
+            query=parse_qs(urlparse(self.path).query)
+            try:
+                result=manager(connection).records(query.get('account_id',[''])[0],query.get('category',[''])[0],int(query.get('offset',['0'])[0]))
+                self._json(HTTPStatus.OK,result)
+            except ValueError as exc:
+                self._json(HTTPStatus.BAD_REQUEST,{'error':str(exc)})
+            return
+        if path == '/api/v3/operations-dashboard/collection':
+            from server.collection_jobs import manager
+            self._json(HTTPStatus.OK, manager(connection).state())
+            return
+        if path == "/api/v3/operations-dashboard":
+            from server.operations_dashboard import dashboard_data
+            self._json(HTTPStatus.OK, dashboard_data(connection))
+            return
+        from server.drama_catalog import handle as handle_catalogue
+        if handle_catalogue(self, 'GET', path): return
+        from server.cover_editor import handle as handle_covers
+        if handle_covers(self, 'GET', path): return
+        from server.publishing.http import handle as handle_publishing
+        if handle_publishing(self, 'GET', path): return
+        from server.scenery.http import handle as handle_scenery
+        if handle_scenery(self, 'GET', path): return
+        from server.content_templates_http import handle as handle_content_templates
+        if handle_content_templates(self, "GET", path): return
+        from server.content_remix_http import handle as handle_content_remix
+        if handle_content_remix(self, "GET", path): return
+        from server.ffmpeg_finals.http import handle as handle_final_composition
+        if handle_final_composition(self, "GET", path):
+            return
+        from server.ffmpeg_templates.http import handle as handle_template_generation
+        if handle_template_generation(self, "GET", path):
+            return
+        if path == "/api/v2/account-data":
+            from server.account_data import overview
+            query = parse_qs(urlparse(self.path).query)
+            try:
+                self._json(HTTPStatus.OK, overview(
+                    connection,
+                    str(query.get("date", [""])[0]) or None,
+                    str(query.get("start_date", [""])[0]) or None,
+                    str(query.get("end_date", [""])[0]) or None,
+                ))
+            except (ValueError, RuntimeError) as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        if path == "/api/v3/analytics-data-base":
+            from server.analytics_data import data_base_overview
+            query = parse_qs(urlparse(self.path).query)
+            try:
+                self._json(HTTPStatus.OK, data_base_overview(
+                    connection,
+                    str(query.get("start_date", [""])[0]) or None,
+                    str(query.get("end_date", [""])[0]) or None,
+                    str(query.get("source_kind", [""])[0]) or None,
+                ))
+            except (ValueError, RuntimeError) as exc:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        match = re.fullmatch(r"/api/v2/account-data/runs/([a-f0-9]+)", path)
+        if match:
+            from server.account_data import run_status
+            try:
+                self._json(HTTPStatus.OK, run_status(connection, match.group(1)))
+            except ValueError as exc:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return
+        from server.template_library_http import handle_template_library
+        if handle_template_library(self, "GET", path):
+            return
         match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/cleanup/preview", path)
         if match:
             try: self._json(HTTPStatus.OK, cleanup_preview(match.group(1)))
@@ -4731,6 +5350,19 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
             return
+        from server.revenue_query_settings import handle as handle_query_settings
+        if handle_query_settings(self, "GET", path): return
+        if path == "/api/v2/revenue/collectors":
+            try:
+                from server.v2_revenue_service import revenue_collector_inventory
+            except ModuleNotFoundError:
+                from v2_revenue_service import revenue_collector_inventory
+            conn = connection()
+            try:
+                self._json(HTTPStatus.OK, revenue_collector_inventory(conn))
+            finally:
+                conn.close()
+            return
         if path == "/api/v2/revenue/daily-account-summary":
             try:
                 from server.v2_revenue_service import revenue_daily_account_summary
@@ -4860,6 +5492,142 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
             path = urlparse(self.path).path
+            if path == "/api/v3/gpt-relay":
+                from server.gpt_relay import save_config
+                self._json(HTTPStatus.OK, save_config(payload))
+                return
+            if path == "/api/v3/gpt-relay/models":
+                from server.gpt_relay import fetch_models
+                self._json(HTTPStatus.OK, fetch_models())
+                return
+            if path == "/api/v3/gpt-relay/test":
+                from server.gpt_relay import test_connection
+                self._json(HTTPStatus.OK, test_connection(str(payload.get("model") or "")))
+                return
+            if path == "/api/v3/gpt-relay/generate-json":
+                from server.gpt_relay import generate_json
+                self._json(HTTPStatus.OK, generate_json(payload))
+                return
+            if path == "/api/v2/drama-download/read-task":
+                from server.drama_download_reader import start_read_task
+                try:
+                    self._json(HTTPStatus.ACCEPTED, start_read_task())
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+                return
+            if path == "/api/v2/drama-download/collect-links":
+                from server.drama_download_reader import start_collect_links
+                try:
+                    self._json(HTTPStatus.ACCEPTED, start_collect_links(payload))
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+                return
+            if path == "/api/v2/drama-download/start":
+                from server.drama_download_reader import start_pipeline
+                try:
+                    self._json(HTTPStatus.ACCEPTED, start_pipeline(payload))
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+                return
+            if path == "/api/v2/drama-download/stop":
+                from server.drama_download_reader import stop_pipeline
+                try:
+                    self._json(HTTPStatus.ACCEPTED, stop_pipeline())
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+                return
+            from server.revenue_query_settings import handle as handle_query_settings
+            if handle_query_settings(self, "POST", path, payload): return
+            if path == '/api/v3/operations-dashboard/collection/logins/refresh':
+                from server.collection_jobs import manager
+                try:
+                    self._json(HTTPStatus.OK,manager(connection).refresh_logins())
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT,{'error':str(exc)})
+                return
+            if path == '/api/v3/operations-dashboard/optimization/analysis':
+                from server.optimization_analysis import save_mapping, MappingConflict
+                try:
+                    with closing(connection()) as conn:
+                        result = save_mapping(conn, payload)
+                        conn.commit()
+                    self._json(HTTPStatus.OK, result)
+                except MappingConflict as exc:
+                    self._json(HTTPStatus.CONFLICT, {'error': str(exc)})
+                except ValueError as exc:
+                    self._json(HTTPStatus.BAD_REQUEST, {'error': str(exc)})
+                return
+            if path == '/api/v3/operations-dashboard/optimization/actions/settings':
+                from server.work_history import save_settings
+                try:
+                    with closing(connection()) as conn:
+                        value = save_settings(conn, payload)
+                        conn.commit()
+                    self._json(HTTPStatus.OK, {'settings':value})
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT, {'error':str(exc)})
+                return
+            if path in ('/api/v3/operations-dashboard/collection/optimization/settings', '/api/v3/operations-dashboard/collection/optimization/detect'):
+                from server.collection_jobs import manager
+                jobs = manager(connection)
+                try:
+                    result = jobs.save_detection(payload) if path.endswith('/settings') else jobs.detect_now(payload)
+                    self._json(HTTPStatus.ACCEPTED, result)
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT, {'error': str(exc)})
+                return
+            if path in ('/api/v3/operations-dashboard/collection/start', '/api/v3/operations-dashboard/collection/retry', '/api/v3/operations-dashboard/collection/stop'):
+                from server.collection_jobs import manager
+                jobs = manager(connection)
+                try:
+                    result = jobs.stop(payload.get('job_id')) if path.endswith('/stop') else jobs.start(payload, retry=path.endswith('/retry'))
+                    self._json(HTTPStatus.ACCEPTED, result)
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT, {'error': str(exc)})
+                return
+            if path == '/api/v3/operations-dashboard/collect':
+                from server.operations_collection import collect_operations
+                self._json(HTTPStatus.OK, collect_operations(connection, refresh=True))
+                return
+            from server.drama_catalog import handle as handle_catalogue, guard_legacy_drafts
+            if path.endswith('/drafts') and path.startswith('/api/v2/publishing/tasks/'):
+                mount_guard_connection = connection()
+                try: guard_legacy_drafts(mount_guard_connection, path)
+                finally: mount_guard_connection.close()
+            if handle_catalogue(self, 'POST', path, payload): return
+            from server.cover_editor import handle as handle_covers
+            if handle_covers(self, 'POST', path, payload): return
+            from server.publishing.http import handle as handle_publishing
+            if handle_publishing(self, 'POST', path, payload): return
+            from server.scenery.http import handle as handle_scenery
+            if handle_scenery(self, 'POST', path, payload): return
+            from server.content_templates_http import handle as handle_content_templates
+            if handle_content_templates(self, "POST", path, payload): return
+            from server.content_remix_http import handle as handle_content_remix
+            if handle_content_remix(self, "POST", path, payload): return
+            from server.ffmpeg_finals.http import handle as handle_final_composition
+            if handle_final_composition(self, "POST", path, payload):
+                return
+            from server.ffmpeg_templates.http import handle as handle_template_generation
+            if handle_template_generation(self, "POST", path, payload):
+                return
+            if path == "/api/v2/account-data/refresh":
+                from server.account_data import start_refresh
+                try:
+                    result = start_refresh(
+                        connection,
+                        account_ids=payload.get("account_ids"),
+                        force=bool(payload.get("force", False)),
+                        start_date=payload.get("start_date"),
+                        end_date=payload.get("end_date"),
+                    )
+                    self._json(HTTPStatus.ACCEPTED, result)
+                except ValueError as exc:
+                    self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+                return
+            from server.template_library_http import handle_template_library
+            if handle_template_library(self, "POST", path, payload):
+                return
             if path == "/api/v2/production-tasks":
                 self._json(HTTPStatus.CREATED, create_task(payload))
                 return
@@ -4868,7 +5636,8 @@ class Handler(BaseHTTPRequestHandler):
                 end_date = str(payload.get("end_date") or "").strip()
                 theater_names = payload.get("theaters") if isinstance(payload.get("theaters"), list) else None
                 account_ids = payload.get("account_ids") if isinstance(payload.get("account_ids"), list) else None
-                self._json(HTTPStatus.ACCEPTED, start_revenue_collection(start_date, end_date, theater_names=theater_names, account_ids=account_ids))
+                initial_backfill = bool(payload.get("initial_backfill", True))
+                self._json(HTTPStatus.ACCEPTED, start_revenue_collection(start_date, end_date, theater_names=theater_names, account_ids=account_ids, initial_backfill=initial_backfill))
                 return
             if path == "/api/v2/revenue/video-links":
                 try:
@@ -4938,6 +5707,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, import_wechat_index_history(payload)); return
             if path == "/api/v2/wechat-index/suggestions/import":
                 self._json(HTTPStatus.OK, import_wechat_index_suggestions(payload)); return
+            if path == "/api/v2/production-resources/open-folder":
+                self._json(HTTPStatus.OK, open_production_resource_folder(str(payload.get("category") or ""))); return
             if path == "/api/v2/open-folder":
                 folder = Path(str(payload.get("path") or ""))
                 if not folder.is_dir(): raise ValueError("目录不存在")
@@ -4958,7 +5729,7 @@ class Handler(BaseHTTPRequestHandler):
                 from server.local_vision_ai import start_download
                 self._json(HTTPStatus.ACCEPTED, start_download(str(payload.get("model") or ""))); return
             if path == "/api/v2/select-path":
-                self._json(HTTPStatus.OK, select_v2_path(str(payload.get("kind") or ""))); return
+                self._json(HTTPStatus.OK, select_v2_path(str(payload.get("kind") or ""), str(payload.get('title') or '')[:80])); return
             match = re.fullmatch(r"/api/v2/task-center/tasks/([a-f0-9]+)/retry", path)
             if match:
                 try:
@@ -4997,6 +5768,17 @@ class Handler(BaseHTTPRequestHandler):
             if match:
                 # 任务级插片覆盖；strategy 传 null = 清除覆盖、跟随参数中心的全局默认。
                 self._json(HTTPStatus.OK, update_task_insertion_strategy(match.group(1), payload.get("strategy")))
+                return
+            match = re.fullmatch(r"/api/v2/production-files/([a-f0-9]+)/(delete-preview|delete)", path)
+            if match:
+                from server.production_materials import preview, delete
+                result = preview(match.group(1)) if match.group(2) == 'delete-preview' else delete(match.group(1), payload.get('confirmation_token'))
+                self._json(HTTPStatus.OK, result)
+                return
+            match = re.fullmatch(r"/api/v2/production-files/([a-f0-9]+)/insertion-strategy", path)
+            if match:
+                # strategy 传 null = 清除本素材覆盖，回到当前剧集规则。
+                self._json(HTTPStatus.OK, update_material_insertion_strategy(match.group(1), payload.get("strategy")))
                 return
             match = re.fullmatch(r"/api/v2/production-tasks/([a-f0-9]+)/template", path)
             if match:
@@ -5038,6 +5820,10 @@ class Handler(BaseHTTPRequestHandler):
                 except ModuleNotFoundError:
                     from task_center_service import set_queue_paused, task_center_snapshot
                 set_queue_paused(path.endswith("/pause"))
+                from server.ffmpeg_templates.service import get_maker
+                get_maker().pause(path.endswith("/pause"))
+                from server.ffmpeg_finals.service import get_composer
+                get_composer().action("pause" if path.endswith("/pause") else "resume")
                 self._json(HTTPStatus.OK, task_center_snapshot())
                 return
             if path == "/api/v2/task-center/manual-order":
@@ -5070,6 +5856,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
+            from server.revenue_query_settings import handle as handle_query_settings
+            if handle_query_settings(self, "PATCH", urlparse(self.path).path, payload): return
             match = re.fullmatch(r"/api/v2/theaters/([a-f0-9]+)", urlparse(self.path).path)
             if match:
                 self._json(HTTPStatus.OK, update_theater(match.group(1), payload))
@@ -5158,6 +5946,15 @@ def create_v2_server(host: str = HOST, port: int = PORT) -> ThreadingHTTPServer:
             pass
         start_scheduler()
         start_revenue_auto_scheduler()
+        from server.collection_jobs import start_optimization_detection_scheduler
+        start_optimization_detection_scheduler(connection)
+        if WORKSPACE is not None:
+            from server.ffmpeg_templates.service import get_maker
+            get_maker().start()
+            from server.ffmpeg_finals.service import get_composer
+            get_composer().start()
+            from server.scenery.service import get_library
+            get_library().start()
         # 写锁监视器：平时零输出；写锁被连续占住时把各线程调用栈写进日志（便于定位根因）。
         if WORKSPACE is not None:
             start_write_lock_watchdog(db_path())

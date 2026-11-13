@@ -1,0 +1,1 @@
+[1:v]colorchannelmixer=aa=0.55[a];[0:v][a]overlay=0:0:format=rgb:alpha=straight:shortest=1[out]

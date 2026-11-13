@@ -1,3 +1,4 @@
+import { formatPlannedDate, plannedDate, plannedSortTimestamp } from '../../utils/plannedDate';
 import React, { useState, useMemo } from 'react';
 import { 
   Search, 
@@ -207,8 +208,8 @@ function buildGroup(item: TaskItem, rows: TaskItem[]): DramaGroup {
     ? true
     : templateTask.draftStage.status === 'done' && templateTask.videoStage.status === 'done';
 
-  const scheduled = item.scheduledPublishTime || '';
-  const parsed = scheduled ? Date.parse(scheduled) : Number.NaN;
+  const scheduled = plannedDate(item.scheduledPublishTime);
+  const parsed = plannedSortTimestamp(scheduled);
   return {
     key: item.productionTaskId || `fallback:${item.accountName}::${item.dramaName}`,
     accountName: item.accountName,
@@ -273,7 +274,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
 
   /**
    * 排序（2026-09-19 用户拍板）：
-   *   第 1 层 账号 × 剧集：计划发布时间早 → 开工时间早
+   *   第 1 层 账号 × 剧集：计划发布日期早 → 开工时间早
    *   第 2 层 组内素材：序号升序
    * 特意**不再**按"执行中/排队/完成"分层排序 —— 那正是素材序号被排成 5,1,2,3,4 的原因。
    */
@@ -631,7 +632,7 @@ export const TaskListSection: React.FC<TaskListSectionProps> = ({
 
                     <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md border border-black/[0.04]">
                       <Clock className="w-2.5 h-2.5 text-slate-500" />
-                      {group.scheduledPublishTime ? formatTaskDateTime(group.scheduledPublishTime) : '未设置'}
+                      {group.scheduledPublishTime ? formatPlannedDate(group.scheduledPublishTime) : '未设置'}
                     </span>
                     <button
                       onClick={(event) => { event.stopPropagation(); toggleGroup(group.key); }}

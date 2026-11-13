@@ -1,15 +1,16 @@
 // Assets Center Types (资料中心类型定义 - 第二版优化)
 
-export type AssetsCenterTab = 'business_data' | 'drama_library' | 'production_resources' | 'viral_assets';
+export type AssetsCenterTab = 'business_data' | 'query_management' | 'drama_library' | 'production_resources' | 'viral_assets';
 export type AssetsModuleTab = AssetsCenterTab;
 export type BusinessSubTab = 'accounts' | 'theaters' | 'sub_theaters' | 'dramas';
 
 // ================= 1. 业务资料 (Business Data) =================
 
 // 1.1 账号状态：正常 / 观察 / 限流 / 二限 / 实名 / 封禁 / 停用
-export type AccountBusinessStatus = '正常' | '观察' | '限流' | '二限' | '实名' | '封禁' | '停用';
+export type AccountBusinessStatus = '正常' | '观察' | '限流' | '二限' | '实名' | '封禁' | '停用' | '注销';
 
 export interface AccountBusinessItem {
+  avatarUrl?: string;
   id: string;
   nickname: string;         // 账号昵称
   accountId: string;        // 账号 ID (原始/平台ID)
@@ -17,8 +18,9 @@ export interface AccountBusinessItem {
   theaterName: string;      // 所属剧场
   subTheaterName: string;   // 所属子剧场（方便用户查看结算找谁）
   status: AccountBusinessStatus;
-  whitelistedDate: string;  // 报白时间 (如 "2024-03-12" 或 "未报白")
-  registeredDate: string;   // 注册时间
+  revenueCollectorId?: string; // 软件内置采集器的固定编号
+  whitelistedDate?: string;  // 报白时间 (有效日期、显式“未报白”或空字符串)
+  registeredDate?: string;   // 注册时间
   notes: string;            // 备注
   isUsedInBusiness?: boolean; // 是否已被实际业务使用（有绑定发布/生产），若有则禁止删除
 }
@@ -27,6 +29,8 @@ export interface AccountBusinessItem {
 export interface TheaterBusinessItem {
   id: string;
   name: string;                   // 剧场名称
+  revenueCollectorIds?: string[];
+  revenueCollectorsConfirmed?: boolean; // 人工确认关联的内置采集器
   defaultCommissionRate: number;  // 默认分成 % (如 72 表示 72%)
   defaultTaxRate: number;         // 默认税率 % (如 6 表示 6%)
   status: '启用' | '停用';        // 状态
@@ -50,6 +54,9 @@ export interface SubTheaterBusinessItem {
 
 // 1.4 剧集 (大量，改名时自动沉淀历史剧名)
 export interface DramaBusinessItem {
+  platformSources?: import('./api/dramaCatalog').PlatformDrama[];
+  officialTotalEpisodes?: number;
+  episodeCountConflict?: boolean;
   id: string;
   currentName: string;      // 当前生效剧名
   historyNames: string[];   // 历史剧名列表 (改名时自动追加，支持切换为当前生效剧名或删除错误名)
@@ -76,6 +83,9 @@ export interface MasterVideoEpisodeFile {
 }
 
 export interface DramaContentProfile {
+  platformSources?: import('./api/dramaCatalog').PlatformDrama[];
+  officialTotalEpisodes?: number;
+  episodeCountConflict?: boolean;
   id: string;
   dramaId: string;              // 引用的业务剧集 ID
   dramaCurrentName: string;     // 当前生效剧名
@@ -116,14 +126,20 @@ export interface DramaContentProfile {
 
 // ================= 3. 生产资源 (Production Resources) =================
 
-export type ResourceCategory = 'real_video' | 'real_image' | 'bgm' | 'lead_video';
+export type ResourceCategory = 'scenery_video' | 'real_image' | 'lead_video';
 export type ResourceStatus = 'available' | 'used'; // 可用 | 已使用
 
 export interface ProductionResourceItem {
+  usageCount?: number;
+  reservedCount?: number;
+  usageLimit?: number;
+  remainingCount?: number;
+  cleanupError?: string;
   id: string;
   name: string;
   category: ResourceCategory;
   categoryName: string;
+  tags?: string[];
   filePath: string;
   fileSizeMb: number;
   thumbnailUrl?: string;
@@ -138,20 +154,13 @@ export interface ProductionResourceItem {
 }
 
 // 生产资源容量统计与计算
-export interface ResourceCapacityMetrics {
-  videoCount: number;           // 可用真人视频数量
+export interface ResourceInventoryMetrics {
+  videoCount: number;           // 可用风景视频数量
   imageCount: number;           // 可用真人图片数量
-  bgmCount: number;             // BGM 数量
-  totalVideoCount: number;      // 真人视频总数量（含已使用）
-  totalImageCount: number;      // 真人图片总数量（含已使用）
-  
-  // 生产规则：每生产 1 部剧集需要消耗 3 个真人视频 + 6 张真人图片
-  supportableDramas: number;    // 可支持剧集数 = Math.floor(Math.min(videoCount / 3, imageCount / 6))
-  videoSupportableDramas: number; // 视频可支持剧集数 = Math.floor(videoCount / 3)
-  imageSupportableDramas: number; // 图片可支持剧集数 = Math.floor(imageCount / 6)
-  
-  bottleneckType: 'video' | 'image' | 'balanced'; // 产能短板
-  shortageTip?: string;         // 补充建议
+  leadVideoCount: number;       // 引流视频数量
+  totalVideoCount: number;
+  totalImageCount: number;
+  totalResourceCount: number;
 }
 
 // ================= 4. 爆款资产 (Viral Assets Pool) =================

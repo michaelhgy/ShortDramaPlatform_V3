@@ -101,28 +101,6 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
     setCurrentPage(1);
   }, [searchQuery, accountFilter, dramaFilter, associationFilter, sortField, sortAsc]);
 
-  // If theater doesn't have video level data, render empty state
-  if (!analysisResult.hasVideoLevelData) {
-    return (
-      <div 
-        id="video-module-unsupported-state"
-        className="p-12 rounded-3xl bg-white border border-black/10 text-center space-y-4 shadow-xs"
-      >
-        <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-700 mx-auto flex items-center justify-center border border-amber-200">
-          <AlertCircle className="w-7 h-7" />
-        </div>
-        <div className="max-w-md mx-auto space-y-1.5">
-          <h3 className="text-base font-bold text-[#1A1D2E]">
-            {analysisResult.unsupportedReason || '当前剧场未提供平台视频级数据'}
-          </h3>
-          <p className="text-xs text-[#64748B] leading-relaxed">
-            当前仅青柠剧场支持推广视频 ID 级别的日结算明细回传与归因。所选剧场暂未开放平台视频级数据接口，请在顶部切换至「全部剧场」或「青柠剧场」查看。
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // 2. Filter options lists
   const availableAccounts = useMemo(() => {
     const map = new Map<string, string>();
@@ -259,6 +237,28 @@ export const VideoModule: React.FC<VideoModuleProps> = ({
   // Page index range text
   const startItemIndex = sortedVideos.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
   const endItemIndex = Math.min(currentPage * PAGE_SIZE, sortedVideos.length);
+
+  // If theater doesn't have video level data, render empty state
+  if (!analysisResult.hasVideoLevelData) {
+    return (
+      <div
+        id="video-module-unsupported-state"
+        className="p-12 rounded-3xl bg-white border border-black/10 text-center space-y-4 shadow-xs"
+      >
+        <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-700 mx-auto flex items-center justify-center border border-amber-200">
+          <AlertCircle className="w-7 h-7" />
+        </div>
+        <div className="max-w-md mx-auto space-y-1.5">
+          <h3 className="text-base font-bold text-[#1A1D2E]">
+            {analysisResult.unsupportedReason || '当前剧场未提供平台视频级数据'}
+          </h3>
+          <p className="text-xs text-[#64748B] leading-relaxed">
+            当前仅青柠剧场支持推广视频 ID 级别的日结算明细回传与归因。所选剧场暂未开放平台视频级数据接口，请在顶部切换至「全部剧场」或「青柠剧场」查看。
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div id="video-analytics-page" className="space-y-6 animate-in fade-in duration-200">

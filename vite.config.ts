@@ -14,6 +14,7 @@ export default defineConfig(() => {
     server: {
       // Keep browser requests same-origin. V2 never proxies to V1 here.
       proxy: {
+        '/api/v3': { target: process.env.V2_FILE_SERVICE_PROXY_TARGET || 'http://127.0.0.1:8782', changeOrigin: true },
         '/api/v2': { target: process.env.V2_FILE_SERVICE_PROXY_TARGET || 'http://127.0.0.1:8782', changeOrigin: true },
       },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

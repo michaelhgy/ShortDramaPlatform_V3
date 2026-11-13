@@ -7,6 +7,7 @@ data service, but never starts or changes V1 services, data, or behavior.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -47,31 +48,65 @@ def wait_until_reachable(url: str, label: str) -> None:
     raise SystemExit(f"自动启动后仍无法连接{label}：{url}")
 
 
-def start_v2_dependencies(v2_url: str) -> None:
-    """Start only missing local V2 development processes after a reboot."""
-    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    if not is_reachable(V2_API_URL):
-        subprocess.Popen(
-            [sys.executable, str(PROJECT_ROOT / "tools" / "run_v2_file_service.py")],
-            cwd=PROJECT_ROOT,
+def _stop_process_tree(process: subprocess.Popen[object]) -> None:
+    """Stop one child process and its Windows descendants."""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=creation_flags,
         )
-        wait_until_reachable(V2_API_URL, "V2 本地数据服务")
+    else:
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
 
-    if not is_reachable(v2_url):
-        npm_command = shutil.which("npm.cmd") or shutil.which("npm")
-        if not npm_command:
-            raise SystemExit("找不到 npm，无法启动 V2 前端开发服务。")
-        subprocess.Popen(
-            [npm_command, "run", "dev"],
-            cwd=PROJECT_ROOT,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=creation_flags,
-        )
-        wait_until_reachable(v2_url, "V2 前端开发服务")
+
+def _stop_started_dependencies(processes: list[subprocess.Popen[object]]) -> None:
+    """Stop only the V2 processes started by this desktop invocation."""
+    for process in reversed(processes):
+        _stop_process_tree(process)
+
+
+def start_v2_dependencies(v2_url: str) -> list[subprocess.Popen[object]]:
+    """Start missing local V2 development processes and return owned children."""
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    started: list[subprocess.Popen[object]] = []
+    try:
+        if not is_reachable(V2_API_URL):
+            service = subprocess.Popen(
+                [sys.executable, str(PROJECT_ROOT / "tools" / "run_v2_file_service.py")],
+                cwd=PROJECT_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creation_flags,
+            )
+            started.append(service)
+            wait_until_reachable(V2_API_URL, "V2 本地数据服务")
+
+        if not is_reachable(v2_url):
+            npm_command = shutil.which("npm.cmd") or shutil.which("npm")
+            if not npm_command:
+                raise SystemExit("找不到 npm，无法启动 V2 前端开发服务。")
+            frontend = subprocess.Popen(
+                [npm_command, "run", "dev"],
+                cwd=PROJECT_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creation_flags,
+            )
+            started.append(frontend)
+            wait_until_reachable(v2_url, "V2 前端开发服务")
+    except BaseException:
+        _stop_started_dependencies(started)
+        raise
+    return started
 
 
 def main() -> None:
@@ -87,27 +122,31 @@ def main() -> None:
         raise SystemExit(f"窗口尺寸不得小于 {MIN_WIDTH}x{MIN_HEIGHT}。")
 
     v2_url = args.url.rstrip("/") + "/"
-    if not args.no_autostart and v2_url == DEFAULT_URL:
-        start_v2_dependencies(v2_url)
-    wait_until_reachable(v2_url, "V2 前端开发服务")
-    wait_until_reachable(urljoin(v2_url, "/api/v2/health"), "V2 本地数据服务")
-
+    started: list[subprocess.Popen[object]] = []
     try:
-        import webview
-    except ImportError as error:
-        raise SystemExit("当前 Python 环境未安装 pywebview，无法启动桌面测试窗口。") from error
+        if not args.no_autostart and v2_url == DEFAULT_URL:
+            started = start_v2_dependencies(v2_url)
+        wait_until_reachable(v2_url, "V2 前端开发服务")
+        wait_until_reachable(urljoin(v2_url, "/api/v2/health"), "V2 本地数据服务")
 
-    window = webview.create_window(
-        "短剧推广运营系统 V2 - 桌面测试",
-        v2_url,
-        width=args.width,
-        height=args.height,
-        maximized=True,
-        min_size=(MIN_WIDTH, MIN_HEIGHT),
-    )
-    print(f"V2 桌面测试窗口已打开：{v2_url}", flush=True)
-    webview.start(gui="edgechromium", debug=args.debug)
-    del window
+        try:
+            import webview
+        except ImportError as error:
+            raise SystemExit("当前 Python 环境未安装 pywebview，无法启动桌面测试窗口。") from error
+
+        window = webview.create_window(
+            "短剧推广运营系统 V2 - 桌面测试",
+            v2_url,
+            width=args.width,
+            height=args.height,
+            maximized=True,
+            min_size=(MIN_WIDTH, MIN_HEIGHT),
+        )
+        print(f"V2 桌面测试窗口已打开：{v2_url}", flush=True)
+        webview.start(gui="edgechromium", debug=args.debug)
+        del window
+    finally:
+        _stop_started_dependencies(started)
 
 
 if __name__ == "__main__":

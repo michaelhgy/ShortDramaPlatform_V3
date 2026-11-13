@@ -1,0 +1,90 @@
+[
+  {
+    "template_id": "mumu-original",
+    "title": "靠一碗福饺，我逆风扭转人生",
+    "layout": {
+      "text": "靠一碗福饺，我逆风扭转人生",
+      "lines": [
+        "靠一碗福饺，我逆风扭转人生"
+      ],
+      "font_size": 56,
+      "box": [
+        150,
+        72,
+        930,
+        178
+      ]
+    },
+    "output": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧运行时叠层\\mumu-original.png",
+    "canvas": [
+      1080,
+      1920
+    ]
+  },
+  {
+    "template_id": "mumu-blue",
+    "title": "靠一碗福饺，我逆风扭转人生",
+    "layout": {
+      "text": "靠一碗福饺，我逆风扭转人生",
+      "lines": [
+        "靠一碗福饺，我逆风扭转人生"
+      ],
+      "font_size": 40,
+      "box": [
+        335,
+        78,
+        900,
+        168
+      ]
+    },
+    "output": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧运行时叠层\\mumu-blue.png",
+    "canvas": [
+      1080,
+      1920
+    ]
+  },
+  {
+    "template_id": "mumu-cyan",
+    "title": "靠一碗福饺，我逆风扭转人生",
+    "layout": {
+      "text": "靠一碗福饺，我逆风扭转人生",
+      "lines": [
+        "靠一碗福饺，我逆风扭转人生"
+      ],
+      "font_size": 40,
+      "box": [
+        335,
+        78,
+        900,
+        168
+      ]
+    },
+    "output": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧运行时叠层\\mumu-cyan.png",
+    "canvas": [
+      1080,
+      1920
+    ]
+  },
+  {
+    "template_id": "mumu-red",
+    "title": "靠一碗福饺，我逆风扭转人生",
+    "layout": {
+      "text": "靠一碗福饺，我逆风扭转人生",
+      "lines": [
+        "靠一碗福饺，我逆风扭转人生"
+      ],
+      "font_size": 43,
+      "box": [
+        218,
+        92,
+        820,
+        178
+      ]
+    },
+    "output": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧运行时叠层\\mumu-red.png",
+    "canvas": [
+      1080,
+      1920
+    ]
+  }
+]

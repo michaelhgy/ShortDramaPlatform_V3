@@ -1,0 +1,53 @@
+{
+  "version": "user-provisional-2026-11-01",
+  "provisional": true,
+  "rules": [
+    {
+      "id": "repeated_similar_posts",
+      "tag": "多次发布",
+      "analysis": "多次发表情景、文案、元素等近似的同质化内容。",
+      "color": "blue",
+      "homogeneous": false,
+      "aliases": [
+        "你的作品可能存在「多次发表情景、文案、元素等近似的同质化内容」的问题。"
+      ]
+    },
+    {
+      "id": "irrelevant_guidance",
+      "tag": "引导优化",
+      "analysis": "删除/替换与作品主体内容不相关的封面、互动引导等，使作品完整流畅。修改后重新发布可能会吸引更多人观看。",
+      "color": "amber",
+      "homogeneous": false
+    },
+    {
+      "id": "mismatched_drama_link",
+      "tag": "羊头链接",
+      "analysis": "调整作品内容或者更换作品所带链接，确保视频内容出现并介绍了视频链接中短剧，且视频内提及的短剧与链接中短剧信息保持一致。修改后重新发布可能会吸引更多人观看。",
+      "color": "red",
+      "homogeneous": false,
+      "aliases": [
+        "你的作品内容与所带链接中的短剧不相关，或视频中提及的短剧与链接中短剧信息不一致，可能影响用户观看体验。"
+      ]
+    },
+    {
+      "id": "missing_drama_link",
+      "tag": "未挂链接",
+      "analysis": "建议减少此类不完整形式的短剧内容分发，推荐使用平台官方短剧组件进行内容创作，以提升用户的观看体验。官方短剧组件指引参见下方文档，修改后重新发布可能会吸引更多人观看。",
+      "color": "pink",
+      "homogeneous": false,
+      "aliases": [
+        "你的作品可能具有剧情连续、分集更新或跨作品剧情衔接的短剧特征，但未通过官方合规短剧组件承载，容易影响用户的连续观看体验和内容分发体验。"
+      ]
+    },
+    {
+      "id": "originality_unconfirmed",
+      "tag": "原创优化",
+      "analysis": "该视频与视频号内已发表的视频高度相似，暂无法确认其为原创内容。",
+      "color": "violet",
+      "homogeneous": true,
+      "aliases": [
+        "你的作品可能存在「与视频号内已发表的视频高度相似」的问题。<br/>高相似度的行为包括但不限于直接裁剪他人作品、进行镜像处理、添加边框，或使用贴纸/马赛克遮挡其他平台的水印等简单编辑操作。"
+      ]
+    }
+  ]
+}

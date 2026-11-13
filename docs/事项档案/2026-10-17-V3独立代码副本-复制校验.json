@@ -1,0 +1,3650 @@
+{
+  "created_at": "2026-10-17T18:39:22+08:00",
+  "source": "D:\\ShortDramaPlatform_V2",
+  "destination": "D:\\ShortDramaPlatform_V3",
+  "source_head": "d917dc3fd16512cbc70df3e414443d6a41f3d043",
+  "destination_branch": "codex/v3-upgrade",
+  "copy_scope": "Git tracked current files and nonignored untracked files; current uncommitted changes included",
+  "excluded": "Dependencies, build/install output, ignored runtime state, ignored downloaded or generated media",
+  "database_policy": "Share the existing business database; no database read or write during copying",
+  "files_copied": 717,
+  "bytes_copied": 144739985,
+  "source_unchanged_after_copy": true,
+  "copy_hashes_match_before_v3_setup": true,
+  "source_status_porcelain_v1": [
+    " M AGENTS.md",
+    " M docs/4-决策日志.md",
+    " M docs/5-文档索引.md",
+    " M docs/7-多机部署现状.md",
+    " M docs/功能档案/01-界面/资料中心.md",
+    " M docs/功能档案/03-后台机制/写锁与护栏.md",
+    " M packaging/build_portable.py",
+    " M packaging/v2_portable.spec",
+    " M requirements-runtime.txt",
+    " M server/template_engine/jianying59_template/resources/flower_style_catalog.json",
+    " M server/template_engine/jianying59_template/resources/sticker_skin_catalog.json",
+    " M server/v2_file_service.py",
+    " M src/App.tsx",
+    " M tools/run_v2_desktop_test.py",
+    "?? docs/事项档案/",
+    "?? packaging/assets/ChineseSimplified.isl",
+    "?? packaging/v2_installer.iss",
+    "?? server/tests/test_v2_desktop_test_launcher.py",
+    "?? tools/ffmpeg_overlay_lab/",
+    "?? tools/short_drama_downloader_lab/",
+    "?? 项目控制台.md",
+    ""
+  ],
+  "source_tracked_missing": [],
+  "files": [
+    {
+      "path": ".env.example",
+      "bytes": 874,
+      "sha256": "390f32b028cee9f097abc8d023d3819aaeb48b241f32df2d400a77d63a4490c6"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 627,
+      "sha256": "ca09178e39321fb13e58f079628156456d6aef56fe807388d424e29e642f5523"
+    },
+    {
+      "path": "@AutomationLog.txt",
+      "bytes": 22816,
+      "sha256": "3f12b7cb158fce143d995e7695bb7c94acc1855808e9f0e6807ae64cf8e6fa03"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 1872,
+      "sha256": "e45806cfaa505ff5461ab4defe1099d9eac9f12803ee38f1f2843f7394622001"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2354,
+      "sha256": "a3467fcf9ed4e7236e0751de3ff5f1e91fcb9a34a87ab5d22113ea235bf42e7e"
+    },
+    {
+      "path": "bun.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/0-业务全景.md",
+      "bytes": 16593,
+      "sha256": "ea583979b6d155845adb69c27503093fa7e9dc100d7f294156f52b0af61eb694"
+    },
+    {
+      "path": "docs/1-交接进度总览.md",
+      "bytes": 2543,
+      "sha256": "1e0ddc7f38f6ddd4010e0d741a419cbe3f13ad79e6a216e7d6272b4924ed62c5"
+    },
+    {
+      "path": "docs/2-待做需求清单.md",
+      "bytes": 20041,
+      "sha256": "1162ac1e14c040ab5a6170debc36495005283eda52913bf102fd8211d9f808ca"
+    },
+    {
+      "path": "docs/3-验证基线.md",
+      "bytes": 6721,
+      "sha256": "7e818c494a3da345b187e6c8a7f7e6c29e9e15e404a54d0ac4f32a46d2056698"
+    },
+    {
+      "path": "docs/4-决策日志.md",
+      "bytes": 27816,
+      "sha256": "4150251614f68d712109eb620e6282e59e4321bea8338385bfd09770c68a35cd"
+    },
+    {
+      "path": "docs/5-文档索引.md",
+      "bytes": 9062,
+      "sha256": "f702fe056810fb5b30eb86b3babf094278c67e0a01c6c99c3c15a179643862dc"
+    },
+    {
+      "path": "docs/6-视频号算法与短剧分发机制.md",
+      "bytes": 24618,
+      "sha256": "fb0654bfd2abee2eb21dab2f75ce331a6117f9b37ecdb5ca5870e33184a8be17"
+    },
+    {
+      "path": "docs/7-多机部署现状.md",
+      "bytes": 5654,
+      "sha256": "b8c8ea51439726bebe539eb7591a80ad6358277bca3b7042b0dbc2091e191101"
+    },
+    {
+      "path": "docs/8-本机第三方插件清单.md",
+      "bytes": 12701,
+      "sha256": "09fd4c8638bf97c19aa8e35aeb4353d04c227a59a432abdc93b13c48ba4d7117"
+    },
+    {
+      "path": "docs/README.md",
+      "bytes": 2030,
+      "sha256": "8732e4c7b946d78f3f0c52236f618e0daf91f7a7440508464ba2c55a7a046b43"
+    },
+    {
+      "path": "docs/archive/Desktop_Test.md",
+      "bytes": 2424,
+      "sha256": "f3535c61a13cc24101eb063c4eeac3bc03a60ac87f4d95d4755896cc05e865c8"
+    },
+    {
+      "path": "docs/archive/UI界面基线.md",
+      "bytes": 2099,
+      "sha256": "f41d47e5f2118e77a495566eaf029584add59261a0ab21a6c5797f32403d0afb"
+    },
+    {
+      "path": "docs/archive/UI迁移规则.md",
+      "bytes": 2599,
+      "sha256": "93c9967ab146262fdaf17c1962ea3bc605941e383111bac3cd9579dc6932c54a"
+    },
+    {
+      "path": "docs/archive/V2 Jianying Preflight.md",
+      "bytes": 913,
+      "sha256": "6562fc446bfdedf5e57ed6b0eac56902d12b458d540d14a49691dee96387182c"
+    },
+    {
+      "path": "docs/archive/V2 Portable Build.md",
+      "bytes": 826,
+      "sha256": "6a06d34fe9f843576b4c4f53a8b67c809dfaac0e38ec6ca06904fbef5e2acf73"
+    },
+    {
+      "path": "docs/archive/V2 Python Packaging Notes.md",
+      "bytes": 1484,
+      "sha256": "98b8af16764b2a8b5bfe0d98fe4c4160eecf4624d86e35cc58e535746f411ce3"
+    },
+    {
+      "path": "docs/archive/V2_Migration.md",
+      "bytes": 5419,
+      "sha256": "22e29cbd1dd4696685d794c25ee5feaa9d0e7f41ca172c694277eb39786f950b"
+    },
+    {
+      "path": "docs/archive/V2前端刷新与数据来源现状.md",
+      "bytes": 18057,
+      "sha256": "0257f2ac2fee176d3aacccb0b4ecd4276ca6a736415ba5b0a32e044ac6cac751"
+    },
+    {
+      "path": "docs/archive/V2参数中心规则.md",
+      "bytes": 11311,
+      "sha256": "057cc086b88d190a467c927b12ea4cc2c778dde537bffbf6138445b6fb7888f5"
+    },
+    {
+      "path": "docs/archive/V2开发规范.md",
+      "bytes": 3512,
+      "sha256": "494b7029d95afe91434962455275d20aea5969628f085f46a2a77fbc825ea082"
+    },
+    {
+      "path": "docs/archive/V2数据与刷新规则.md",
+      "bytes": 15833,
+      "sha256": "b392269b9ffb211a12915136c7e7fa9fc4bd245e2f43bf8cf9380dc0b11f4fa3"
+    },
+    {
+      "path": "docs/archive/V2文件系统与资源生命周期规则.md",
+      "bytes": 8091,
+      "sha256": "33bbb50dab685a11e12460bbd61b4026e033bb9d5c7cd1ff42942f692c8de4d4"
+    },
+    {
+      "path": "docs/archive/V2模板草稿轨道规则.md",
+      "bytes": 17227,
+      "sha256": "1d814d4d3d61bab203d10fa9045e14d658828151bb5c03c8456555b9ea0117d5"
+    },
+    {
+      "path": "docs/archive/V2生产中心三层状态规则.md",
+      "bytes": 4780,
+      "sha256": "0836d5fb7e899630601e68cc9bf50c292640a2941b76844880c1f25c29a492d8"
+    },
+    {
+      "path": "docs/archive/V2生产文件迁移清单.md",
+      "bytes": 2910,
+      "sha256": "d1ebad7896858fd37e69558882e756a69c0e8a1b73f667dcba7541fb6fc5bbda"
+    },
+    {
+      "path": "docs/archive/V2视频导出器设计.md",
+      "bytes": 4352,
+      "sha256": "c36c1b3356028e8f0c622892144d5d24061d064467ae5941584bf81c83c5e638"
+    },
+    {
+      "path": "docs/archive/业务全景-全文底稿-2026年9月19日.md",
+      "bytes": 18804,
+      "sha256": "a0486a39d8cfc480246c012e209d2ae7e92716278d33ad982a1d0a6f043b0c1f"
+    },
+    {
+      "path": "docs/archive/业务资料模块接入审计.md",
+      "bytes": 3913,
+      "sha256": "918131f3e6cca94845ee84cfc43b6ae51f67e662afc87695cbc18ad5892979b3"
+    },
+    {
+      "path": "docs/archive/交接进度总览-历史版-2026年9月19日.md",
+      "bytes": 15764,
+      "sha256": "f6b32d947acc66fdafbafab85ae6836b76a3c23341038d1df4710e3b469f96b9"
+    },
+    {
+      "path": "docs/archive/写锁监视器-首次实测证据.md",
+      "bytes": 6146,
+      "sha256": "5c030f63479692f9380144acf9f46276f8aa0c7d7922f532e7e0c7e9848566c6"
+    },
+    {
+      "path": "docs/archive/决策日志-全文底稿-2026年9月19日.md",
+      "bytes": 22535,
+      "sha256": "37a46d5036de500f0c3edc7abd0c1b1a2fe9ff7d34eb9ffa92435ca5ff66d442"
+    },
+    {
+      "path": "docs/archive/决策日志-历史卷-2026年9月17-18日.md",
+      "bytes": 72383,
+      "sha256": "4f9f10ee4b9d054a97f1c156b985a075f0c5635bb8286c11ce8a5520a4aeb3b0"
+    },
+    {
+      "path": "docs/archive/刷新大修-开场提示.md",
+      "bytes": 4999,
+      "sha256": "3a2d6603fe09c1d3a27a462ba4595ac95dbff309aafd585bcf1c60ce84237ef5"
+    },
+    {
+      "path": "docs/archive/刷新大修-方案.md",
+      "bytes": 18654,
+      "sha256": "d528b5399fba26d533e441e82c8786ee0fc18ff7a2715e0d9567b043b6a53dbc"
+    },
+    {
+      "path": "docs/archive/历史规则补遗.md",
+      "bytes": 4577,
+      "sha256": "5a420c9a4cbf534ad634c3c9229423341937f89f2fb0a2a877616160af566556"
+    },
+    {
+      "path": "docs/archive/已完成需求-2026年9月.md",
+      "bytes": 48413,
+      "sha256": "450ed1abc76ed69e83d5df41b1a81faf6729b03c2ad8a60148b652dc9fd41d97"
+    },
+    {
+      "path": "docs/archive/开工方案.md",
+      "bytes": 2238,
+      "sha256": "a92627510de05568d0c1cd1c9838b5d29e6791f73276ac7fc810198a0e84effa"
+    },
+    {
+      "path": "docs/archive/当前迁移状态.md",
+      "bytes": 3688,
+      "sha256": "da934c614aeef428747c00f6144c056cf7272792adcde667e0de0f21a4fd146d"
+    },
+    {
+      "path": "docs/archive/待做需求清单-全文底稿-2026年9月19日.md",
+      "bytes": 21657,
+      "sha256": "87cd365f20faf772887dc07b3899ef3ed4d68a0e9063805f09b76e67ce13ff6b"
+    },
+    {
+      "path": "docs/archive/数据与功能全景.md",
+      "bytes": 8798,
+      "sha256": "55400f3606e06d8cbd31f08a2409c2a1a019c4c2203f156c246f4e10dd92a9be"
+    },
+    {
+      "path": "docs/archive/数据接入规则.md",
+      "bytes": 2988,
+      "sha256": "e3398f8ddaf1b3cd321906fff371cac93d1b0f2d362de86da4c6c51808501b16"
+    },
+    {
+      "path": "docs/archive/文件地图.md",
+      "bytes": 9022,
+      "sha256": "f199d3040eb6678adbf0f0d6d327c71393819cfc3deae5790674ebcdeb32aeb7"
+    },
+    {
+      "path": "docs/archive/文档体检报告.md",
+      "bytes": 22436,
+      "sha256": "c91720334b67c2ad0d00ebebd86446552ae7dada08e90830b0810b5bb6cb76e7"
+    },
+    {
+      "path": "docs/archive/文档索引-全文底稿-2026年9月19日.md",
+      "bytes": 17657,
+      "sha256": "a10eabdbeddd68e0a4528b55d4fa6d9b120590bed42334da4b776616b15f388a"
+    },
+    {
+      "path": "docs/archive/术语对照表.md",
+      "bytes": 3182,
+      "sha256": "c22aa0cd4bb829d09a97ae295bbb9136037762e9712115ab7614ce11da16a681"
+    },
+    {
+      "path": "docs/archive/视频号算法-全文底稿-2026年9月19日.md",
+      "bytes": 26985,
+      "sha256": "f0938db71fa24a0384ff6d4d98bd1bdfac19366553c2d0a40d4f50389c15b0fe"
+    },
+    {
+      "path": "docs/archive/试点方案-测试隔离修复.md",
+      "bytes": 4217,
+      "sha256": "41341235157b7502c0f0c1445b9ff6e410af4e91faad9190762619d61c4062b1"
+    },
+    {
+      "path": "docs/archive/软件原理-大白话.md",
+      "bytes": 5792,
+      "sha256": "b9cec13263cd01dba24eae434e37871c4070c7998d21cf0b4939a0d006409eff"
+    },
+    {
+      "path": "docs/archive/软件结构全景.md",
+      "bytes": 11112,
+      "sha256": "115f2b475ae16c0defbf6508599a2eb6593d91b77d66b10b12a1f61b39e8fa81"
+    },
+    {
+      "path": "docs/archive/项目现状地图.md",
+      "bytes": 6076,
+      "sha256": "8b91e65409a948613be4d2e155e8f8a2025002a46edaa115a4eb28b617bffaa8"
+    },
+    {
+      "path": "docs/archive/验证基线-全文底稿-2026年9月19日.md",
+      "bytes": 10230,
+      "sha256": "6dff7fbc57404e31a109c927818dcc01350fc77b2643aeb75daebb67aa31a763"
+    },
+    {
+      "path": "docs/images/photo-wall-compare/对比_老选图_vs_人脸选图.png",
+      "bytes": 6016566,
+      "sha256": "146b04bf1f3f7b5f2d90e0076843902fa0db05092b5809e560a2a4abeca65b23"
+    },
+    {
+      "path": "docs/images/照片墙成品_10张_20260918.png",
+      "bytes": 622244,
+      "sha256": "2cdfd7dd36747f2dd893adb9f5614da5b64afb2b72ae36f692c9ee5da2b1477e"
+    },
+    {
+      "path": "docs/事项档案/2026-09-21-V2标准安装版.md",
+      "bytes": 1519,
+      "sha256": "859230150a507339cd80b43b4a79459049c32c0bb77a7a371316bfb6c4ccdf15"
+    },
+    {
+      "path": "docs/事项档案/2026-10-17-AI素材三组风格30秒试验.md",
+      "bytes": 5570,
+      "sha256": "0a9ca5ff6e45b8061d519693d3e4b817e240182b39e662afc4e398c7a208131c"
+    },
+    {
+      "path": "docs/事项档案/2026-10-17-AI素材库九组方向样图.md",
+      "bytes": 8544,
+      "sha256": "3c9b95b3952e8388ba41f09e211c4f4087497bfddada52b135f0ffb9097c4b5e"
+    },
+    {
+      "path": "docs/事项档案/2026-10-17-FFmpeg透明效果层30秒试验.md",
+      "bytes": 7872,
+      "sha256": "1c9d373f35a4e37f4a85d2cb04f3d5ade29b96e60db5bb845fe68f6af4b2649c"
+    },
+    {
+      "path": "docs/事项档案/README.md",
+      "bytes": 548,
+      "sha256": "f82a21cf1217680219328455d874e2873e1f86abdebe9ab50daa85a8643675c4"
+    },
+    {
+      "path": "docs/功能档案/01-界面/任务中心.md",
+      "bytes": 5956,
+      "sha256": "1ae8652e84f1f4f1d67d708156d6a8804d71352c0ba27195b0f822ee5c6e6fd0"
+    },
+    {
+      "path": "docs/功能档案/01-界面/参数中心.md",
+      "bytes": 3221,
+      "sha256": "662a239606aa1c5599f0db4851ef40c2ca4ad13043dceb8e910e1e9c55469f47"
+    },
+    {
+      "path": "docs/功能档案/01-界面/工作台.md",
+      "bytes": 8929,
+      "sha256": "d7b756b1ad577221847e23de446607df7cf073a91a7f132dc1227cc2b7d4b025"
+    },
+    {
+      "path": "docs/功能档案/01-界面/数据分析.md",
+      "bytes": 13115,
+      "sha256": "d5a8bb917639ca8debe0e30182aaef771dfe68f1eb3370ef5a33d469fcde2f60"
+    },
+    {
+      "path": "docs/功能档案/01-界面/生产中心.md",
+      "bytes": 5386,
+      "sha256": "3f34095e758fd981c3f8d8d6507ab7522602ddb85800013b00e66288748039db"
+    },
+    {
+      "path": "docs/功能档案/01-界面/设置.md",
+      "bytes": 12104,
+      "sha256": "0271e82a506293ed5996891441b6b60e40aa1bc0e4a62e216a1e4152df0938e7"
+    },
+    {
+      "path": "docs/功能档案/01-界面/资料中心.md",
+      "bytes": 12448,
+      "sha256": "686bb57eee79e88fc9c5a73ac0e488035ce75be995810095f3bd3e2bebf88a17"
+    },
+    {
+      "path": "docs/功能档案/02-执行器/成片生成器.md",
+      "bytes": 5726,
+      "sha256": "966bc7498bd3a079fbb723faf81f66ddf59e8de6b66ce614c39949eeaf178751"
+    },
+    {
+      "path": "docs/功能档案/02-执行器/模板生成器.md",
+      "bytes": 6660,
+      "sha256": "9ca89e054825fe503c5c472b7e66ec92ff358300d6d0f992ecf28057c9816efc"
+    },
+    {
+      "path": "docs/功能档案/02-执行器/视频导出器.md",
+      "bytes": 5215,
+      "sha256": "f28f7922fca3aaccbe04470a150fd39c57f0b07e3b840c432d3d68623d754911"
+    },
+    {
+      "path": "docs/功能档案/03-后台机制/写锁与护栏.md",
+      "bytes": 8445,
+      "sha256": "b4b4bc07c886a9a2d1e752d35410bd419c8461526f6567cb5bfb5dca0a910046"
+    },
+    {
+      "path": "docs/功能档案/03-后台机制/收益采集.md",
+      "bytes": 9121,
+      "sha256": "8576ad022ea66ae9e3518f60056c992f4c9da1775af6770944966db2fba1e8eb"
+    },
+    {
+      "path": "docs/功能档案/03-后台机制/清理系统.md",
+      "bytes": 7246,
+      "sha256": "fe6b98812ff170eac25c41cf8ca676a70e3390d30fe73aa19b1fed26550bbfe6"
+    },
+    {
+      "path": "docs/功能档案/03-后台机制/资源扫描.md",
+      "bytes": 9673,
+      "sha256": "e81c2b5e4151d0f618e3a9aaaf72ab09d8cae2979750bd237be81e51cacc76ff"
+    },
+    {
+      "path": "docs/功能档案/04-跨模块规则/三层状态.md",
+      "bytes": 6648,
+      "sha256": "4570c014aa79d8cd973849762ca421ddd73315be83920516e5e9426ec8279990"
+    },
+    {
+      "path": "docs/功能档案/04-跨模块规则/命名与术语.md",
+      "bytes": 4380,
+      "sha256": "bd82eed16eb2709c284db6be2301bbf2df19208922471a96d2eb132996a353ca"
+    },
+    {
+      "path": "docs/功能档案/04-跨模块规则/数据与刷新.md",
+      "bytes": 4648,
+      "sha256": "f1e04c76df9c620a575836956dc840c66eb589bef2618eabbef5dba0d3061133"
+    },
+    {
+      "path": "docs/功能档案/04-跨模块规则/文件与资源生命周期.md",
+      "bytes": 7597,
+      "sha256": "08b91f60a3728b275f89849907694d80ba62c609dc1d802ee6e486fd97999417"
+    },
+    {
+      "path": "docs/功能档案/04-跨模块规则/界面与开发规范.md",
+      "bytes": 4445,
+      "sha256": "320f2e39d9ef4a1dca0d5c14a2c9788455e60660329e401f2644d928ccc1a967"
+    },
+    {
+      "path": "docs/功能档案/README.md",
+      "bytes": 13432,
+      "sha256": "86e8c9eb7d7df25636e50284a933370015b29ba80f0942011272caaa31988b80"
+    },
+    {
+      "path": "docs/功能档案/_模板.md",
+      "bytes": 3603,
+      "sha256": "e0a2d874e1377b777576ce24b117e1f967bea0380d074d3c7b8d711bfbe29c98"
+    },
+    {
+      "path": "index.html",
+      "bytes": 816,
+      "sha256": "8c6da0b1ee5f43726692ee192f9afdd3f27213272c4d413d99c4e63433d2fed2"
+    },
+    {
+      "path": "metadata.json",
+      "bytes": 286,
+      "sha256": "c3f0073537a6f9d0b1bdaae702d281d46aaa59a2ccf6859db5dfa1be074c29e8"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 106003,
+      "sha256": "e82c9b143fa463e7c5afdaf0ae724fc25862d05da096547346b9c49539e2d279"
+    },
+    {
+      "path": "package.json",
+      "bytes": 926,
+      "sha256": "aab28ac0eb3896151dc8f3beea9fb9e8b564168bb4bb5b59950d6d018054fd21"
+    },
+    {
+      "path": "packaging/assets/ChineseSimplified.isl",
+      "bytes": 21099,
+      "sha256": "bf0751fa176569c6faa2f6e17ed2734617bef325d5cc06eae030fdd0258ee778"
+    },
+    {
+      "path": "packaging/assets/v2-application-icon.ico",
+      "bytes": 21560,
+      "sha256": "93e1d1f904f430bd2ad2fd401a1edf7865fc80807ddfe7f189ad0eec863eb83b"
+    },
+    {
+      "path": "packaging/assets/v2-application-icon.svg",
+      "bytes": 344,
+      "sha256": "214f3a6ecc0efed4eaa5093a082736c5dd84d7d5c46704d9085368242d0c75cc"
+    },
+    {
+      "path": "packaging/build_portable.py",
+      "bytes": 3274,
+      "sha256": "519b82c7bcf18920dbb8af996f9a18b4422382dd5c8723f1948611f49b5ae694"
+    },
+    {
+      "path": "packaging/ffmpeg-runtime.json",
+      "bytes": 1728,
+      "sha256": "ab467cb25e5d5871da9aefb2c1aa8bcd19c5e6536c2d1715878699c904a631fd"
+    },
+    {
+      "path": "packaging/v2_installer.iss",
+      "bytes": 1373,
+      "sha256": "29c241a23599401ef74f0506e4f4f1e6c24f87d6ef49120a254de847ec5caa00"
+    },
+    {
+      "path": "packaging/v2_portable.spec",
+      "bytes": 5445,
+      "sha256": "2e5b617ee4cd32116cbfd599c732d464a64b8e4bae6267af8083218c6893ec1e"
+    },
+    {
+      "path": "requirements-build.txt",
+      "bytes": 103,
+      "sha256": "68cd069e9e68534a2933f95db244caa8ff878dd9216bdb27d2af82301d0b1d10"
+    },
+    {
+      "path": "requirements-dev.txt",
+      "bytes": 168,
+      "sha256": "b59af443314e4e8018e337536088a4d42f1b4f7e59d015db246acf5eff3b24e4"
+    },
+    {
+      "path": "requirements-runtime.txt",
+      "bytes": 697,
+      "sha256": "f1a18dbe904b0ed3abffc0a9679d308500b89bbac8f2194be781511b93ee2b03"
+    },
+    {
+      "path": "server/__init__.py",
+      "bytes": 25,
+      "sha256": "dd1712f1f96f8e77cf884af5d90e54bd7a4962687a53e7435834020dddc85ea8"
+    },
+    {
+      "path": "server/application_resources.py",
+      "bytes": 478,
+      "sha256": "5832c9a6364f112e55fffee05e222d6cb64c476b4c8117939a0d3149bac696f5"
+    },
+    {
+      "path": "server/executor_management.py",
+      "bytes": 8247,
+      "sha256": "c760123e8bbb0c07eea69a6365f64596a162935479a5fdd0bee0ab2d12035e6f"
+    },
+    {
+      "path": "server/final_engine/__init__.py",
+      "bytes": 42,
+      "sha256": "5e4eafdc9a028604f409ccc7310917e319f9e4e50f682311e80936c09a40ddbb"
+    },
+    {
+      "path": "server/final_engine/jianying59_final/__init__.py",
+      "bytes": 70,
+      "sha256": "a30d996aa0e251cc58c5aaffd5c3db5d0fbea079f856ce992b0e1ecb37a9d84e"
+    },
+    {
+      "path": "server/final_engine/jianying59_final/composition.py",
+      "bytes": 29209,
+      "sha256": "bb532e2546ae874d42b4b6ca3b98d158237ff1f42d2e5498cd8b5f06d9466ce7"
+    },
+    {
+      "path": "server/final_engine/jianying59_final/resources/real_photo_effect_pool_5_9.json",
+      "bytes": 3404,
+      "sha256": "2e549558d121c71ce35c3963d8d7cb1879240ade7f5078217750bc8db706e99a"
+    },
+    {
+      "path": "server/final_engine/jianying59_final/visual_layers.py",
+      "bytes": 20533,
+      "sha256": "f5c429019e8c05c443a2c88df9ad628ad5b13bb408f797f41356db98b110b6b1"
+    },
+    {
+      "path": "server/final_engine/runner.py",
+      "bytes": 22975,
+      "sha256": "b36bc43c240d98ff375d9d860634f4ef440b7ee85322f6e1d6b4706a765b7b9d"
+    },
+    {
+      "path": "server/final_engine/scripts/__init__.py",
+      "bytes": 55,
+      "sha256": "34ab04a64e6373f08c591078f4522eebc79eb95b316f131dd766acbe35e20e57"
+    },
+    {
+      "path": "server/final_engine/scripts/detect_black_bars.py",
+      "bytes": 7640,
+      "sha256": "fde87cdb2535c2d6cb325691e75aefc5799c6a61832f5464d3cb2d18b9e28449"
+    },
+    {
+      "path": "server/final_engine/scripts/detect_drama_title_region.py",
+      "bytes": 49956,
+      "sha256": "9c0998cf938ada4857bc8965d0d2866b10a45f693c6db100693ff6169f0f16c2"
+    },
+    {
+      "path": "server/final_engine/scripts/detect_opening_cover.py",
+      "bytes": 12253,
+      "sha256": "4f13fcc9ac0f34dbd48fd3f49e05579f3d1bf8766694ee51f67a7fbbdf7aa0f5"
+    },
+    {
+      "path": "server/final_engine/scripts/detect_tail_guidance.py",
+      "bytes": 23932,
+      "sha256": "a4ca6628b0d2ce2263819eb6c6d03f3fb0145a98bc8b4bfa3fc2aeb556c9a0b2"
+    },
+    {
+      "path": "server/final_engine/scripts/export_template_video.py",
+      "bytes": 249,
+      "sha256": "6363eb61777cc8cc6100dfce1afbac5689cee17397ab09834d6cf1574ce35331"
+    },
+    {
+      "path": "server/final_engine/scripts/generate_base_composition_draft.py",
+      "bytes": 31286,
+      "sha256": "4337bf9bd6058f8e8dafd24e2512d72e5339392a16f2d19bef925a08bafd62cc"
+    },
+    {
+      "path": "server/final_engine/scripts/generate_composition_from_detection_reports.py",
+      "bytes": 6447,
+      "sha256": "d21ced3d73be5ddd1063fb217ca25821d6fe8617f5288c26ef06b6015b2a2292"
+    },
+    {
+      "path": "server/final_engine/scripts/generate_jianying59_composition_draft.py",
+      "bytes": 4040,
+      "sha256": "04b4636856803919cfc01735a84dfed069c682333a4ff2b51ad4c1a65d6e01bd"
+    },
+    {
+      "path": "server/final_engine/scripts/jianying_export_queue.py",
+      "bytes": 4125,
+      "sha256": "c7cd488fa0c778341bceb24381110b57d17ef4490088fa0b5e97f5f2672b2263"
+    },
+    {
+      "path": "server/final_engine/scripts/manage_jianying_bgm.py",
+      "bytes": 11385,
+      "sha256": "f256834c13c98d0cc77c03e6c3249a40f613f82364498b4f5eea14a2ae5d5a64"
+    },
+    {
+      "path": "server/final_engine/scripts/ollama_local.py",
+      "bytes": 8045,
+      "sha256": "629a96ec69634c9be58545636a0451122d75112b8b935cbafc4ae663810937d0"
+    },
+    {
+      "path": "server/final_engine/scripts/prepare_clean_viral_proxy.py",
+      "bytes": 13907,
+      "sha256": "5df723e7c41608f4c56390b9fab17b9fc9be962198d1ad257bb300a1d9b231d8"
+    },
+    {
+      "path": "server/final_engine/scripts/prepare_finished_video_export.py",
+      "bytes": 6603,
+      "sha256": "54c638db190ce54dd9b52ccb21713521d056d6bd7a585e2978bf371acd216956"
+    },
+    {
+      "path": "server/final_engine/scripts/prepare_local_ocr_runtime.py",
+      "bytes": 1216,
+      "sha256": "af4e6c85503e236bba25723bd80f1c619a842e955561400ac68bd7afd2d3136b"
+    },
+    {
+      "path": "server/final_engine/scripts/prepare_local_vision_runtime.py",
+      "bytes": 2520,
+      "sha256": "c992d2b0a1c2841f52936baa18349a023e403f7bf807618459b0f29c47aeea1f"
+    },
+    {
+      "path": "server/final_engine/scripts/register_ready_bgm.py",
+      "bytes": 3747,
+      "sha256": "87999484dd9f1d6cc882dd1882ed65512e14f9e448d9331cc09f14f4fbf10dad"
+    },
+    {
+      "path": "server/final_engine/scripts/render_finished_video_ffmpeg.py",
+      "bytes": 9735,
+      "sha256": "33906489b054bd236f0ca90a24cf81b7ea8558d49525022478fe3857fc5765ff"
+    },
+    {
+      "path": "server/final_engine/scripts/replenish_jianying_bgm.py",
+      "bytes": 5510,
+      "sha256": "b0ba715b5231e18f0d57005b4be92bc7cc18eba6d1036c06e05823f8f4178a6c"
+    },
+    {
+      "path": "server/final_engine/scripts/run_ffmpeg_composition_batch.py",
+      "bytes": 7856,
+      "sha256": "8549b9dd4963c68637a61beb60fb9e15069c9569e571d210890ce8d9fa5ef114"
+    },
+    {
+      "path": "server/final_engine/scripts/run_jianying_composition_batch.py",
+      "bytes": 33557,
+      "sha256": "449dcb224a2d47f98d059a296bc74c87aa27404f2e61104e5997dcfa482ceb60"
+    },
+    {
+      "path": "server/jianying_preflight.py",
+      "bytes": 7997,
+      "sha256": "bf0db1beb2847a2f1df96e4a901507c99487226998b3350f9ab76323b81212a7"
+    },
+    {
+      "path": "server/jianying_resource_paths.py",
+      "bytes": 1012,
+      "sha256": "fe3569cd7afb124942fce4f3e8a9191d9ecf9abaa8b848c375bb1231a7ef0699"
+    },
+    {
+      "path": "server/jianying_runtime_paths.py",
+      "bytes": 2813,
+      "sha256": "079e99bfad2b52c5745bb18273ddfcf04f161211f90c203f9996d0503d544c42"
+    },
+    {
+      "path": "server/local_vision_ai.py",
+      "bytes": 3844,
+      "sha256": "eac5356f19d99e55e743d762e3fff01c98b4ae0d83d96de74a5a4b66d0237edf"
+    },
+    {
+      "path": "server/revenue_auto_scheduler.py",
+      "bytes": 3230,
+      "sha256": "d788d19304f51a4a31b9babfea651ea3c31176f33c9ddced2dc4a78bd64cb9c3"
+    },
+    {
+      "path": "server/runtime_guard.py",
+      "bytes": 10213,
+      "sha256": "ae70b15fb00d6ee38116def02adeebb844915737349a8b707bf72ca7b1b18f19"
+    },
+    {
+      "path": "server/runtime_process.py",
+      "bytes": 1304,
+      "sha256": "7c2e0e910097d5c88b206caa7537b8c8420f687f3d2cb9ebdf0d12fe9b2f094e"
+    },
+    {
+      "path": "server/task_center_service.py",
+      "bytes": 47779,
+      "sha256": "22acbef8db18f67c03cc4cce19f2ddf4780ec00affc803de9c917150e7dfdecb"
+    },
+    {
+      "path": "server/template_engine/README.md",
+      "bytes": 929,
+      "sha256": "807c8a247bd192e437737cb20c4a1aa556930a30233a4b881f116c079fb05a4a"
+    },
+    {
+      "path": "server/template_engine/generate_v2_template.py",
+      "bytes": 11275,
+      "sha256": "7ff3a683f308e3d6a4c9977b3c240c6c698d452d959f948ae47848c1127b891f"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/__init__.py",
+      "bytes": 200,
+      "sha256": "24ad3e3e616ace152b9f9b3277aa67c6b03d7de53942f785260b913b85a56a2e"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/drama_expression.py",
+      "bytes": 7850,
+      "sha256": "f0e06a845cdd80b0b30c20bad2da1f3562efa485db784d9deed08fc3fd11c427"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/drama_face.py",
+      "bytes": 15127,
+      "sha256": "ee1995025b9bbbcc9667adba2e1970c768dcfd5bc17d37c99c9a91a8d2bb2940"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/drama_identity.py",
+      "bytes": 5347,
+      "sha256": "3120c51dc1b8cad3d32663d1a3500312184dda622e496f6c75111d5366aebac5"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/final_contract.py",
+      "bytes": 12671,
+      "sha256": "94d79857906561e739c4b93d1e9b86133c932ef8138db3473f6bf584efc075fa"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/flower_style_library.py",
+      "bytes": 10299,
+      "sha256": "52a6fe863f1f032f8b9f3ec96e0bcb1faa9880866b638a24728541a14feb81b1"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/photo_prep.py",
+      "bytes": 50452,
+      "sha256": "819ff1a45171b610840a41a13d0a92f2e25e8b57dccba2a21837c40328addd3e"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/project_base.py",
+      "bytes": 3783,
+      "sha256": "5d58afb69d56ddf7fae979a8b788c9bb7cd39e4479a61e06f60b9169155def54"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/resources/YuNet-LICENSE.txt",
+      "bytes": 1085,
+      "sha256": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/resources/arcface_w600k_mbf.onnx",
+      "bytes": 13616099,
+      "sha256": "9cc6e4a75f0e2bf0b1aed94578f144d15175f357bdc05e815e5c4a02b319eb4f"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/resources/face_detection_yunet_2023mar.onnx",
+      "bytes": 232589,
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/resources/face_landmarker.task",
+      "bytes": 3758596,
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/resources/flower_style_catalog.json",
+      "bytes": 390527,
+      "sha256": "34463f7f86098f0b7d3d0d9bda600cbe5209435113dce9611382c0d15c3a8f80"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/resources/sticker_skin_catalog.json",
+      "bytes": 443181,
+      "sha256": "c05821cbc6aa51720642b263b6ef7549d7d101f7462d3d0831977b4986a89a9d"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/resources/track07_08_effect_pool_5_9.json",
+      "bytes": 3847,
+      "sha256": "68a2e722721ffc1f291041c146938825c0b11f6a91fb969c4097dbdca96b9bfa"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/sticker_skin_library.py",
+      "bytes": 19513,
+      "sha256": "d88b637bf94ede7f386fd81e9ff688a0a4d7f6bc14b906297a90d2e93ce118ea"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/sticker_visual_roles.py",
+      "bytes": 5570,
+      "sha256": "4c101ec55299570910a782bcd775aaa3df33220d421d2de4d17d8f882ac094a2"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/template_copy.py",
+      "bytes": 3324,
+      "sha256": "455e6b6587d6f9a08589f5e23a1555a1002b63ce670c9a7419c67512b76cd264"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/template_decision.py",
+      "bytes": 3604,
+      "sha256": "cb89f3066b8d895e337a6404a095610e60a89064de59d23e78e74055599d09d4"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/text_visual.py",
+      "bytes": 6638,
+      "sha256": "7a2ecd06229c072f79dfd13bb74fefc883dec46987389cc95bbb97e168ae36c8"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/track01.py",
+      "bytes": 10034,
+      "sha256": "eb88814871b9be100a6ab9daede12546e298a8b775f792d0a47f6cc1092c2a28"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/track02_03.py",
+      "bytes": 25944,
+      "sha256": "d0fae0cfec91ecaf48db7d574c1c95168f48d7f1fe69407aacce7376044ce706"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/track04.py",
+      "bytes": 7779,
+      "sha256": "3f8a6bce7e24cd0a818126c66bf382bdd4c29c773fbec08f81b6fd3ff980ad5d"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/track05.py",
+      "bytes": 9386,
+      "sha256": "f30212f20d1192a1ce3eb040ded99413c6b51ebdf2cf7d3e5d38184d2d61160f"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/track06.py",
+      "bytes": 8431,
+      "sha256": "0ba0b9e2c4c6e6bec78e69bff9b1556548c70b72bff67061cf2c910afc5a9b83"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/track07_08.py",
+      "bytes": 7321,
+      "sha256": "2dc971cf344b225f9f8a5493803038b638be78cad1b95be43f51e03223003dfa"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/track09_sticker_skin.py",
+      "bytes": 11470,
+      "sha256": "ed11b11caa26a2178295b96a5eff0feaf2df652d84680682105dc5460493f19b"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/track10_11_flower_text.py",
+      "bytes": 23273,
+      "sha256": "98c83352805d436d4b70ba4c1eaa6c2cc58f10a956c5b46951d62d3739ca0c6e"
+    },
+    {
+      "path": "server/template_engine/jianying59_template/visual_composition.py",
+      "bytes": 3444,
+      "sha256": "5fa05a0a89223bf839bef821e5086a7c975d7acefcf65522e7df47de4c9da080"
+    },
+    {
+      "path": "server/template_engine/runner.py",
+      "bytes": 16514,
+      "sha256": "34a59202bc22639251a32aa63e68dc79b96f63519ad7cfb4fd152cbf60b77970"
+    },
+    {
+      "path": "server/tests/test_jianying_preflight.py",
+      "bytes": 5408,
+      "sha256": "7061c9e02fc1a95b969b16b0d09be8c3af873bda5184e02f46bf83df600741e0"
+    },
+    {
+      "path": "server/tests/test_runtime_guard.py",
+      "bytes": 6064,
+      "sha256": "15523a65033674a75f15d7576be970ffe5a231a1edba8a701015837bc97f9424"
+    },
+    {
+      "path": "server/tests/test_runtime_process.py",
+      "bytes": 1118,
+      "sha256": "5795cac62476b6f1dbfea25b486231f97bea0e4706109259867ff563147300c3"
+    },
+    {
+      "path": "server/tests/test_tool_resolver.py",
+      "bytes": 2029,
+      "sha256": "c0e6eef936a1075afa865436bd3103f995f0332f2c8384e966e425e75459972a"
+    },
+    {
+      "path": "server/tests/test_v2_desktop_startup_diagnostics.py",
+      "bytes": 2396,
+      "sha256": "a2a8108b4d4ca84debcecfdf7a115bcfa0372b1f2bc7a3117eb9c40679ae6db2"
+    },
+    {
+      "path": "server/tests/test_v2_desktop_test_launcher.py",
+      "bytes": 2104,
+      "sha256": "5315dba16be58c17607a10576f4e1b49b0c236d52439765b86905e4cbfe6ac1f"
+    },
+    {
+      "path": "server/tests/test_v2_engine_parameters.py",
+      "bytes": 7709,
+      "sha256": "2be5bd83079dec98ca0a1e2d995044d402a7c60b405b74d59b45bd562068013f"
+    },
+    {
+      "path": "server/tests/test_v2_export_runtime.py",
+      "bytes": 10571,
+      "sha256": "1772d2db93311e8960227fc92186738646d92e9651fb79c5f91d007cd3c22048"
+    },
+    {
+      "path": "server/tests/test_v2_exporter.py",
+      "bytes": 18282,
+      "sha256": "8f5260f854e0ac8fed67d851ac8108206e24063a17b465639b65b0bf8ae37312"
+    },
+    {
+      "path": "server/tests/test_v2_file_service.py",
+      "bytes": 52246,
+      "sha256": "25b998d7a873516b69ba3992ee5616f441f17d99e46cd03a6ee5cfcbf41e36a5"
+    },
+    {
+      "path": "server/tests/test_v2_final_engine.py",
+      "bytes": 12037,
+      "sha256": "cec729d3c751db573b3117d280800b3116feb8cf5c2bdfe5a673cc5f0b0980b5"
+    },
+    {
+      "path": "server/tests/test_v2_finished_export_queue.py",
+      "bytes": 2374,
+      "sha256": "aef1098725b820cf951b83683b8e34a5528e91180c720eaddf5fa6ffc6378e15"
+    },
+    {
+      "path": "server/tests/test_v2_insertion_policy.py",
+      "bytes": 11504,
+      "sha256": "6d61bb649163163ec82d628e193e2fbdfc5b4100ce682eb814935b80693e76d2"
+    },
+    {
+      "path": "server/tests/test_v2_jianying_optional_cache.py",
+      "bytes": 2130,
+      "sha256": "58039e1ca454a807b63e495f649bb6e06e93acfa505da0295e4fe9e60d758d2a"
+    },
+    {
+      "path": "server/tests/test_v2_photo_wall_faces.py",
+      "bytes": 30015,
+      "sha256": "ac2a419aa397664028f03ec182f07eea6436087881df47c9fcfa41df8ba15697"
+    },
+    {
+      "path": "server/tests/test_v2_portable_runtime_assets.py",
+      "bytes": 4296,
+      "sha256": "7e4943a4ffa3b785f0cffe470cbfef47a6aa7fe9da63b5aa0d5413ff0df6b38e"
+    },
+    {
+      "path": "server/tests/test_v2_revenue.py",
+      "bytes": 11183,
+      "sha256": "241bfa9ffbab386248391d4136b822e7dedc8e0eb19065d27505ebdc3dd93633"
+    },
+    {
+      "path": "server/tests/test_v2_task_center.py",
+      "bytes": 14180,
+      "sha256": "31b0f8d9a6f1825e6ce6c9cf9e88c3ceaca53ea9262897d6de436ee208f4c39c"
+    },
+    {
+      "path": "server/tests/test_v2_template_copy.py",
+      "bytes": 3493,
+      "sha256": "4460f7c3280b72ffa591db388e1555a3626752ae589f63b250f39b4e9d2d4853"
+    },
+    {
+      "path": "server/tests/test_v2_template_diagnostics.py",
+      "bytes": 4414,
+      "sha256": "031535bbf61973904d1b61e8f8aa34b7f6128f4bd2ae0a1dd433cba1fe84126b"
+    },
+    {
+      "path": "server/tests/test_worker_registry.py",
+      "bytes": 1871,
+      "sha256": "54b9919de61f8d7d12a8715ab2b6122ed04b3414af4660bc5ae0f6f43677097b"
+    },
+    {
+      "path": "server/tool_resolver.py",
+      "bytes": 2103,
+      "sha256": "2221c52b374cb545a223e2cdcd4104fab1ca870e8d574affa16c44c644b4d3f5"
+    },
+    {
+      "path": "server/v2_exporter/__init__.py",
+      "bytes": 365,
+      "sha256": "ac6647b87355ad6b73aaa1cde10420ac2b2771ab29a05171a9f2f8c3f298191d"
+    },
+    {
+      "path": "server/v2_exporter/core.py",
+      "bytes": 15728,
+      "sha256": "919065e4e160055d2e601422b65c4558bb17a8b49d79c57898286c0f2f517c9f"
+    },
+    {
+      "path": "server/v2_exporter/runner.py",
+      "bytes": 19505,
+      "sha256": "f28479aa58c59d3d7c36e13a5ad949716430efa210db0fec31cd8165420a9d29"
+    },
+    {
+      "path": "server/v2_exporter/runtime.py",
+      "bytes": 32466,
+      "sha256": "e87c4695350ffaa0813b1a8369fe095824346fe0c1cec5618e89671347f0c180"
+    },
+    {
+      "path": "server/v2_file_service.py",
+      "bytes": 284716,
+      "sha256": "381d1d50dcec1152a18d8bc878473ed450b7bc69fd34a211cb71d348151ca0fb"
+    },
+    {
+      "path": "server/v2_revenue_service.py",
+      "bytes": 33375,
+      "sha256": "be520d9dbf1d77803f4158ed2ff8e04eb642070655e9eb24d90040bd4d7db24e"
+    },
+    {
+      "path": "server/wechat_index_client.py",
+      "bytes": 9057,
+      "sha256": "9b95cf6eaacabe13335ea212b97657dd6f7a25203e400fc9f870526943605b6f"
+    },
+    {
+      "path": "server/wechat_index_proxy.py",
+      "bytes": 10341,
+      "sha256": "4ecfde60622405c7c87e6b97613a0b7e26fa351c05a6c578ee4949da2da3f854"
+    },
+    {
+      "path": "server/wechat_index_proxy_addon.py",
+      "bytes": 2254,
+      "sha256": "6eb3f3640a8a821019156da27de0f2f8a70da08e5b86b8b9b3e508b9e9e39b02"
+    },
+    {
+      "path": "server/windows_automation/__init__.py",
+      "bytes": 66,
+      "sha256": "7008c359e15eecf7e9fbd43a9842a5f625571038a1ecb1b623c8e7b34a670d35"
+    },
+    {
+      "path": "server/windows_automation/export_automation.py",
+      "bytes": 11584,
+      "sha256": "6661617095ba8a865ed92571b25ad66f28250cdec04af03908e32e3f19439719"
+    },
+    {
+      "path": "server/windows_automation/jianying59_exporter/__init__.py",
+      "bytes": 459,
+      "sha256": "38d0bd98b0a16c9a92a9a4e5006450acef405cb3e3dfd993d5fd8c4b833f57f6"
+    },
+    {
+      "path": "server/windows_automation/jianying59_exporter/executor.py",
+      "bytes": 23171,
+      "sha256": "8760e68e9ee2de96eafbffa42d8ef98a6508a781d0b8b39061685d104152cca0"
+    },
+    {
+      "path": "server/windows_automation/jianying59_exporter/upstream_adapter.py",
+      "bytes": 75706,
+      "sha256": "642113393297ddd901f64207224a106a190aaf7e0504b30574c3692f6529c957"
+    },
+    {
+      "path": "server/windows_automation/jianying_adapter.py",
+      "bytes": 58049,
+      "sha256": "899179f4ac79df2288e3459062c820c9647cf7031b9bf121e63952ccf03da1db"
+    },
+    {
+      "path": "server/windows_automation/jianying_runtime.py",
+      "bytes": 4157,
+      "sha256": "8cb34923162f9a04d2443117cc5b4e38faeba97b8099a5bedef0c032e9140766"
+    },
+    {
+      "path": "server/worker_registry.py",
+      "bytes": 828,
+      "sha256": "a9a6b5d42d15ed06d2107921b474cf309942924d8ccb61a8c01018240f09bccb"
+    },
+    {
+      "path": "src/App.tsx",
+      "bytes": 17488,
+      "sha256": "4ab189a09b56128980121dbbb6891e3eb307ed2442d58bece3c53c5369c338df"
+    },
+    {
+      "path": "src/adapters/catalog.ts",
+      "bytes": 2018,
+      "sha256": "750207b0276da162607c2dee968e7d4b4e6437740260209ecf57111b458428f7"
+    },
+    {
+      "path": "src/adapters/production.ts",
+      "bytes": 9211,
+      "sha256": "c894850a5a88a0f9cd1c2850107852bf70853866c492da1db615bbf68b6b15e3"
+    },
+    {
+      "path": "src/adapters/revenue.ts",
+      "bytes": 35058,
+      "sha256": "6d1a907a1dd66b950fa111509612d2781ad75959899a1023af4e473573f1677e"
+    },
+    {
+      "path": "src/adapters/status.ts",
+      "bytes": 529,
+      "sha256": "54353f99ec93320d80ece9b1526a53ddbf79d6d711fa27b5b9a3de2093cbe07f"
+    },
+    {
+      "path": "src/analyticsMockData.ts",
+      "bytes": 75059,
+      "sha256": "056fb6711c7734f7e1520ed10c5a8d616ad451e8d5a5c3b04a209d88484bff63"
+    },
+    {
+      "path": "src/analyticsTypes.ts",
+      "bytes": 7049,
+      "sha256": "ebf99d26594fa9f43b4deb9312a3fccaf817ffb78df56b937e5fa7f89f5d3b8d"
+    },
+    {
+      "path": "src/api/assets.ts",
+      "bytes": 573,
+      "sha256": "340757ff41c43cbe104e7bb37b7bb48880c5f4be7b39d098b6fa02e32e339c47"
+    },
+    {
+      "path": "src/api/client.ts",
+      "bytes": 7920,
+      "sha256": "f26f02e0103ea7ecde61068c19d73c8fd96ba126b4359e4d56122e349fd13a0e"
+    },
+    {
+      "path": "src/api/dashboard.ts",
+      "bytes": 310,
+      "sha256": "461b090d4fde3d97a236239752a278a8dbbce58d28f2d9af3feb50b487cd8672"
+    },
+    {
+      "path": "src/api/production.ts",
+      "bytes": 443,
+      "sha256": "46b842119103a16c1b630143cb4a6d492d1d38b376fa3e37c1b1b9a4539aaee4"
+    },
+    {
+      "path": "src/api/revenue.ts",
+      "bytes": 1195,
+      "sha256": "6629c15d170a089ac2ed4f53310b733f937e9eda351a793b66d1c57c92276dab"
+    },
+    {
+      "path": "src/api/settings.ts",
+      "bytes": 270,
+      "sha256": "15902bf19116f58cb55076ea1c0e5e33da31ac46dec8cdb213b002a78f8e0dae"
+    },
+    {
+      "path": "src/api/v2Catalog.ts",
+      "bytes": 8033,
+      "sha256": "54b482f991715b9587818dd6d1ec95a617c441e45b03d84190445a06f3d17bf0"
+    },
+    {
+      "path": "src/api/v2EngineParameters.ts",
+      "bytes": 2228,
+      "sha256": "dadaad6497c5cb7fbf85807354bd6641256db6c31cae9d1c69169a4c79303a8b"
+    },
+    {
+      "path": "src/api/v2Production.ts",
+      "bytes": 6511,
+      "sha256": "cd731bf58e5c8a09dc71b4ac102bfe1db5c732042f5381081dc90f6c9a6fafc2"
+    },
+    {
+      "path": "src/api/v2Revenue.ts",
+      "bytes": 4856,
+      "sha256": "7e3b9aa15c42f5f17d55ae68e6994893890869115505d16a3d8aad5f0efaa8fd"
+    },
+    {
+      "path": "src/api/v2Settings.ts",
+      "bytes": 202,
+      "sha256": "9846c4a543f7f9452d330b5153b0cd41ed9e682e9a54074d756fc80baf9e7ea8"
+    },
+    {
+      "path": "src/api/v2TaskCenter.ts",
+      "bytes": 2778,
+      "sha256": "f50c5689104eadb23e015adf88e1ac1643335005da0aed1742bc9e73c2524f81"
+    },
+    {
+      "path": "src/assetsMockData.ts",
+      "bytes": 46104,
+      "sha256": "f56e58f0b22c46d233dfeb695d9a4952b9a917bc065a8ecdfaee22e519e1bd5e"
+    },
+    {
+      "path": "src/assetsTypes.ts",
+      "bytes": 9648,
+      "sha256": "58ebda053962010ba687c339dfc51f2680faac7d1310ca9adb0e0ff51f93568e"
+    },
+    {
+      "path": "src/components/DramaCover.tsx",
+      "bytes": 2342,
+      "sha256": "ead072f7595a6f90f80aac161efdd4db140af96d5e0a38a4484e2b9e168fcd5a"
+    },
+    {
+      "path": "src/components/EditTimePopover.tsx",
+      "bytes": 4326,
+      "sha256": "5588f37060f5c4e91c87464bc1ed6ce34d38eafb12dafac1d39b0edbedfc76cf"
+    },
+    {
+      "path": "src/components/Header.tsx",
+      "bytes": 22161,
+      "sha256": "3fc9f6fa4f3046f9620ed09844a385398acdefdd417907a24570d197ce8c7ff8"
+    },
+    {
+      "path": "src/components/Placeholders.tsx",
+      "bytes": 2844,
+      "sha256": "b063098d9b882ec3d1afe9b7d57ea9da3ff660ff17d3d5a0ddf3a5fd521bafff"
+    },
+    {
+      "path": "src/components/RecentDramasSection.tsx",
+      "bytes": 8679,
+      "sha256": "9afdb2f2d0129dfa403efe5f0857ab498553fe2c0b8fa5a3c76bdc77af28b961"
+    },
+    {
+      "path": "src/components/ScheduleModal.tsx",
+      "bytes": 47121,
+      "sha256": "d55629934a7cb41760a891599dc1814dec8ad54c25b95ad246aa61381b96ded4"
+    },
+    {
+      "path": "src/components/TodayScheduleSection.tsx",
+      "bytes": 11333,
+      "sha256": "b2ede688e98450fd560382ae0ec6ee6631bcf87dd2a3596dbd31335343e33c5c"
+    },
+    {
+      "path": "src/components/YesterdayAccountsSection.tsx",
+      "bytes": 5598,
+      "sha256": "a30867ba68e7f33320ca7e643b3d411663ec45e78fdbed3f0c5d27e60368721f"
+    },
+    {
+      "path": "src/components/analytics/AccountModule.tsx",
+      "bytes": 27179,
+      "sha256": "1841f686f66bed98be2e452af3cc23346da1d8b3f1deabc8eb02acf204fc80dc"
+    },
+    {
+      "path": "src/components/analytics/AccountTrendChart.tsx",
+      "bytes": 19991,
+      "sha256": "7559523913f81c84b6047966ece66233a1e9cefbc9c7607946d9ee2f4d26bbb7"
+    },
+    {
+      "path": "src/components/analytics/AdvancedRevenueTrendChart.tsx",
+      "bytes": 29435,
+      "sha256": "26095068671ef0c6d093c19b79907854980c89dc47da7894195bb7d854bad29f"
+    },
+    {
+      "path": "src/components/analytics/AnalyticsHeader.tsx",
+      "bytes": 10360,
+      "sha256": "c57a42ad9d5971509e53533814c0bf83d52de142e7f60eec6adb13398a3752d2"
+    },
+    {
+      "path": "src/components/analytics/CombinationModule.tsx",
+      "bytes": 33494,
+      "sha256": "7851bc3187c47088b4c40ee802c2c27a55e06e844a000c9ca2c854ae8b259d53"
+    },
+    {
+      "path": "src/components/analytics/DataAnalyticsView.tsx",
+      "bytes": 12162,
+      "sha256": "78734fb02728c4a0f95c6ddd0e4da276348142447e6894c487bca00abbfe4ddc"
+    },
+    {
+      "path": "src/components/analytics/DramaModule.tsx",
+      "bytes": 30783,
+      "sha256": "aae43efb64b7782b4398c87f9fc959bd9b4dacd811cdaef252e5d548e35693c7"
+    },
+    {
+      "path": "src/components/analytics/RevenueCollectionDrawer.tsx",
+      "bytes": 20542,
+      "sha256": "1d1dec6c22528b5d40b5e2872cb270b4beda2dd76f9212a62a91f90970c95b9a"
+    },
+    {
+      "path": "src/components/analytics/RevenueModule.tsx",
+      "bytes": 26445,
+      "sha256": "7f2ecab267822c58af98782632b1930a63206fe7cafba9df4ae7d76a5b1f5fe1"
+    },
+    {
+      "path": "src/components/analytics/VideoDrawer.tsx",
+      "bytes": 26029,
+      "sha256": "eaf39555749f142907305d22c462170c21e44ae130341693b2d34a25cee7bd33"
+    },
+    {
+      "path": "src/components/analytics/VideoLinkModal.tsx",
+      "bytes": 10634,
+      "sha256": "9e44e496c0757e2483241df872fb33ba72b87d191d742d0e229faf05db20a4c9"
+    },
+    {
+      "path": "src/components/analytics/VideoModule.tsx",
+      "bytes": 37619,
+      "sha256": "54847e5e65b88d69956bbfa2d0c0306efc8801b2259d30b4ff7fc64daa7c183e"
+    },
+    {
+      "path": "src/components/analytics/WechatIndexModule.tsx",
+      "bytes": 13539,
+      "sha256": "5b2b956ff11573dcaaa440e90f2bb3f04e9e3eddee03988509f80acc1ff9be17"
+    },
+    {
+      "path": "src/components/analytics/common/DateRangeModal.tsx",
+      "bytes": 5462,
+      "sha256": "5f0880b6b867639ae154f8c55b875d879813bf81ba71c35d6c2c74896f83cbc8"
+    },
+    {
+      "path": "src/components/analytics/common/HelpTooltip.tsx",
+      "bytes": 3372,
+      "sha256": "87e055a55eea4a38e9967916a396fb788e296d52b6505a8f396ac724099e79c1"
+    },
+    {
+      "path": "src/components/analytics/common/StatusBadge.tsx",
+      "bytes": 3561,
+      "sha256": "2330e5f39345cb2b3d013099385ea99d1fa260648bbb5dfd83e3e7d9b1425159"
+    },
+    {
+      "path": "src/components/analytics/common/ViewportFloatingLayer.tsx",
+      "bytes": 4466,
+      "sha256": "b38935c03c74d0a129ff8e84ae2d3c7f26a54fee056a0a518ff0462196c90a84"
+    },
+    {
+      "path": "src/components/assets/AssetsCenterView.tsx",
+      "bytes": 12668,
+      "sha256": "7d4e4ebde12ed7eb749161b0d39eedbac984be7eeaa949de57887233faf56b2d"
+    },
+    {
+      "path": "src/components/assets/BusinessDataTab.tsx",
+      "bytes": 56233,
+      "sha256": "749ae4b8b36c77229e154597d449eec17196bb0ec32259be6bbfe1088f0dc61a"
+    },
+    {
+      "path": "src/components/assets/DramaLibraryTab.tsx",
+      "bytes": 47679,
+      "sha256": "472856de66e2db45d792b83429bcfb9658f762739823cdaa9369f58c75c5bf59"
+    },
+    {
+      "path": "src/components/assets/ProductionResourcesTab.tsx",
+      "bytes": 22732,
+      "sha256": "fdfd32282a079b78a31742f9141a04f4fb74434f87e78e1b5cf9dccb5b89942c"
+    },
+    {
+      "path": "src/components/assets/ViralAssetsTab.tsx",
+      "bytes": 35849,
+      "sha256": "cd96f1580245d43ad6a4878ea24b7b438628f89bc1b87569024af2802e57b5fb"
+    },
+    {
+      "path": "src/components/assets/modals/AccountBatchImportModal.tsx",
+      "bytes": 11103,
+      "sha256": "6abad108c8d3aa6b5166501777ff4ea679e67929503412176d7f3cd898c53a75"
+    },
+    {
+      "path": "src/components/assets/modals/AccountModal.tsx",
+      "bytes": 14760,
+      "sha256": "2c29aca4a0f02b0c3aedc85e741b98cae9dd252372834aeefe0804ed7550c88b"
+    },
+    {
+      "path": "src/components/assets/modals/DramaBatchImportModal.tsx",
+      "bytes": 8976,
+      "sha256": "4d6f4cac1175daaf309def322fd0369bd649b710e7a420ad64a720e9bac30d3e"
+    },
+    {
+      "path": "src/components/assets/modals/DramaRenameModal.tsx",
+      "bytes": 14092,
+      "sha256": "85648b6fe48a3145e4edb3d964575b8a58aac006929320129c5aff65af59957a"
+    },
+    {
+      "path": "src/components/assets/modals/MarkViralModal.tsx",
+      "bytes": 19079,
+      "sha256": "d513247bbe0c8666273936ba1bc280bc919d41498488b0d9f17fd2c30d297ce5"
+    },
+    {
+      "path": "src/components/assets/modals/ResourcePreviewModal.tsx",
+      "bytes": 11105,
+      "sha256": "60796a84ad519cd13fc215d8fca8c5d961b8be30347b18faaa9440972b4a573d"
+    },
+    {
+      "path": "src/components/assets/modals/SubTheaterBatchImportModal.tsx",
+      "bytes": 9873,
+      "sha256": "5a69cfbde0ce83394e311272e5e4b3bd233a3cca5f31a796c427aa63be4d37b9"
+    },
+    {
+      "path": "src/components/assets/modals/SubTheaterModal.tsx",
+      "bytes": 12845,
+      "sha256": "146e03dcc04d3841f587b2a7b7b19b30912daa14be16be64d8fc4d14be8d881d"
+    },
+    {
+      "path": "src/components/assets/modals/TheaterBatchImportModal.tsx",
+      "bytes": 8169,
+      "sha256": "41ce2256869a45c84b2c8bf146332c53fcc7abe9738d7206cfba5a216334771c"
+    },
+    {
+      "path": "src/components/assets/modals/TheaterModal.tsx",
+      "bytes": 9760,
+      "sha256": "7c20da88d968af186acca0b673018f41e90af312981777941dd912e1d0e12559"
+    },
+    {
+      "path": "src/components/assets/modals/ViralRecordsDrawer.tsx",
+      "bytes": 18062,
+      "sha256": "08e97ae9595d7bade0b88a431ac0882eab930303b9171a5736cf8906f0db7465"
+    },
+    {
+      "path": "src/components/explore/AccountMatrixRadar.tsx",
+      "bytes": 12057,
+      "sha256": "83baa950526098c63324f963b9dd9356342211048d528e29dd6fa2d6fca184d9"
+    },
+    {
+      "path": "src/components/explore/DecisionBriefing.tsx",
+      "bytes": 6400,
+      "sha256": "0930917338abac5b2a10dd054fea3519fdbc9c2095d7b511620756b08f4aaa2f"
+    },
+    {
+      "path": "src/components/explore/HeatRadarDramaSection.tsx",
+      "bytes": 12391,
+      "sha256": "87a8bf8ceaa4936abac5a372473da47f345b9bcc8579caa0d1a217892d6909c6"
+    },
+    {
+      "path": "src/components/explore/PipelineCanvasSection.tsx",
+      "bytes": 12715,
+      "sha256": "751f9039490f68c1dd14930c7260e9f7b16c93d4d032d8845f328b9bf6b8b8b2"
+    },
+    {
+      "path": "src/components/explore/WorkbenchExplore.tsx",
+      "bytes": 7692,
+      "sha256": "239c6f490781cef8bd9a5ac72d08198b7a54be414e92fc30bd405d89de9501f8"
+    },
+    {
+      "path": "src/components/parameters/CopyPoolEditor.tsx",
+      "bytes": 7186,
+      "sha256": "fd75f5d13821e214d58bed1a84dbd1fe9b28b8d3e9bff15df5ca95437faf5403"
+    },
+    {
+      "path": "src/components/parameters/ParameterCenterView.tsx",
+      "bytes": 24822,
+      "sha256": "7c955be53d0772c0ef07f74d259286a5c7aceb670281cc2cabaa68a31e6788a6"
+    },
+    {
+      "path": "src/components/production/ProductionCenter.tsx",
+      "bytes": 117390,
+      "sha256": "7ce0367309cd641b1f51b688e108022e8e8a46d5ba07fd9e0ba6f2fe98953a01"
+    },
+    {
+      "path": "src/components/settings/SettingsView.tsx",
+      "bytes": 55812,
+      "sha256": "9b96e2b4a48403d5582f8b51b75c14871580a2b5b3c69780a2fc7fd1fb838777"
+    },
+    {
+      "path": "src/components/taskcenter/DramaPriorityBanner.tsx",
+      "bytes": 7596,
+      "sha256": "3ca1f046c54bfff2ede5d0416d6ce744c4b36e35d9d9970f4634b23ee842cd3a"
+    },
+    {
+      "path": "src/components/taskcenter/ExecutorsOverview.tsx",
+      "bytes": 16866,
+      "sha256": "e2242e343ed4f9f972bd17bee30b8d970d5774ab0b1017f8540a9892ff659e0a"
+    },
+    {
+      "path": "src/components/taskcenter/TaskCenterModal.tsx",
+      "bytes": 27507,
+      "sha256": "e18fb4b37f22f489fb618b4d72f52f1677ab846f39a2c6328a3bd80c433e0b30"
+    },
+    {
+      "path": "src/components/taskcenter/TaskCenterPreviewPopover.tsx",
+      "bytes": 17526,
+      "sha256": "4ff72f167621f6244fc97b595313f0e14b259214a290e962c83d941ce39b8298"
+    },
+    {
+      "path": "src/components/taskcenter/TaskDetailDrawer.tsx",
+      "bytes": 13045,
+      "sha256": "8720f5708c5eee0b68d53fe2b8f04c63d80b12626f6cfb88e94b447044138aa1"
+    },
+    {
+      "path": "src/components/taskcenter/TaskListSection.tsx",
+      "bytes": 39354,
+      "sha256": "ce1ea0a9f6f3d05563af146ee0d7ceff1f336c24da64049a6cf762c04918d4d4"
+    },
+    {
+      "path": "src/components/taskcenter/taskCenterActionPolicy.ts",
+      "bytes": 2335,
+      "sha256": "40875fd3b8fc5c4f5a487d3da6b563be82b4647bcb41b63e99161a55ad473707"
+    },
+    {
+      "path": "src/components/taskcenter/taskCenterFormat.ts",
+      "bytes": 88,
+      "sha256": "8db7b83a7e1f7e17575a37a240b7a77bbfcade30f832ed486ae387045edae00e"
+    },
+    {
+      "path": "src/components/taskcenter/taskCenterMockData.ts",
+      "bytes": 25185,
+      "sha256": "9fcb8bd33bd75026dc905d1769d0c02b82e52adb9f7868fe2683f5beee0edb4e"
+    },
+    {
+      "path": "src/components/taskcenter/taskCenterPreviewData.ts",
+      "bytes": 1168,
+      "sha256": "30066abd9251aad9be5dc08f6b83678b28de815cb7aad0de9cfaed100c7cb674"
+    },
+    {
+      "path": "src/components/taskcenter/taskCenterTypes.ts",
+      "bytes": 4107,
+      "sha256": "5b158474610c762bd66cc0a014441dc7fca1637789be949ea2bb79d0b70ff477"
+    },
+    {
+      "path": "src/exploreMockData.ts",
+      "bytes": 8588,
+      "sha256": "a44c735e6e6ed2e3eeed4d4594799ab0e54191cf5ebf40cb94c4217c8e444cc1"
+    },
+    {
+      "path": "src/exploreTypes.ts",
+      "bytes": 2016,
+      "sha256": "889e5a7d9d41fb87aaf5cccd1ef3002be082de950eadbc12cc7e5f41188af3e4"
+    },
+    {
+      "path": "src/hooks/useAdaptivePageSize.ts",
+      "bytes": 1118,
+      "sha256": "eb51c60b24725a2e2cb32c6cd249f330d88ae93b41adf2cb8511953402ed3953"
+    },
+    {
+      "path": "src/hooks/useDataArea.ts",
+      "bytes": 1995,
+      "sha256": "54de0b2dbd711d20121c93c47473afb5ef327d966dc858e7b0dab340338b7dd6"
+    },
+    {
+      "path": "src/index.css",
+      "bytes": 1992,
+      "sha256": "9e37d0cc02ba78f53b3b04df39ab69710d0103b1b5dcd7f18dc3e36bd389fa7b"
+    },
+    {
+      "path": "src/main.tsx",
+      "bytes": 231,
+      "sha256": "5580d48b0fec68698a113d45a640b88d479dc35eb1f4b87c51f67c6cc81cee9b"
+    },
+    {
+      "path": "src/mockData.ts",
+      "bytes": 10072,
+      "sha256": "713e9bb0633b931e9ed3289d56d7d6e79ca6c13d27c92758b2cfeabf311c4af8"
+    },
+    {
+      "path": "src/productionMockData.ts",
+      "bytes": 19180,
+      "sha256": "08790322198b586fbddd1a68a0da7e095e94466c34840b6253312ae92524f3af"
+    },
+    {
+      "path": "src/productionTypes.ts",
+      "bytes": 5913,
+      "sha256": "59305142c0307db88fb5717c92bd0624b875f357d4f655559187b69d1bd5ef35"
+    },
+    {
+      "path": "src/services/assetsCenterService.ts",
+      "bytes": 15627,
+      "sha256": "802e641b8a2d7bf0ff6784d24063b853c8b8e4488cea5eea2786b0bb57c0717b"
+    },
+    {
+      "path": "src/services/dataChangeEvents.test.ts",
+      "bytes": 5145,
+      "sha256": "b7caa5fd44cacbd7ed5a8f006e07c01930989e0edfdfa20c00b7306f65b5411e"
+    },
+    {
+      "path": "src/services/dataChangeEvents.ts",
+      "bytes": 4118,
+      "sha256": "e310a863b9e8438f4e78a20642a6df6b5663a366d0eb58777cf15a7f93007bc2"
+    },
+    {
+      "path": "src/services/dataHub.test.ts",
+      "bytes": 9859,
+      "sha256": "fc5437b6bf2353ad6b0974c47c63bf883b0df02310f379550d70ccfa888e6aa8"
+    },
+    {
+      "path": "src/services/dataHub.ts",
+      "bytes": 8687,
+      "sha256": "527fe6af7a11e2ad8d08c672153317dc868642762c9496bbf7db2fb1eee482da"
+    },
+    {
+      "path": "src/services/dataSource.ts",
+      "bytes": 520,
+      "sha256": "8c0bf11ff143b0f0efb98ca5a7e3c6d2e9ab9bee797946591655ff9fd285e7b0"
+    },
+    {
+      "path": "src/services/mockServices.ts",
+      "bytes": 1386,
+      "sha256": "739bb498c88a29eb8779acdcb32de56a795db002843f4930c42966502a4b8b16"
+    },
+    {
+      "path": "src/services/productionFileService.ts",
+      "bytes": 1379,
+      "sha256": "52f62c76904970d59ed27b6917a5806fe99c632719c07be72d3dca52eb39dca8"
+    },
+    {
+      "path": "src/services/productionService.ts",
+      "bytes": 2071,
+      "sha256": "e0d31252b5f0eced6e45bf84f345d45a69ce3c44ceecb313dc100a1deb943d46"
+    },
+    {
+      "path": "src/services/revenueAnalyticsService.ts",
+      "bytes": 9593,
+      "sha256": "09fe718adcb84e3637ff63949ef6185197b0c0ac88f8e0003b26baf32b803dd4"
+    },
+    {
+      "path": "src/services/taskCenterService.ts",
+      "bytes": 2996,
+      "sha256": "1e55daec3ac865010b8f1556a3537988583d9d22262f673022d9d3fd183fec0d"
+    },
+    {
+      "path": "src/types.ts",
+      "bytes": 2523,
+      "sha256": "2e59a7eec8f48e494caf2832c72dfe76c29d7f23c6d28b1bce8f27a2e121859b"
+    },
+    {
+      "path": "src/types/revenue.ts",
+      "bytes": 1283,
+      "sha256": "c9b6c24ffcd201d74839a69c24756cda619c189c2bddc63415cc6cce9ccbf43d"
+    },
+    {
+      "path": "src/types/v1.ts",
+      "bytes": 447,
+      "sha256": "b4e96b3676e125f81f18fec6e745021926137ee7d91fa61d0c8d6a332f810748"
+    },
+    {
+      "path": "src/utils/accountEngine.ts",
+      "bytes": 25084,
+      "sha256": "d080428d0c99f0e6944118c1220911504cd236c8cf49a52548b5ccd72e9d5a16"
+    },
+    {
+      "path": "src/utils/combinationEngine.ts",
+      "bytes": 26709,
+      "sha256": "f51e56db8a9ddfc78bd4e7e7f8a13924c21da817c1a3ba008cb9bb1e25db06ca"
+    },
+    {
+      "path": "src/utils/dateDisplay.ts",
+      "bytes": 1424,
+      "sha256": "95f4509afd4264ae207a5a4bbed71b70953147ee457ab3247f72200fed342ed2"
+    },
+    {
+      "path": "src/utils/dramaEngine.ts",
+      "bytes": 40134,
+      "sha256": "96e398ff692651bf60d57fc6e8977815d5d069eae3f0b6fbf45054ea2442f855"
+    },
+    {
+      "path": "src/utils/duration.ts",
+      "bytes": 1043,
+      "sha256": "49d3607cb2653462693fdf7106e86059c07c99239d9b1f615df372aab1b056c5"
+    },
+    {
+      "path": "src/utils/naturalCompare.ts",
+      "bytes": 1635,
+      "sha256": "c649eac43511c59cb63796962745985681e6be622d7ec7cadb2cca50de040bec"
+    },
+    {
+      "path": "src/utils/resourceMetrics.ts",
+      "bytes": 1755,
+      "sha256": "255f233271b349fc9585520476ae0e48a0f3a4fbf495ec8d256bb914d3ac7f85"
+    },
+    {
+      "path": "src/utils/reuseUnchanged.test.ts",
+      "bytes": 4153,
+      "sha256": "20e2975d6157f74e68d9f71cc34b5efeb1e6ae2aab30f3daf33ff62b4affb116"
+    },
+    {
+      "path": "src/utils/reuseUnchanged.ts",
+      "bytes": 3655,
+      "sha256": "b14ebace4a22bcdc949e81bc32052142828593166f939ff079a4bb0051a5fd00"
+    },
+    {
+      "path": "src/utils/revenueEngine.ts",
+      "bytes": 27149,
+      "sha256": "4cbe266578f61357b06e45d72bffc1012e8fcfa2db963317d192ad6a6eb8490d"
+    },
+    {
+      "path": "src/utils/videoEngine.ts",
+      "bytes": 21892,
+      "sha256": "f33a2e7e38941f86353b9c7b184c09dce74e834a7167913ba741431751259082"
+    },
+    {
+      "path": "src/vite-env.d.ts",
+      "bytes": 38,
+      "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
+    },
+    {
+      "path": "tools/check_feature_archive.py",
+      "bytes": 3286,
+      "sha256": "a7a57f357a2d57c46c3956d26b77d410bc3ba3e3649235a1f3b6242153ae5664"
+    },
+    {
+      "path": "tools/cleanup_orphans.py",
+      "bytes": 4190,
+      "sha256": "d6cd9e95f22188925d5d337cfd87cb800fd398baca5d6396e09c75e7a5d39d10"
+    },
+    {
+      "path": "tools/compare_photo_wall_crop.py",
+      "bytes": 5999,
+      "sha256": "6bfb72798ff6b1fe226094733c87d53801ead5b48fc75a83835bf6b8917283d5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/cyan_stickers.png",
+      "bytes": 1116188,
+      "sha256": "b9b5609e596fd9d49ba2abeaab27c836bb31046081cdfed75c5d4752c02b5330"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/cyan_texture.png",
+      "bytes": 2074982,
+      "sha256": "c17471394fb7d8bbf1ec495784977ee9c31b8163811be914b131a167d21b065e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/generation_manifest.json",
+      "bytes": 2348,
+      "sha256": "26565d624374cea6e6f8089d1819c37a5a8fcd712d91ec6475d5d4878fb1b093"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/gold_stickers.png",
+      "bytes": 1259714,
+      "sha256": "92a26a04501ba54e3d1c5593bed22629653b05e0b5d12e7c98259a1846ee5469"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/gold_texture.png",
+      "bytes": 2393359,
+      "sha256": "158f9773b58af08840061f5fcb3f627b3fc9f80f7920771860e8295eb8c006ae"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/prompts.json",
+      "bytes": 5810,
+      "sha256": "4d8152842cc51067d3411027d98a304946661cc71df2a47c9ed710d4d8d0295a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/purple_stickers.png",
+      "bytes": 1156194,
+      "sha256": "d5dbc566f3857a122eee5d5c2d04a640a0537b0c50898f72e01eedfa1c520114"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/purple_texture.png",
+      "bytes": 3116329,
+      "sha256": "b8c39e20de42210c627afc2e6f088b710300f0af0e3b120ca6857ccff223f4d8"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/素材说明.txt",
+      "bytes": 1071,
+      "sha256": "a583f68108b1ad68fb62f099dd20236537a9d573e842b511fee697d054d195ef"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/A_上下线条贴纸_三方向.jpg",
+      "bytes": 45668,
+      "sha256": "4a827e0abfd3d5041f61b6031398b7845a74c8856c5831df220ab56e4549de1f"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/B_左右纹理_三方向.jpg",
+      "bytes": 330398,
+      "sha256": "a8b28e6ce18ca26602c3957394cb95d3c12a7d32a274918198ea6cf4cfa44323"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/C_小点缀_三方向.jpg",
+      "bytes": 54053,
+      "sha256": "4360bae31b2142ebd8118a4f0653cb1c8711dd90d10f55f0421188ac80fdb4b5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/A1_疏叶枝条.png",
+      "bytes": 469780,
+      "sha256": "61ee0d53fb4c635e39551ec0d783fdc667925ad2f5785eaaf37728cb80b303e7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/A2_云水细线.png",
+      "bytes": 942957,
+      "sha256": "9d17db5573f416c287535ca290270acb4164879d1a1b88d1e2d92fcab7701108"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/A3_柔弧几何.png",
+      "bytes": 239369,
+      "sha256": "c60b7fc61dbc5ffa7708edc66a726e0d595960fc3f9b4e0351c287ea46499b76"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/B1_断续微光.png",
+      "bytes": 2349215,
+      "sha256": "06f5ed1be72151b916bafd9dae5994f88ba8aad81cfbebc804b5b97d31869e3c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/B2_柔和水纹.png",
+      "bytes": 2445746,
+      "sha256": "8809f32983ffb190741c44b6154d9c4938ea15ec952720929b697ac6e7ef559a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/B3_珠光细砂.png",
+      "bytes": 4378325,
+      "sha256": "033c1469e6b9e9731ac201a7b009d581cf8d880b2ad7c1fba3b623480598cbf0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/C1_四角星芒.png",
+      "bytes": 114753,
+      "sha256": "4bc8dfced457979a3e6e5d927309f90c4597d565270d4994fc10877039ec9d96"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/C2_六瓣雪花.png",
+      "bytes": 489143,
+      "sha256": "ea852f2f24a07d247f6f88624ef8b51c40458066c6f8da04abfc10fc70843e50"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/C3_柔光微尘.png",
+      "bytes": 140319,
+      "sha256": "0c6b5831cccdfee52603b93d69fd260af311684649e1ed4c46b14fe5ab3916af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/inspection_initial/A1.png",
+      "bytes": 79575,
+      "sha256": "1d83711ef6e4e2eff77e84e39dd416a533fc3da49058401228d3e6519e3c97b0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/inspection_initial/A2.png",
+      "bytes": 49564,
+      "sha256": "772c8fa8ff4a88ab4843e8716d3264592d02017b1a3b876edbe9debce9e9e67d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/inspection_initial/A3.png",
+      "bytes": 37017,
+      "sha256": "2f3cc0bb64a71d36f7f3dc0ea9e925e15e8135a6335c07e1bd84279c271c609e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/prepare_review.py",
+      "bytes": 8281,
+      "sha256": "8523d2d3370054ed8a13ea4a45c9cd8a69d49aba51139e2510a4b8b3a606ea7b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A1.ffgraph",
+      "bytes": 664,
+      "sha256": "edf881b9765fb999ea99344f3fd99925a2acda8ecebd2114edf3b601d8dfabdd"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A1.png",
+      "bytes": 26590,
+      "sha256": "df9309f2263abff7bb8eec58670d84b8a3a4d4f92ebba5824591429ca7379b30"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A1_label.txt",
+      "bytes": 16,
+      "sha256": "dcd335c1d7ac766bed025973f381538a4a374830bf4fd748a4d42aa57f1d0c03"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A1_note.txt",
+      "bytes": 37,
+      "sha256": "095c4d6994267d2b3feadec5b1d66ad39daa42476a0f7f55089f06e67d009a1a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A2.ffgraph",
+      "bytes": 664,
+      "sha256": "be52747c46aad903c0204e5737deef31e341fc91b3228791437413a4b456b2d4"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A2.png",
+      "bytes": 20830,
+      "sha256": "3dc5c0a9177d3fcfde7ba5777534a424d5c123bf195a137e5ee80b214121e185"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A2_label.txt",
+      "bytes": 16,
+      "sha256": "172c3f769ad3e6c268ae252368e72c2b076ec1d68bc1fba52d3019462fc1d546"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A2_note.txt",
+      "bytes": 37,
+      "sha256": "095c4d6994267d2b3feadec5b1d66ad39daa42476a0f7f55089f06e67d009a1a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A3.ffgraph",
+      "bytes": 665,
+      "sha256": "38f8895bdcce3e496b7739c8e23ee33fee1e25edcbc8f594e1eb62b91a1cc38c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A3.png",
+      "bytes": 18147,
+      "sha256": "8dcc5c3bcd1f91d7a7dcb16f3d6313e4234ef7476dabfeca5a5a62ac2d877b7c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A3_label.txt",
+      "bytes": 16,
+      "sha256": "cef63853405eb55c9cb0c80657ece8131d20e24d9faba27239c7bb9070f309de"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/A3_note.txt",
+      "bytes": 37,
+      "sha256": "095c4d6994267d2b3feadec5b1d66ad39daa42476a0f7f55089f06e67d009a1a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B1.ffgraph",
+      "bytes": 663,
+      "sha256": "2d4f5f4c03a3a390c48d58d474dabf040e8f941774d705f7e477c0140498a15d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B1.png",
+      "bytes": 467755,
+      "sha256": "ab29d5eb65f3a94a1f3db7d3a59bcf40ae265c0ae75d6b76e760134341c20036"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B1_label.txt",
+      "bytes": 16,
+      "sha256": "ab4070c30b8bd24132e148bcd53359c8e682aa86bb872559fc96e02f2bc9dc52"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B1_note.txt",
+      "bytes": 37,
+      "sha256": "e79d5fa0cb4ef8ff08f5fdcb97d6f904e487a823bf82a3802f58831c58e2737d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B2.ffgraph",
+      "bytes": 663,
+      "sha256": "33e42333fdae4396341763f31b1fc55d54fc16675c0f2a5f0b487b1e0bc5ec97"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B2.png",
+      "bytes": 496178,
+      "sha256": "32dcbbce2d453a2b85e2af4dc751af84fe1b21a2a5f1b23b83e2f0c958e6332b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B2_label.txt",
+      "bytes": 16,
+      "sha256": "1b6617a0cf417f5da3e0bd7e5a304f633e0d8d6d11ed90513c44a8981cc40e08"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B2_note.txt",
+      "bytes": 37,
+      "sha256": "e79d5fa0cb4ef8ff08f5fdcb97d6f904e487a823bf82a3802f58831c58e2737d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B3.ffgraph",
+      "bytes": 663,
+      "sha256": "098b5420339c6a1361168a82dc74ac0033b8547f7e6923b6d8904fa130158c1d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B3.png",
+      "bytes": 573351,
+      "sha256": "6d31ca0622e8b659c63d46824831ed08c4f127cba0d62d016e1c09ac95789b9a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B3_label.txt",
+      "bytes": 16,
+      "sha256": "54249c853ee70c46581c5d87fa4b84dad103bd468fb06077196fd9c579c443a0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/B3_note.txt",
+      "bytes": 37,
+      "sha256": "e79d5fa0cb4ef8ff08f5fdcb97d6f904e487a823bf82a3802f58831c58e2737d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C1.ffgraph",
+      "bytes": 665,
+      "sha256": "c9326de5efdec39a5e859e63561cdbc4c46b08bb69654e860fbb80120983f065"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C1.png",
+      "bytes": 23014,
+      "sha256": "b37bca6fc0e8a80f187e378e67497f8cba9a09205c3fd89ad81f0e99f709960d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C1_label.txt",
+      "bytes": 16,
+      "sha256": "04c50f28e1a90824103b1f19d3862763fc622fc4513fa4feb799759debbf5c7c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C1_note.txt",
+      "bytes": 43,
+      "sha256": "6375342fdbef526ad993ba71052c5aa26b0267a89d12c7e120b0c1fe0e3042b0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C2.ffgraph",
+      "bytes": 665,
+      "sha256": "5e40029400ddd5632fb797bae607b77537579b0b81711186fe2f8a6c0c1f94ba"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C2.png",
+      "bytes": 56274,
+      "sha256": "810710a90e20fb0af4a3271dd83e5a31b978f08171d479728a1529c633424824"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C2_label.txt",
+      "bytes": 16,
+      "sha256": "a0646dc631c8881b1b588bb86c082fcc22b6ae2ee2af16a5a8c787f56e991049"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C2_note.txt",
+      "bytes": 43,
+      "sha256": "6375342fdbef526ad993ba71052c5aa26b0267a89d12c7e120b0c1fe0e3042b0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C3.ffgraph",
+      "bytes": 665,
+      "sha256": "f5ad878bc7c9c655e1bb2747c84df1050a8f6c384240c11c186ba85da2eb009a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C3.png",
+      "bytes": 65227,
+      "sha256": "21b43bb490ffdbc0bfc714bb2c130d9807d3b646c77d33d088fb8f521b8a4469"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C3_label.txt",
+      "bytes": 16,
+      "sha256": "d2321677196bc1821e0f961d70b4d32bcf27f954d4cc46ba27803a382bf9cfa2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/previews/C3_note.txt",
+      "bytes": 43,
+      "sha256": "6375342fdbef526ad993ba71052c5aa26b0267a89d12c7e120b0c1fe0e3042b0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/prompts.json",
+      "bytes": 11706,
+      "sha256": "1b58d9514bad7d30c1b7d1050a670f031999ae7df9951e840a0b85b19314e662"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/review_manifest.json",
+      "bytes": 17401,
+      "sha256": "c83adb069e256a7d107d36a1de5db9d32a485efebb53bc7d82831f72a3f80811"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/source_manifest.json",
+      "bytes": 6897,
+      "sha256": "6c063ae59a60fb84f563a719325f92a4893ede0616774c22b8eb0d860041e4f3"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/先看样图.html",
+      "bytes": 14441,
+      "sha256": "b3b77ae4b2856e3aeff5bcc3c18caadf2fe5dbef076982e9138af67470ff3d80"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/提示词中文说明.md",
+      "bytes": 3362,
+      "sha256": "0745bdadf61fa0643c31f691defd02cc18f1ce6a396774fe98579431f71fa7fd"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A1.png",
+      "bytes": 5718,
+      "sha256": "873849a76f29e0c65cdbd8a35a8f133c62f990b7f5958971ce6ca79e08cc7167"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A2.png",
+      "bytes": 10724,
+      "sha256": "3f68b7af25706737aa3abe53aba3839b1160f54f8af313e1f254d8eee6e0dd0e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A3.png",
+      "bytes": 22051,
+      "sha256": "7eb2fd599939e62e4c0e3afbb64984c6753a0de0449461767b401c2bf2831964"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A4.png",
+      "bytes": 10238,
+      "sha256": "4473702fe10b3d86f18985228bfe09f1ce021221e9a5f01e1fff96a5a0808dca"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A_note.txt",
+      "bytes": 43,
+      "sha256": "fcf074d49e8c58f862d4f665824afc4d1eb6cca828e18323b7a02c2ffa8b1969"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A_title.txt",
+      "bytes": 18,
+      "sha256": "b5b36ff1a2e60e7def1b3929baf67b8fa5ac264de630afca5407e3711faaf118"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A_参考.ffgraph",
+      "bytes": 574,
+      "sha256": "8a519af4efb791cc759797f290b103f2051c84cf5430aabc1bc2413e87865ce7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A_参考.jpg",
+      "bytes": 34508,
+      "sha256": "6b9271d8f680a1cf46249fcb3925498a51129a07658a826f073b804c007ba40f"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B1.png",
+      "bytes": 701,
+      "sha256": "f70810ffe058475363a16de88430e6649a182101d9faed9efbba1892f1ca2225"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B1_v2.png",
+      "bytes": 26664,
+      "sha256": "63bc4cebc57e4bb65d6d8e4fd3bb084e61a87ca7726b600fc8dc60b8936f74e2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B2.png",
+      "bytes": 701,
+      "sha256": "f70810ffe058475363a16de88430e6649a182101d9faed9efbba1892f1ca2225"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B2_v2.png",
+      "bytes": 31999,
+      "sha256": "6e53877e90fed4bc13edb013281e58a568fc86651aea2d3320410345c3e10d1c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B3.png",
+      "bytes": 701,
+      "sha256": "f70810ffe058475363a16de88430e6649a182101d9faed9efbba1892f1ca2225"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B3_v2.png",
+      "bytes": 27152,
+      "sha256": "3544407d7f63fd5e4ac246ed9626a52490e6a890f80aaf00d48219ee6ab23a0b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B4.png",
+      "bytes": 701,
+      "sha256": "f70810ffe058475363a16de88430e6649a182101d9faed9efbba1892f1ca2225"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B4_v2.png",
+      "bytes": 35421,
+      "sha256": "b6677de24df2f7e6a6d7e93a3e9054469d3a1e1155d6ccdbc4866dd019c912ef"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B_note.txt",
+      "bytes": 43,
+      "sha256": "fcf074d49e8c58f862d4f665824afc4d1eb6cca828e18323b7a02c2ffa8b1969"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B_title.txt",
+      "bytes": 18,
+      "sha256": "4696c55a213138eadf870a5bdd955df534ae467d372793c0654a58ffc6db1f10"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B_参考.ffgraph",
+      "bytes": 574,
+      "sha256": "99a01de86f817483d6066a2cd2783f856adb3bbf9571c230bd7280f6757e7503"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B_参考.jpg",
+      "bytes": 14119,
+      "sha256": "fdf9cb441ca07b2ba9633bbe0779b1bef54a1fda1c621a823e50681f136df6ad"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B_参考_v2.ffgraph",
+      "bytes": 574,
+      "sha256": "99a01de86f817483d6066a2cd2783f856adb3bbf9571c230bd7280f6757e7503"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B_参考_v2.jpg",
+      "bytes": 62580,
+      "sha256": "0a4893b84d9ae6dc4651e5c2a70cfa398673a1d657cd176dbdb7d68dfe093f47"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C1.png",
+      "bytes": 30157,
+      "sha256": "c6fdd937f76e512066e49291071936b78e9ec45b4f6f82bc8a3a6aac355e236c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C2.png",
+      "bytes": 35283,
+      "sha256": "1a26b39139cfb1d2c52a5b2053eb63eadbbf8cfccb92196ec2c4d2f0564b80b6"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C3.png",
+      "bytes": 18706,
+      "sha256": "704c67750c933794a864620618b781f753e0e324290616ef53f88fbd565681db"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C4.png",
+      "bytes": 20984,
+      "sha256": "a94175c5d03d6c6c201e0337c9469604f1274bbe7575f5675562de66a37abe1e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C_note.txt",
+      "bytes": 43,
+      "sha256": "fcf074d49e8c58f862d4f665824afc4d1eb6cca828e18323b7a02c2ffa8b1969"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C_title.txt",
+      "bytes": 18,
+      "sha256": "a700100ab70ebda57efa669709a2997b8fd11c9a87da190e156817e6abc327bd"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C_参考.ffgraph",
+      "bytes": 574,
+      "sha256": "749dfe2dc9783c183fd6e97661cb5b665a1762575a97b602ef0e64a922d68e73"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C_参考.jpg",
+      "bytes": 33952,
+      "sha256": "8a533bac78197d350a1e6ae505ae43767936ccdb350e8858b58d81f090d1b143"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D1.png",
+      "bytes": 11129,
+      "sha256": "3f2dc8e22a46c3c4568c7244faaa2c516f464142d8535d0c2c6221fe5a09453a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D2.png",
+      "bytes": 20428,
+      "sha256": "691ea43fc361dcd05c0979b2e0ee5d5839d7413acbf762a7c5951cc322cede4e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D3.png",
+      "bytes": 10963,
+      "sha256": "4e607cb352217b97e6608cc5183edede87478169eb24c86f55b934e089e4b291"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D4.png",
+      "bytes": 9993,
+      "sha256": "bc485e302430dbfc1edc05d238ac607545585f77536bb41132123f9714ff0baf"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D_note.txt",
+      "bytes": 43,
+      "sha256": "fcf074d49e8c58f862d4f665824afc4d1eb6cca828e18323b7a02c2ffa8b1969"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D_title.txt",
+      "bytes": 21,
+      "sha256": "e55eedb9afe8576766d3f0b8b7450ea999a1a246b2074f6ec35f5525ba8076d9"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D_参考.ffgraph",
+      "bytes": 574,
+      "sha256": "27ac331b0d70bbbd8ce597b885a8df7f2f1c402a70b9970fad1e2c237f4f9fa6"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D_参考.jpg",
+      "bytes": 36981,
+      "sha256": "958f125a5ad93fdc44c56dccf5463e916a83df09806c3bc9062b00d8470253ba"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E1.png",
+      "bytes": 16294,
+      "sha256": "cacccbb15c594e853fd5b92821206066719acfe4ab895572395fab1d5168bcc2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E2.png",
+      "bytes": 10986,
+      "sha256": "a0c7fc494c4e843a11a9b052a84271c28921045a3b9b7a096ce0a58cbffea7c0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E3.png",
+      "bytes": 9453,
+      "sha256": "8f4fffe598f52ababbf7cca19658d679c3a1f158aad1f4539ee6d3cfa2733e6b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E4.png",
+      "bytes": 19246,
+      "sha256": "189e83190b6355e589240096f622a0671bad95f5940c3f0ca547252728f456a6"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E_note.txt",
+      "bytes": 43,
+      "sha256": "fcf074d49e8c58f862d4f665824afc4d1eb6cca828e18323b7a02c2ffa8b1969"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E_title.txt",
+      "bytes": 21,
+      "sha256": "39f6b6a99b7d89686f69557e44dace762bce20f6b2690a38f00c1ba97260e376"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E_参考.ffgraph",
+      "bytes": 574,
+      "sha256": "0cec2a503b6dc6ec15378fa5e6b694b59d84e8cba900a0c6fa8c4b6c7cd23f8d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E_参考.jpg",
+      "bytes": 38516,
+      "sha256": "cefdb61196724eccda06622de7a4fe534f7eb31c251a8db21b5f5309b3c28efd"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F1.png",
+      "bytes": 701,
+      "sha256": "f70810ffe058475363a16de88430e6649a182101d9faed9efbba1892f1ca2225"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F1_v2.png",
+      "bytes": 12160,
+      "sha256": "c1985dc37dff7b76ed523b148c5e690248eaae36f4fb5142e82fd6a4d957033d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F2.png",
+      "bytes": 701,
+      "sha256": "f70810ffe058475363a16de88430e6649a182101d9faed9efbba1892f1ca2225"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F2_v2.png",
+      "bytes": 11919,
+      "sha256": "5b4e1b5fc5887a48629501035fb077f969a538c6b84a6d84ccf31ae1ccbba31d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F3.png",
+      "bytes": 701,
+      "sha256": "f70810ffe058475363a16de88430e6649a182101d9faed9efbba1892f1ca2225"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F3_v2.png",
+      "bytes": 16107,
+      "sha256": "63d8ab8e885b91904fb848d67a8b8f35e3d6a0c98436b7c301c91ef874bac8bc"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F4.png",
+      "bytes": 701,
+      "sha256": "f70810ffe058475363a16de88430e6649a182101d9faed9efbba1892f1ca2225"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F4_v2.png",
+      "bytes": 11607,
+      "sha256": "1b483c709e92d823470b88be7ddce7adffc1c61179f92f9dd149862d427e63e1"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F_note.txt",
+      "bytes": 43,
+      "sha256": "fcf074d49e8c58f862d4f665824afc4d1eb6cca828e18323b7a02c2ffa8b1969"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F_title.txt",
+      "bytes": 21,
+      "sha256": "d9de442972dfc82b66fb084251a55b3c87d9407678003f4faacaba32c2879dcf"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F_参考.ffgraph",
+      "bytes": 574,
+      "sha256": "d02be60bafcb8d8fa55bbda347a195a1e21f71f20c97fe64da7f0863144abedb"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F_参考.jpg",
+      "bytes": 14774,
+      "sha256": "371b278507c299256c450b1195364a2dab654ea0413e8504941f996d0b45550c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F_参考_v2.ffgraph",
+      "bytes": 574,
+      "sha256": "d02be60bafcb8d8fa55bbda347a195a1e21f71f20c97fe64da7f0863144abedb"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F_参考_v2.jpg",
+      "bytes": 37181,
+      "sha256": "7dacb721863c06d68c71cb82587e07f5f4c86bc0ed731cf7f582e2e4144a43b2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/checks.json",
+      "bytes": 394,
+      "sha256": "8a20eb5a1413dfe122cc0a1dec906b6ae6429b9414a7532ab6dbf302ad79cb97"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/selection.json",
+      "bytes": 1411,
+      "sha256": "f4238b123a80a7e2fa2f6de590a7540311f808b1469a8eaa6398118cf19782c3"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/sources.json",
+      "bytes": 12769,
+      "sha256": "48987406cd231b415821bcb57cc553306e6b572f3ac254bcb161e0994a814b14"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/sources_v2.json",
+      "bytes": 13817,
+      "sha256": "541339f05651c4d96b6befa50e2d8f340c6520b10eb4791b52e23b4f5e91fdc3"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/六组现成素材_只看视觉方向.ffgraph",
+      "bytes": 73,
+      "sha256": "717135d932914e728521e07ccd0013f85ee2e0fa9f7f972c4e3e89bb7bf93010"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/六组现成素材_只看视觉方向.jpg",
+      "bytes": 170884,
+      "sha256": "ac48c5380423f0492a75256a02d744ebde61059e5d850aa75caf0f68567b5efd"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/六组现成素材_只看视觉方向_v2.ffgraph",
+      "bytes": 73,
+      "sha256": "717135d932914e728521e07ccd0013f85ee2e0fa9f7f972c4e3e89bb7bf93010"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/六组现成素材_只看视觉方向_v2.jpg",
+      "bytes": 241414,
+      "sha256": "3991a5f9184736b5b65c26620d9e7a720670d963edec8160d306f8107c913aaa"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/baseline.command.json",
+      "bytes": 932,
+      "sha256": "a6969a97655ce587023e22ff9c07bfcad7d6de9030e7277f90ddb66671188312"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/baseline_sources.json",
+      "bytes": 724,
+      "sha256": "60d491742a16907bfc1b13b7e088e2ab1ec1a4fb4bb635134626b8256b2c88f2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/boards/board_1.png",
+      "bytes": 800167,
+      "sha256": "eaac135184e58595a0da099b068486d883f9f67d00428a102082766630a89065"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/boards/board_2.png",
+      "bytes": 270681,
+      "sha256": "6ffd363dd0b8d08847493f425284d2f94df74cd8a33f7299b11a055d512eef73"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/prepare_sets.py",
+      "bytes": 9295,
+      "sha256": "7a1c335a9c170028b40a6479efa144256ab5b9a097cb15fb1379f241a4d1d2f7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_detail_card.ffgraph",
+      "bytes": 455,
+      "sha256": "62db78dc7a88cfc91f2556002e711f3dc8327d90e25c5746e66b6cb7ea3a1c01"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_detail_card.png",
+      "bytes": 73784,
+      "sha256": "f3084bb7a84029fabf7f9f8c2718da5ca750243f18b6128c4e1d0d89d15f1582"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_film_card.ffgraph",
+      "bytes": 387,
+      "sha256": "40ca9fbe1be5cf54ddca5a476545273bfdc9cd5f45c2e6ce336790424717a2e2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_film_card.png",
+      "bytes": 659893,
+      "sha256": "93a41a3b27d586992d18f81b13b8d2eabf2bc3807d6268da34b3c8a970ed7968"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_label.txt",
+      "bytes": 15,
+      "sha256": "832d7a25b04f93a0e98adefa95f730973651d97d9c7c0eeaa69fe7e20cb428fa"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_neutral_card.ffgraph",
+      "bytes": 387,
+      "sha256": "40ca9fbe1be5cf54ddca5a476545273bfdc9cd5f45c2e6ce336790424717a2e2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_neutral_card.png",
+      "bytes": 39216,
+      "sha256": "35ecc4f9846e420314411869ea8eb085b480151016e41eb57c313823ce9aa25a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/01_同帧.png",
+      "bytes": 4299919,
+      "sha256": "8391e41f0f66680dbf7e3f03311fbd7a45839f1d31ca618323741515e489524a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_detail_card.ffgraph",
+      "bytes": 455,
+      "sha256": "359f022b6e690f2ad689ef8bfaeda648427fbfdc5ea9c4801eab812467fe8e56"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_detail_card.png",
+      "bytes": 130813,
+      "sha256": "a1194a73ac696f93155d9aefd36a8d41790baef7dec55771615d4e41ef31f9e9"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_film_card.ffgraph",
+      "bytes": 387,
+      "sha256": "1386a1bffcf94ca69474a7fdc8e2afee80df65dccaa975ffa3299fbc7f63faec"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_film_card.png",
+      "bytes": 663885,
+      "sha256": "2d40f1c52085cc3bfe45dd60acdc4e86c4dbef951e0e937b79fa9d8b31c35fc2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_label.txt",
+      "bytes": 15,
+      "sha256": "7fd91efdf639086da65969632f67b476150133deb9b8e728ea4ae933d1eaf394"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_neutral_card.ffgraph",
+      "bytes": 387,
+      "sha256": "1386a1bffcf94ca69474a7fdc8e2afee80df65dccaa975ffa3299fbc7f63faec"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_neutral_card.png",
+      "bytes": 65508,
+      "sha256": "56d7330764b490f991a9a5fb4985baa618f3d4199ac414320a26cd74a08f85a9"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/02_同帧.png",
+      "bytes": 4375445,
+      "sha256": "8ebc0fa73726ea1c9b5ca8b2a245cb08437efc737ac0a11e0bec60b02e39b94a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_detail_card.ffgraph",
+      "bytes": 455,
+      "sha256": "cd301d0041eca7d72342b7e563883c58fddff7daeb0e8e210c050d7586c54da9"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_detail_card.png",
+      "bytes": 75517,
+      "sha256": "49c03e7c92f8f9d59a2723c1edadded184ed1b9e6d89c4189fa456c9c2991881"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_film_card.ffgraph",
+      "bytes": 387,
+      "sha256": "fe048ca4c60de26f1ef8cac313eb8179a97a7ae201acf608697fbd551c3c9392"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_film_card.png",
+      "bytes": 662330,
+      "sha256": "b43e510174b837c1bbb8fa94a0fbb69445c325b858909d63002540fed8041a3e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_label.txt",
+      "bytes": 15,
+      "sha256": "5a5ca14c137578d6f7aac926f6477b26e8c0cf77170f3e09a86585d2512e0145"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_neutral_card.ffgraph",
+      "bytes": 387,
+      "sha256": "fe048ca4c60de26f1ef8cac313eb8179a97a7ae201acf608697fbd551c3c9392"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_neutral_card.png",
+      "bytes": 40336,
+      "sha256": "d394fb3975dbe5046e2774da2e4c39dd3b9e2f2a5edf888e99643e4f60bc479e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/03_同帧.png",
+      "bytes": 4337359,
+      "sha256": "0e1d268fceba5d04a9a1ff8490e7b66a44895ab10d679ad3c01aac29e8662bda"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_detail_card.ffgraph",
+      "bytes": 455,
+      "sha256": "51cf85d570e21a24f46c28ccdf12477d677edfcdf818aa4cc8e3def300df91c0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_detail_card.png",
+      "bytes": 34496,
+      "sha256": "de55b615a09db18ec036de99674062f608352cdfa9d2ebb917443c0a5b6302f5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_film_card.ffgraph",
+      "bytes": 387,
+      "sha256": "8af05cb3a26d06a0210bce3ca35c43b49dc1764230c89c3d05a77eaa47e9d222"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_film_card.png",
+      "bytes": 654818,
+      "sha256": "d9f9846dfb5941a0add0ad3a4bbad39b1210cc836d208a5012877a4dc9888e05"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_label.txt",
+      "bytes": 15,
+      "sha256": "c58b93b239fc639f74d1fe4cf6df4f9307e18b836a3aa1d3ff90aed835fb6d29"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_neutral_card.ffgraph",
+      "bytes": 387,
+      "sha256": "8af05cb3a26d06a0210bce3ca35c43b49dc1764230c89c3d05a77eaa47e9d222"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_neutral_card.png",
+      "bytes": 19892,
+      "sha256": "50a7a869904d9d75399d3995888bc61dd002143ea0806c5c43a16baede1cb6c6"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/04_同帧.png",
+      "bytes": 4238688,
+      "sha256": "652d3614b1f23d153c7b54a54ef1d236d3f30e5a14be6fb3c43da4a0e578a9f1"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_detail_card.ffgraph",
+      "bytes": 455,
+      "sha256": "b3f8567ce028a5958dc27d528ae51ef94e113a4f4adcaaebcede48e2a3a3cc97"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_detail_card.png",
+      "bytes": 61807,
+      "sha256": "4ed26e0e7f07b2aaf5b7ed64048f90f5245c7062c5fd431f496ec24072aacd34"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_film_card.ffgraph",
+      "bytes": 387,
+      "sha256": "1f862279af02ada3c5b8efc9d560b15d20ccfa838bfdd3d382eab50004725261"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_film_card.png",
+      "bytes": 658481,
+      "sha256": "0a8fb472811f4e591ee1a62951c65a478210f332fdbef459326145dc6aadee0b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_label.txt",
+      "bytes": 15,
+      "sha256": "dd31291116d62bea010904b78a9c992e002037e1cbb97b384c60c816d62846b5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_neutral_card.ffgraph",
+      "bytes": 387,
+      "sha256": "1f862279af02ada3c5b8efc9d560b15d20ccfa838bfdd3d382eab50004725261"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_neutral_card.png",
+      "bytes": 32721,
+      "sha256": "7a45822a1bc034e412bbe70f9b3e569aae92b47a2eeab9ca6106dad322fea7f0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/05_同帧.png",
+      "bytes": 4292033,
+      "sha256": "43a8172867700e59ca1cb4bd22253071482547794809eecb23aab15f1b56cfca"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_detail_card.ffgraph",
+      "bytes": 455,
+      "sha256": "af75ecdcf6ef60e5e3fb6a9c7ea08be12beb017aee6f8a1831be52b7369fd23a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_detail_card.png",
+      "bytes": 57252,
+      "sha256": "3fa88e2b6f5e01aeab66ba1138f0fb0abe56d73c64fc794415221ebc8c493dad"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_film_card.ffgraph",
+      "bytes": 387,
+      "sha256": "e0cb530e3f2b73933fd8c9c9f092e5b0b9cf7f30028bb9afdeefb285585b887b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_film_card.png",
+      "bytes": 658085,
+      "sha256": "5192d973afc0a14b26af7897e8cc9508ce6ec31c0c7e91d4b100360db7a14eea"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_label.txt",
+      "bytes": 15,
+      "sha256": "ff3c0ea31e3fb6409d23d50cd6ef99308a210dde775d8feb0acfed26e098794d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_neutral_card.ffgraph",
+      "bytes": 387,
+      "sha256": "e0cb530e3f2b73933fd8c9c9f092e5b0b9cf7f30028bb9afdeefb285585b887b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_neutral_card.png",
+      "bytes": 30268,
+      "sha256": "482b4aaef9007f173b643de338034f703e64656e84065f0864ed099a5c122bba"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/previews/06_同帧.png",
+      "bytes": 4274727,
+      "sha256": "37db9f80341996d48e7341c77c1f92a34b0f41085177892e3a8bff4f808dc794"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/prompts.json",
+      "bytes": 11406,
+      "sha256": "dff64e5d02a09533ecb64f6dedcf3987bb8d0929aa4152ea77b1fc47105e1ba2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_manifest.json",
+      "bytes": 12198,
+      "sha256": "b58d6445e067891b0dd75f5c5a743f86bfa3c7218eca939e0711ee26bdad86b9"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/boards/board_1.png",
+      "bytes": 800167,
+      "sha256": "eaac135184e58595a0da099b068486d883f9f67d00428a102082766630a89065"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/boards/board_2.png",
+      "bytes": 270681,
+      "sha256": "6ffd363dd0b8d08847493f425284d2f94df74cd8a33f7299b11a055d512eef73"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_detail_card.ffgraph",
+      "bytes": 465,
+      "sha256": "45c42d5f5507f004ab2b72050a873a1f9c7dfe81bb5b4b7c28f6adadec9cf090"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_detail_card.png",
+      "bytes": 73784,
+      "sha256": "f3084bb7a84029fabf7f9f8c2718da5ca750243f18b6128c4e1d0d89d15f1582"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_film_card.ffgraph",
+      "bytes": 397,
+      "sha256": "ed346014c0396802a326fdf4afcae460bd211f7b3d8a1fd796cd0abfa3cea647"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_film_card.png",
+      "bytes": 659893,
+      "sha256": "93a41a3b27d586992d18f81b13b8d2eabf2bc3807d6268da34b3c8a970ed7968"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_label.txt",
+      "bytes": 15,
+      "sha256": "832d7a25b04f93a0e98adefa95f730973651d97d9c7c0eeaa69fe7e20cb428fa"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_neutral_card.ffgraph",
+      "bytes": 397,
+      "sha256": "ed346014c0396802a326fdf4afcae460bd211f7b3d8a1fd796cd0abfa3cea647"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_neutral_card.png",
+      "bytes": 39216,
+      "sha256": "35ecc4f9846e420314411869ea8eb085b480151016e41eb57c313823ce9aa25a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/01_同帧.png",
+      "bytes": 4299919,
+      "sha256": "8391e41f0f66680dbf7e3f03311fbd7a45839f1d31ca618323741515e489524a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_detail_card.ffgraph",
+      "bytes": 465,
+      "sha256": "44d87c24a61617d292624c537eade3382f6514a5c37cefd19626b4ecc2ee4f50"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_detail_card.png",
+      "bytes": 102451,
+      "sha256": "f69be4eec0bc8b6a9c1f056e2c54e51b7fa35562188747fedefa2a244170aeb5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_film_card.ffgraph",
+      "bytes": 397,
+      "sha256": "c2abcedc858401a2869f661cbff45645b139f4e99f47382aa942ab8d3a664d6f"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_film_card.png",
+      "bytes": 661676,
+      "sha256": "3051c6d37dc766d2426818e8b0ef6d8b9bbb2045dfdee03354548d6ebfb8aa3e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_label.txt",
+      "bytes": 15,
+      "sha256": "7fd91efdf639086da65969632f67b476150133deb9b8e728ea4ae933d1eaf394"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_neutral_card.ffgraph",
+      "bytes": 397,
+      "sha256": "c2abcedc858401a2869f661cbff45645b139f4e99f47382aa942ab8d3a664d6f"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_neutral_card.png",
+      "bytes": 52535,
+      "sha256": "52ab5418cc2b784999a585a06f456e1b86be111a4f48c9e54db2063cd54b0348"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/02_同帧.png",
+      "bytes": 4337052,
+      "sha256": "8ba53aa0aed19567e5e2223dfe4959c678508b6c4dec4fecdfed2096621f0ff5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_detail_card.ffgraph",
+      "bytes": 465,
+      "sha256": "651517c6d8b322bc70ad049903c38e2288d59408e847cc421e10feff0c5cd5b7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_detail_card.png",
+      "bytes": 70500,
+      "sha256": "999b8dcf3dd9a540dd26de31d922045f16e2e08182e812388e287f61c4db2a24"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_film_card.ffgraph",
+      "bytes": 397,
+      "sha256": "9ce25c7243c7b9d31c8a01e1334ddd3b4b4e608f711abdc3f792eed5a0cd4bf7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_film_card.png",
+      "bytes": 661852,
+      "sha256": "a44e18b111e421ab3805d2ad2522c9042ac96cdb4338696104e60c3ff0c32dc7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_label.txt",
+      "bytes": 15,
+      "sha256": "5a5ca14c137578d6f7aac926f6477b26e8c0cf77170f3e09a86585d2512e0145"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_neutral_card.ffgraph",
+      "bytes": 397,
+      "sha256": "9ce25c7243c7b9d31c8a01e1334ddd3b4b4e608f711abdc3f792eed5a0cd4bf7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_neutral_card.png",
+      "bytes": 38064,
+      "sha256": "ac2c753f9cbd72616bae938fc7a7265a3e8e5e06e90bfd971732808302fd50a4"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/03_同帧.png",
+      "bytes": 4329037,
+      "sha256": "3989343305156a227aaf023ca276816449c93cf04d1ec5a8b3f081204a9ab391"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_detail_card.ffgraph",
+      "bytes": 465,
+      "sha256": "a1029a68588bde9b462635e38febc672c823d7f126ec27da25a88c1c14b63628"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_detail_card.png",
+      "bytes": 34496,
+      "sha256": "de55b615a09db18ec036de99674062f608352cdfa9d2ebb917443c0a5b6302f5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_film_card.ffgraph",
+      "bytes": 397,
+      "sha256": "a05db517c5124b7593751cdf1e8dcfc2437522a12e6f621daa2b018398858543"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_film_card.png",
+      "bytes": 654818,
+      "sha256": "d9f9846dfb5941a0add0ad3a4bbad39b1210cc836d208a5012877a4dc9888e05"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_label.txt",
+      "bytes": 15,
+      "sha256": "c58b93b239fc639f74d1fe4cf6df4f9307e18b836a3aa1d3ff90aed835fb6d29"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_neutral_card.ffgraph",
+      "bytes": 397,
+      "sha256": "a05db517c5124b7593751cdf1e8dcfc2437522a12e6f621daa2b018398858543"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_neutral_card.png",
+      "bytes": 19892,
+      "sha256": "50a7a869904d9d75399d3995888bc61dd002143ea0806c5c43a16baede1cb6c6"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/04_同帧.png",
+      "bytes": 4238688,
+      "sha256": "652d3614b1f23d153c7b54a54ef1d236d3f30e5a14be6fb3c43da4a0e578a9f1"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_detail_card.ffgraph",
+      "bytes": 465,
+      "sha256": "a3d0186e18460c1706b571f67bce01103d3fa9652f13df4e8a8dbc20bab5a78a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_detail_card.png",
+      "bytes": 61807,
+      "sha256": "4ed26e0e7f07b2aaf5b7ed64048f90f5245c7062c5fd431f496ec24072aacd34"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_film_card.ffgraph",
+      "bytes": 397,
+      "sha256": "ded8e383887d888b4fe921fa9ebafb01a90345aac7bfec340465d02d54f5250d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_film_card.png",
+      "bytes": 658481,
+      "sha256": "0a8fb472811f4e591ee1a62951c65a478210f332fdbef459326145dc6aadee0b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_label.txt",
+      "bytes": 15,
+      "sha256": "dd31291116d62bea010904b78a9c992e002037e1cbb97b384c60c816d62846b5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_neutral_card.ffgraph",
+      "bytes": 397,
+      "sha256": "ded8e383887d888b4fe921fa9ebafb01a90345aac7bfec340465d02d54f5250d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_neutral_card.png",
+      "bytes": 32721,
+      "sha256": "7a45822a1bc034e412bbe70f9b3e569aae92b47a2eeab9ca6106dad322fea7f0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/05_同帧.png",
+      "bytes": 4292033,
+      "sha256": "43a8172867700e59ca1cb4bd22253071482547794809eecb23aab15f1b56cfca"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_detail_card.ffgraph",
+      "bytes": 465,
+      "sha256": "ad129d8ef4748cb626b5584396319db34597ba93e6643650d4905bdeb36be302"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_detail_card.png",
+      "bytes": 57252,
+      "sha256": "3fa88e2b6f5e01aeab66ba1138f0fb0abe56d73c64fc794415221ebc8c493dad"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_film_card.ffgraph",
+      "bytes": 397,
+      "sha256": "51cd72f46d275e80e26a3853092e5b40ccc29b6585058447012b7ca051787900"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_film_card.png",
+      "bytes": 658085,
+      "sha256": "5192d973afc0a14b26af7897e8cc9508ce6ec31c0c7e91d4b100360db7a14eea"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_label.txt",
+      "bytes": 15,
+      "sha256": "ff3c0ea31e3fb6409d23d50cd6ef99308a210dde775d8feb0acfed26e098794d"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_neutral_card.ffgraph",
+      "bytes": 397,
+      "sha256": "51cd72f46d275e80e26a3853092e5b40ccc29b6585058447012b7ca051787900"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_neutral_card.png",
+      "bytes": 30268,
+      "sha256": "482b4aaef9007f173b643de338034f703e64656e84065f0864ed099a5c122bba"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_同帧.ffgraph",
+      "bytes": 111,
+      "sha256": "e14c42f5e8836984c426a00e5a628fe5e84af334288d4d53b7b7961bf18324af"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/previews/06_同帧.png",
+      "bytes": 4274727,
+      "sha256": "37db9f80341996d48e7341c77c1f92a34b0f41085177892e3a8bff4f808dc794"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/review_manifest.json",
+      "bytes": 12281,
+      "sha256": "ddc9978eb110ca9dcb3a9199c5f634f4472c44315651ea63bdc04324c00604e1"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/01_疏叶对角.ffgraph",
+      "bytes": 320,
+      "sha256": "b15555758bf5032d0d832e9c2a2db10382b02af968394f93df0891934dd94cf5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/01_疏叶对角.png",
+      "bytes": 430569,
+      "sha256": "db8eac368a4461037cb0e0087a5cc87a6874c055d6fb06759ace9fcb8d0449f1"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/02_云水合抱.ffgraph",
+      "bytes": 321,
+      "sha256": "5288ccc9cd04e3f7e3b9f7cccce3865ff4f1c04a2a170a104ad1cbeaccb4e724"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/02_云水合抱.png",
+      "bytes": 754550,
+      "sha256": "311fa0294e2e9717eea2577602772adda640fe92583b7bdeccb51f8b7fd4e321"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/03_花草下重.ffgraph",
+      "bytes": 325,
+      "sha256": "ef43f6f671a473e212fb325bfc6bc258402cc621685f1cb760274050ded7354b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/03_花草下重.png",
+      "bytes": 414084,
+      "sha256": "850fddc2fc16aced0b8e6fc95c46520a7894dd2c65873e7c33794b4bb5ee8dbd"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/04_星月垂挂.ffgraph",
+      "bytes": 320,
+      "sha256": "6993fd37e21c452780dcca3829d65bb55d773cdff88248f5695fb1faaa39abc2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/04_星月垂挂.png",
+      "bytes": 229228,
+      "sha256": "f1fd86d7bb3d687fbddf9d69f90c3a3ce55f823e2a0967b72b63269bade2d473"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/05_几何四角.ffgraph",
+      "bytes": 320,
+      "sha256": "714165fb6ca55fd13dc1ebb6195967e5579a7e45ed5bae718432a693505b85a3"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/05_几何四角.png",
+      "bytes": 439491,
+      "sha256": "e4114287c5ce3f8f1a4e6152454083f786ab3040ea19c8b03873832799a75eea"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/06_书茶偏轴.ffgraph",
+      "bytes": 324,
+      "sha256": "d9ff3f22518f0a139ec71cf36d9499a39bdeb6f5488d64e86df35afdee830f8a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/sets/06_书茶偏轴.png",
+      "bytes": 322663,
+      "sha256": "a1a3a7377f7d31182aaf6e6334a71b089aa0bcd0a5bc9932caa14ca0605c13ac"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/六套上下构图_上下细节.ffgraph",
+      "bytes": 87,
+      "sha256": "597883f725c84331902e33259ae800ab54c1ce1a59e94d4790ab88325b84e711"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/六套上下构图_上下细节.jpg",
+      "bytes": 155317,
+      "sha256": "d0f896e416f7db85daf772a91e045b38f131d1dc18ac85fe1f6205edc962bed6"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/六套上下构图_同帧对照.ffgraph",
+      "bytes": 87,
+      "sha256": "597883f725c84331902e33259ae800ab54c1ce1a59e94d4790ab88325b84e711"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/六套上下构图_同帧对照.jpg",
+      "bytes": 526511,
+      "sha256": "aa0224c65e0b5a3ad99632324a383cdd00981dc4f35f8d1fe0ed717c125eefda"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/六套上下构图_透明层预览.ffgraph",
+      "bytes": 87,
+      "sha256": "597883f725c84331902e33259ae800ab54c1ce1a59e94d4790ab88325b84e711"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/review_v2/六套上下构图_透明层预览.jpg",
+      "bytes": 111789,
+      "sha256": "4ed93e05e8f6665de217168b540abe3d1d5d093993b617bae34f9498b7410ae1"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/01_疏叶对角.ffgraph",
+      "bytes": 320,
+      "sha256": "b15555758bf5032d0d832e9c2a2db10382b02af968394f93df0891934dd94cf5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/01_疏叶对角.png",
+      "bytes": 430569,
+      "sha256": "db8eac368a4461037cb0e0087a5cc87a6874c055d6fb06759ace9fcb8d0449f1"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/02_云水合抱.ffgraph",
+      "bytes": 322,
+      "sha256": "d47403c6fe93e31d622504a4fb581d3917e0bc6d5cf87e7d72fb17402226cd51"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/02_云水合抱.png",
+      "bytes": 969622,
+      "sha256": "e1df089fa8c135c33a417e5e515f3c4eda160d83c294cfd527886bb3863fa100"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/03_花草下重.ffgraph",
+      "bytes": 323,
+      "sha256": "b6a535e4972a50361ebb1903e5ff9f0d764a1f837c615a57d88e8bda44e5d0b4"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/03_花草下重.png",
+      "bytes": 447475,
+      "sha256": "6724fc7248056697b40d211ebb4ac6b3c125d2584a9e2fc1f384f2c4018f1916"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/04_星月垂挂.ffgraph",
+      "bytes": 320,
+      "sha256": "6993fd37e21c452780dcca3829d65bb55d773cdff88248f5695fb1faaa39abc2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/04_星月垂挂.png",
+      "bytes": 229228,
+      "sha256": "f1fd86d7bb3d687fbddf9d69f90c3a3ce55f823e2a0967b72b63269bade2d473"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/05_几何四角.ffgraph",
+      "bytes": 320,
+      "sha256": "714165fb6ca55fd13dc1ebb6195967e5579a7e45ed5bae718432a693505b85a3"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/05_几何四角.png",
+      "bytes": 439491,
+      "sha256": "e4114287c5ce3f8f1a4e6152454083f786ab3040ea19c8b03873832799a75eea"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/06_书茶偏轴.ffgraph",
+      "bytes": 324,
+      "sha256": "d9ff3f22518f0a139ec71cf36d9499a39bdeb6f5488d64e86df35afdee830f8a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sets/06_书茶偏轴.png",
+      "bytes": 322663,
+      "sha256": "a1a3a7377f7d31182aaf6e6334a71b089aa0bcd0a5bc9932caa14ca0605c13ac"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/sources.json",
+      "bytes": 1543,
+      "sha256": "63fc89fe5919461fd830cd22dfd0b22d7e6e7e414b7c9c2a3a9f1b912ed7556b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/六套上下构图_上下细节.ffgraph",
+      "bytes": 87,
+      "sha256": "597883f725c84331902e33259ae800ab54c1ce1a59e94d4790ab88325b84e711"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/六套上下构图_上下细节.jpg",
+      "bytes": 161698,
+      "sha256": "3591b68ef8a3844332fa8a32acda5d40941ffba285b117f4c9f5dbad54913e11"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/六套上下构图_同帧对照.ffgraph",
+      "bytes": 87,
+      "sha256": "597883f725c84331902e33259ae800ab54c1ce1a59e94d4790ab88325b84e711"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/六套上下构图_同帧对照.jpg",
+      "bytes": 527645,
+      "sha256": "9499e0b5f18d554ff05a6c39a92bfcbd6ce61a660f50e49e4753faeddc53ea76"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/六套上下构图_透明层预览.ffgraph",
+      "bytes": 87,
+      "sha256": "597883f725c84331902e33259ae800ab54c1ce1a59e94d4790ab88325b84e711"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/六套上下构图_透明层预览.jpg",
+      "bytes": 116239,
+      "sha256": "b378b6231f0323445f6bec49a4f383600fc798479a4b8389c1388155cf4cd495"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_compositions_20261017_164758/同帧底图_6秒.png",
+      "bytes": 4203417,
+      "sha256": "53a361c525b4e5b8ef6cdebd43ee492ee296f8812194c2ec35e7fc09b1ad40f8"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/16图案_同帧试贴.ffgraph",
+      "bytes": 95,
+      "sha256": "50f7313721e7d9c6273ef0a85b90ad2dc08633ba2c5974a9e8c862e2dca24572"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/16图案_同帧试贴.png",
+      "bytes": 4598825,
+      "sha256": "01a85ebf8ea72a2e535a2ccafd6ad7c18cc0df831791c6c0745de5abc437fd27"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/16图案_四组细节.ffgraph",
+      "bytes": 63,
+      "sha256": "2339c6839871bf06086bac07e0a3f4465f40d4e3aaf64297bd5d61d37cdb5731"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/16图案_四组细节.jpg",
+      "bytes": 256463,
+      "sha256": "ba712fa756c5c3201c8d9546d1c971957fc53a2073e9aef4741d1bccf3767967"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/16图案_构图与同帧对照.ffgraph",
+      "bytes": 23,
+      "sha256": "6cd47eb84e93fdfce96e007c5fcfeb0c8a6074be57fdc4121584872867bc2831"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/16图案_构图与同帧对照.jpg",
+      "bytes": 270517,
+      "sha256": "cb7647409f2c400a17d35ab2360356a5d25c90ff7314cf8aff4867c6aa4b7fe2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/16图案_构图与同帧对照_v2.ffgraph",
+      "bytes": 23,
+      "sha256": "6cd47eb84e93fdfce96e007c5fcfeb0c8a6074be57fdc4121584872867bc2831"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/16图案_构图与同帧对照_v2.jpg",
+      "bytes": 276924,
+      "sha256": "eecd6c2919204796862082c63a6472111618c5d0d427a16a04629fd310b74640"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/BL_detail.ffgraph",
+      "bytes": 340,
+      "sha256": "57882f523246fea699d4b84510f2cc3813fa81d638417ccd70fdcce9faa2d066"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/BL_detail.png",
+      "bytes": 391649,
+      "sha256": "f61cede215e543d1083b8a6148e0a78f8033a07978d018e7c0df7bd1f90441bb"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/BL_label.txt",
+      "bytes": 20,
+      "sha256": "b5c8d74a88b9294222a9921689206ab34e4cd6a5a046cd48f9bf539d357f5945"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/BR_detail.ffgraph",
+      "bytes": 342,
+      "sha256": "0eab77caa261894ef092a568aa9dfab7701d7276a9353ddd2abb3d30e4520f4a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/BR_detail.png",
+      "bytes": 402065,
+      "sha256": "f82d9e656bde2d67f012a31f782105a710bcdec8b171699dda98f91d63a7fa6f"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/BR_label.txt",
+      "bytes": 20,
+      "sha256": "6ba66a663dcfdc4633797f89e2bc05d3efa993611a32185e2bd69381f496f6d7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/TL_detail.ffgraph",
+      "bytes": 337,
+      "sha256": "cf5a464c974eade3c98ddfbfe07e586ae59bf9f879d37e757f740a73662cc753"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/TL_detail.png",
+      "bytes": 333955,
+      "sha256": "a94f3daf11aecc98bc1bc742718b2968b0b8ad3e580d41893aba0a4ff7cc3b56"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/TL_label.txt",
+      "bytes": 20,
+      "sha256": "3b5786317b65041bece96d03758ba961afb0a45b0d4467d11d8d7387acb57c71"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/TR_detail.ffgraph",
+      "bytes": 339,
+      "sha256": "dd606b16a72309e8e30cdb01ddbd88c94334cbb672cc6cb75ac38d8774736ecc"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/TR_detail.png",
+      "bytes": 333812,
+      "sha256": "db08ea89207bd4f08cb845e49cfbbe093aa374a5906b14a100e079f0fd78b9a7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/TR_label.txt",
+      "bytes": 20,
+      "sha256": "8c69c5a31be03ec288911fb85b00cb6e1a34662576ba1c5f6e84df7e79c8606c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/actual_card.ffgraph",
+      "bytes": 339,
+      "sha256": "67635519dc80dff71c85f5bc75363a0307d99af55297e32433bdc3bba5300ffc"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/actual_card.png",
+      "bytes": 1410313,
+      "sha256": "e517c77882d17019234070996058a62309837fb5af633d0ebf9523fab33fc99e"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/actual_card_v2.ffgraph",
+      "bytes": 354,
+      "sha256": "634f0606f5380e685a8b2504e312a3cd6ec93bd2906ebe30497971d5b24c8055"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/actual_card_v2.png",
+      "bytes": 1414499,
+      "sha256": "ab2ca94f469b813e836a2b85f0f8d5d94a7c9167c8fd327c839aeb034a87ce17"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/actual_title.txt",
+      "bytes": 31,
+      "sha256": "d76417bbc660c90fe85fbe2be28768e593fe861516bc5ad979d620b1e6b3d321"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/checks.json",
+      "bytes": 1739,
+      "sha256": "ec8fe7b9043d86355336b17319d3be667d9d5dffc776edbd2b30a234ced717e2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/generation_result.json",
+      "bytes": 738,
+      "sha256": "2a595ec587db215890db45511cd3a696db86aee0e863dd2f2d2829ed7524aeb7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/initial_center_check.json",
+      "bytes": 117,
+      "sha256": "bb79d6ef332878d49d93c3bd259e280bf6c056c31076d0f81506799fbcc42a83"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/neutral_card.ffgraph",
+      "bytes": 340,
+      "sha256": "b031253ac4726951076df3bb02836d5d11c27d7fb371296c958874a1fc6398e1"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/neutral_card.png",
+      "bytes": 378724,
+      "sha256": "d3f9b42164a86267f5ab14a0fe648ab9b97077e6b117f1fc013b688c5ea0b8cd"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/neutral_title.txt",
+      "bytes": 30,
+      "sha256": "0d2420d787d339927dd79be401e8433abd28875415ce398e16a087de4efe99fe"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/prompt.json",
+      "bytes": 4279,
+      "sha256": "4800b664d11d28601a9033cb1c356ac9f7559c27a75d3afd9892acce1e8d2e76"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/上下16图案_构图层.ffgraph",
+      "bytes": 136,
+      "sha256": "f9c1adf193e730c50bb01b40f13f6f9c70af1557e016350312d38e751fd25609"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/上下16图案_构图层.png",
+      "bytes": 2241423,
+      "sha256": "e5ab02544a8f7742da370a8374cd0d6bc34618f2c956f748d2aa9109b452b6c7"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/先看这里.txt",
+      "bytes": 743,
+      "sha256": "9b13f527062bd43315563ecb9cb0be481df8e028a23d3dfffb3220e07acf69df"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/自然主题16图案_透明原图.png",
+      "bytes": 1160480,
+      "sha256": "5abf4b69eb902a98c295eaa02b63514d470d8522ab5feee8f934c676f1fd3445"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/checks.json",
+      "bytes": 892,
+      "sha256": "d06ee0ae11e65e58af14e3e267ffd3de759d52cc3ad57ea593a0a72982deb066"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/generation_result.json",
+      "bytes": 770,
+      "sha256": "713c089438d5f633a3c8a3eacf5fb4b23dc89c7f518f23dd288fdeab755038a2"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_01.txt",
+      "bytes": 9,
+      "sha256": "ca4cb451185e0339445b2ab48210067087516421abf8ac04da8729e567251bef"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_02.txt",
+      "bytes": 12,
+      "sha256": "1da5964c827239e96cf150d0f4f2b03706d5313482b71e6ab41563ab071d4229"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_03.txt",
+      "bytes": 9,
+      "sha256": "71effbabe705f4a6486636279de2a04657aaff1149346f9e8fbf581cc718b996"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_04.txt",
+      "bytes": 12,
+      "sha256": "b07c1d2d6dc5354bfce446bc5acea40c7f7465701cf18464acede529fa0462eb"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_05.txt",
+      "bytes": 15,
+      "sha256": "0fe1607ae4b6fe9ceda6eb44ad1e46af9e2a0ca8fd8ca85d0609f914a3871845"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_06.txt",
+      "bytes": 15,
+      "sha256": "bfa5da81eabfc8e5ad3e17975d9d6c570efbaee80e6c81552fe8e209caad0e58"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_07.txt",
+      "bytes": 15,
+      "sha256": "07d13090e0f185f8b1f16b7a9ce20e3ffcdf186ade7f080e28fd650ecadc3402"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_08.txt",
+      "bytes": 15,
+      "sha256": "fe627b25ad013641f2301116682ab4ef52a1663ff14d273df30b5e6715d62a66"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_09.txt",
+      "bytes": 15,
+      "sha256": "ff4cc9aa4c372d33b5d3d6511f72b1dc6dfeb60a6fc06bc7b7725817f0a57674"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_10.txt",
+      "bytes": 15,
+      "sha256": "c347790bb3ff70bac0201dfc3ef20cf5d27721755ad18ccadb7750cc74dc9fe5"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_11.txt",
+      "bytes": 15,
+      "sha256": "8078dd44e43a5a574dec06f548ee6e1d607a85f48e276ad88e260a730e5afa42"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_12.txt",
+      "bytes": 15,
+      "sha256": "a1bb9b1fabf0eb19227f8654e6d8f5567b4f8f55ecbd93e99dda65f198e98e23"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_13.txt",
+      "bytes": 15,
+      "sha256": "3a2e76c5ac041b4906ea0fd449cfc5b46263ef5d5aa764219120209f40f7ed1a"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_14.txt",
+      "bytes": 15,
+      "sha256": "c65f2ab4627935d325a8c5f563853653c37563e09464da9d45ac6b2ede8db2c0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/label_15.txt",
+      "bytes": 15,
+      "sha256": "3e51349c3a411d8038403569c1e6934238261614ac190552c18df79a232fdf41"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/preview.ffgraph",
+      "bytes": 3418,
+      "sha256": "e73a1c2d912c4e87494abc1d0147dd5ec1ddcdcd43a233f97d7ae104cc598651"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/prompt.json",
+      "bytes": 3865,
+      "sha256": "a1a4444f2a462c96f5aaefbf23c6bb18db8efe8466505a95ab932ece469a4abe"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/subtitle.txt",
+      "bytes": 57,
+      "sha256": "de26786e29f00fdaccb0139a8cc6395de14457d2dec8071bf02f25e5c035848b"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/title.txt",
+      "bytes": 40,
+      "sha256": "a9d085b766bd52ba1d3f175e2ec76eebfbd0789e7aa718a8fd4d70bb5efbbc55"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/样式板_编号预览.jpg",
+      "bytes": 261321,
+      "sha256": "19abde1c9682d0d1c8132e79f14d20d885e53e2b47bbebc1f567e1ecf7d44f8f"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/样式板_透明原图.png",
+      "bytes": 1132138,
+      "sha256": "b2ef92f6abc36d12f3120ba5ed212e4bdaa6d9b6a219468c9a63a517bb2a1a02"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/说明.md",
+      "bytes": 1621,
+      "sha256": "46103d97b1dfb0239ce55ffb7be2b6de86959c484a7a1c7ae39dd8b270f6fb93"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/experiments/sticker_random_mix_20261017_v1/prompts.json",
+      "bytes": 20921,
+      "sha256": "3353cb59d28688b56dc1eb90c7c49ef67009859ae03720ec912d746cbaef00b0"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/render_ai_styles.py",
+      "bytes": 9347,
+      "sha256": "5ae0e565ea5264e30b42c26caa5591e2ea9c6f278ea6312619311e221ff40a17"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/render_edges.py",
+      "bytes": 7745,
+      "sha256": "d6c8adf80f3e59368961b1c69e1983b04742a0048e460cbd44c4ebb99d51d50c"
+    },
+    {
+      "path": "tools/ffmpeg_overlay_lab/render_sample.py",
+      "bytes": 16075,
+      "sha256": "1bc4aafe8716952f1833455b40cbc4501c3533e46f453a4385e2f2659e41d652"
+    },
+    {
+      "path": "tools/probe_candidate_density.py",
+      "bytes": 4025,
+      "sha256": "5f62578235cde01eee50e1fc3a5f890fe5b786498a85f5a86d8ea228305cd524"
+    },
+    {
+      "path": "tools/probe_expression_verify.py",
+      "bytes": 4357,
+      "sha256": "65bc152e97b90114e7943c244f366f57527edd83a001c8884772414bd8a12eee"
+    },
+    {
+      "path": "tools/probe_face_coverage.py",
+      "bytes": 3951,
+      "sha256": "6b0497d243a9786f856647240d977559438116563d3ed1ea44f1c9ca0032e14e"
+    },
+    {
+      "path": "tools/probe_face_detection.py",
+      "bytes": 4577,
+      "sha256": "7cad10a74bb116f4701909000198980ad1f0f6948f865e95339d2f02cee06d50"
+    },
+    {
+      "path": "tools/probe_face_identity.py",
+      "bytes": 3943,
+      "sha256": "95e12ca8bee47a02419051417a75eab6c222a119361b1d19be5afc1a1ead4d55"
+    },
+    {
+      "path": "tools/probe_face_pose.py",
+      "bytes": 5211,
+      "sha256": "a8f9fbdd415b2fae9e50379bea21a934988e3301a27f460bfd0787451cf3c2ba"
+    },
+    {
+      "path": "tools/probe_photo_wall_thresholds.py",
+      "bytes": 4051,
+      "sha256": "542d353a844df91d77b45fa15de1159426c75e840629789edf6200aa249a8420"
+    },
+    {
+      "path": "tools/reclaim_empty_task_dirs.py",
+      "bytes": 7888,
+      "sha256": "a23895a45ca92a6e78d9c2e3f8b578f78130d219c1c569d2362629298993c787"
+    },
+    {
+      "path": "tools/run_v2_desktop.py",
+      "bytes": 9914,
+      "sha256": "f6d87745986eb07e1af39099012b8fe43971797d75bd5f15a30ce90302c36845"
+    },
+    {
+      "path": "tools/run_v2_desktop_restart.py",
+      "bytes": 5353,
+      "sha256": "206d0d8c3dc0e5b64b059c18840ddb0ac0c1dd17d325cb149083fa2f033eaf6e"
+    },
+    {
+      "path": "tools/run_v2_desktop_test.py",
+      "bytes": 5482,
+      "sha256": "0313278568dfc72a3882974dd1a96cd96c2e8abcd941eeef21003b285a6e9a5c"
+    },
+    {
+      "path": "tools/run_v2_file_service.py",
+      "bytes": 229,
+      "sha256": "6febada43f9e7fbdbac6c8318f28777c119042b52076df715df8decc75fdfd3c"
+    },
+    {
+      "path": "tools/run_v2_final_generation.py",
+      "bytes": 564,
+      "sha256": "b7adfecc4f4e48e52cf6f7b309eeafb26b70ee77648769e960eea8fc27a2d79f"
+    },
+    {
+      "path": "tools/run_v2_real_export.py",
+      "bytes": 3312,
+      "sha256": "fcca670785c6fe1259a62f56bde763402fe1fe34c08a7c2d3bbf15c03c90c9d5"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/README.md",
+      "bytes": 758,
+      "sha256": "121037cadb24bede6b3055352fe0db3524c61682becca7119021812e12915f6c"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/collect.py",
+      "bytes": 222,
+      "sha256": "97fde3ea41e1510ddfcce304cf6364bf02a5bfb5833146e670f96da5e2194c57"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/download.py",
+      "bytes": 217,
+      "sha256": "5a3a129337f4a52ec90d44de3615d1046d7bf7b85e04fc739c63c00a2496ef3e"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/start_collect.bat",
+      "bytes": 59,
+      "sha256": "397272799eff1073dd57a2cf9b21d370a437e4646feebe719b27f9102dd871ec"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/start_download.bat",
+      "bytes": 60,
+      "sha256": "231a9fefbffaec48220a7fe2d11e7fe57bc9211e58ca84d6c8b2523de3107432"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/批量解析下载.py",
+      "bytes": 4481,
+      "sha256": "b3bfbcc8cdd92c4c033b1b8c82a1e8ff08af21b4b4c4d131abe3bac5c33fa0cc"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/配置.json",
+      "bytes": 211,
+      "sha256": "2ae5e158072fab9bea30c6811bba4dfb9219a1907a5a9d9f3cde462e335545d0"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/采集手机短链.py",
+      "bytes": 1256,
+      "sha256": "2a7f5d822e0bae7e4cf703207121fd3f47bba58aadbaf3a0305285851ccf1009"
+    },
+    {
+      "path": "tools/short_drama_downloader_lab/采集表.txt",
+      "bytes": 3372,
+      "sha256": "751d6cfd5edc97ddcf930ffd1aea54473ccf29c7ac736f9b8d591c85005da232"
+    },
+    {
+      "path": "tools/sort_compare_readonly.py",
+      "bytes": 6460,
+      "sha256": "89d9f5282ce48a8b1f7eafc612441060e07afebdddb415a4b9e98efe9d5e5a1e"
+    },
+    {
+      "path": "tools/start_v2_desktop.bat",
+      "bytes": 90,
+      "sha256": "780c6dbad5c590894dce2cce14c428090fad626c3c2a1a126ee24b469a53f115"
+    },
+    {
+      "path": "tools/test_manual_order.py",
+      "bytes": 6063,
+      "sha256": "c8828efb9d95db120528b4bdc5bfff58bb0401ba393efcea843afc86d4168bd9"
+    },
+    {
+      "path": "tools/test_manual_order_dispatch.py",
+      "bytes": 8427,
+      "sha256": "90dda392a50eab3cfb7f9bac4a67bfb804c981d3b0d72961118c8b4b8c9c4c7f"
+    },
+    {
+      "path": "tools/verify_delivered_identity.py",
+      "bytes": 3514,
+      "sha256": "137f3a0c7d6b00abec486099cef83b06b9cbbaea27feb4fa222734a4e7db7da7"
+    },
+    {
+      "path": "tools/verify_photo_prep_real.py",
+      "bytes": 4376,
+      "sha256": "0af48954922d737519167cbe1406f19799a805058215335a7e375431aa59ea31"
+    },
+    {
+      "path": "tools/verify_v2.py",
+      "bytes": 3267,
+      "sha256": "6b6df26f9109f845722f9fd321e106e5836d3299c747b81feb3343d1ee919686"
+    },
+    {
+      "path": "tools/一键验证.bat",
+      "bytes": 87,
+      "sha256": "48fd1b63cf8925006d806f2f23b46eca525e21972351a3319676853daef50855"
+    },
+    {
+      "path": "tools/查功能档案.bat",
+      "bytes": 96,
+      "sha256": "d3e927eb9fa760d7bc6d12c34fbdff5956c940782879755a0baed69c62e70c1d"
+    },
+    {
+      "path": "tsconfig.json",
+      "bytes": 508,
+      "sha256": "e93e15c3794e43a117964ea191ae985cbedea70c41d3d82b2e20aa8d07374fe4"
+    },
+    {
+      "path": "vite.config.ts",
+      "bytes": 925,
+      "sha256": "68214edc513e4d0bcfa28c1e582883ea29a44a511254b3df35270136c6e5e2bc"
+    },
+    {
+      "path": "项目控制台.md",
+      "bytes": 3379,
+      "sha256": "60094148f1211a67811f8a087532718a28b073008f2b9575055b336d12439d01"
+    }
+  ],
+  "v3_setup_modified_copied_files": [
+    "AGENTS.md",
+    "README.md",
+    "docs/4-决策日志.md",
+    "tools/run_v2_desktop.py",
+    "tools/run_v2_desktop_restart.py",
+    "tools/start_v2_desktop.bat",
+    "项目控制台.md"
+  ],
+  "verification": {
+    "copied_files_matching_after_setup": 710,
+    "expected_identity_launcher_and_document_changes_only": true,
+    "windows_python": "3.12.10",
+    "isolated_windows_checks_passed": 15,
+    "frontend_dependency_install": "pass; npm ci; 215 packages",
+    "frontend_types": "pass; npm run lint",
+    "frontend_build": "pass; npm run build; dist/index.html exists",
+    "desktop_real_launch": "not run",
+    "database_read_or_write": "not performed",
+    "business_jobs_or_jianying": "not run",
+    "installer": "not built or installed",
+    "source_unchanged_after_v3_setup": true,
+    "commit_or_push": "not performed"
+  }
+}

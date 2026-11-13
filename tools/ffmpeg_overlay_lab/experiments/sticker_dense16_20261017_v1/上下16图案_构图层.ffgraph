@@ -1,0 +1,1 @@
+[0:v]format=rgba,scale=1080:2400:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:2400:(ow-iw)/2:(oh-ih)/2:color=black@0[out]

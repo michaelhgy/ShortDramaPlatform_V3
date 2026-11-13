@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface DramaCoverProps {
   name: string;
@@ -20,6 +20,8 @@ export const DramaCover: React.FC<DramaCoverProps> = ({
   className = '',
 }) => {
   const [imgError, setImgError] = useState(false);
+
+  useEffect(() => { setImgError(false); }, [coverUrl]);
 
   // Dimension presets (Vertical 3:4 or 9:16 aspect ratio standard for short dramas)
   const sizeClasses = {
@@ -44,13 +46,11 @@ export const DramaCover: React.FC<DramaCoverProps> = ({
           <img
             src={coverUrl}
             alt={name}
+            loading="lazy"
+            decoding="async"
             onError={() => setImgError(true)}
             className="absolute inset-0 w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
-          <div className="relative z-10 text-[9px] font-medium text-white/90 truncate leading-tight mt-auto">
-            {name.slice(0, 4)}...
-          </div>
         </>
       ) : (
         <>

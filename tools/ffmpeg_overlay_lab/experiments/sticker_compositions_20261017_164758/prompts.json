@@ -1,0 +1,67 @@
+{
+  "purpose": "六套完整上下构图方向，避免只换颜色和细节导致近似；两张方向板，各三套",
+  "tool": "built-in image_gen",
+  "transparent_background": true,
+  "boards": [
+    {
+      "id": "board_1",
+      "sets": [
+        {
+          "id": "01",
+          "name": "疏叶对角",
+          "theme": "长枝与少量椭圆叶片",
+          "layout": "左上主枝向内舒展，右下短枝呼应；斜向、疏密不等",
+          "silhouette": "长斜枝、开放叶形",
+          "prompt": "LEFT PANEL: BOTANICAL DIAGONAL. A slender leafy branch grows from the top-left region inward along a gentle diagonal, tapering into the top region's open space. The bottom-right region has a smaller complementary branch with the same oval leaf shape and a few tiny buds. Top has greater visual weight, bottom is lighter. The other two corners are largely empty. Long sparse organic stems, no flowers or stars."
+        },
+        {
+          "id": "02",
+          "name": "云水合抱",
+          "theme": "云卷与水波",
+          "layout": "上方中央浅拱云线，下方中央低弧水波；上下环抱",
+          "silhouette": "浅弧、流动曲线、两端舒展",
+          "prompt": "MIDDLE PANEL: CLOUD-AND-WATER EMBRACE. A shallow airy arch of two or three simple cloud curls and fine curved lines spans the upper region, centered and lighter at the ends. In the lower region, a shallow upward-opening composition of smooth water ripple contours echoes the arch. Mostly flowing abstract curved strokes, few cloud curls and no filled cloud bodies. Both top and bottom feel like a light embrace around the empty middle, without side rails."
+        },
+        {
+          "id": "03",
+          "name": "花草下重",
+          "theme": "小野花与细草",
+          "layout": "下方中央直立花草为主，上方两侧各少量小花回应",
+          "silhouette": "下方竖向花茎成簇，上方小型散组",
+          "prompt": "RIGHT PANEL: MEADOW BOTTOM-FOCUSED. The lower region has a compact upright grouping of three simple small wildflowers at different heights with a few slender grass shoots, centered but asymmetrical. The upper region has only two tiny related flower-and-leaf accents separated near the upper left and upper right. Lower region carries most visual weight. Fine open-petal outlines and short stems, no sweeping long branch, no moon or cloud imagery."
+        }
+      ],
+      "prompt": "Use case: stylized-concept.\nAsset type: ONE transparent art-direction sheet showing THREE COMPLETE paired top-and-bottom sticker compositions for portrait live-action short-drama video.\nLayout: a landscape sheet about 4:3 in aspect ratio, divided conceptually into THREE EQUAL VERTICAL PANELS side by side. Each panel represents one complete portrait video canvas, approximately 1080:2400 in aspect ratio. No visible dividers, no panel outlines and no text.\nWithin EACH panel, all artwork stays in the TOP 18 percent or BOTTOM 18 percent. The entire middle 64 percent must be genuinely transparent and empty. There are NO connecting strokes through this middle area. All shapes stay fully inside their panel with small outer margins. The top and bottom artwork in a panel must form one intentional, coherent visual composition with related motifs, consistent stroke weight, hierarchy, balanced negative space, and complementary directional flow.\nDrawing style across all panels: quiet flat 2D hand-drawn line art, matte warm-white with only very pale neutral gray accents, thin clear strokes and mostly open interiors. Very little solid fill. Simple shapes suitable for overlaying human footage. Crisp outlines, no broad glow, no shading, no metallic or crystal material, no 3D, no dense filigree. Do not draw the actor, scenery or any background. Actual alpha transparency throughout unused space.\nThe THREE panels must have substantially different silhouettes and arrangements; changing only color, mirroring, or small details does not count as a different design. Do not make all three into long horizontal decorative bands. No text, letters, numbers, labels, grids, watermark, mockups or full enclosing border. \nLEFT PANEL: BOTANICAL DIAGONAL. A slender leafy branch grows from the top-left region inward along a gentle diagonal, tapering into the top region's open space. The bottom-right region has a smaller complementary branch with the same oval leaf shape and a few tiny buds. Top has greater visual weight, bottom is lighter. The other two corners are largely empty. Long sparse organic stems, no flowers or stars.\n\nMIDDLE PANEL: CLOUD-AND-WATER EMBRACE. A shallow airy arch of two or three simple cloud curls and fine curved lines spans the upper region, centered and lighter at the ends. In the lower region, a shallow upward-opening composition of smooth water ripple contours echoes the arch. Mostly flowing abstract curved strokes, few cloud curls and no filled cloud bodies. Both top and bottom feel like a light embrace around the empty middle, without side rails.\n\nRIGHT PANEL: MEADOW BOTTOM-FOCUSED. The lower region has a compact upright grouping of three simple small wildflowers at different heights with a few slender grass shoots, centered but asymmetrical. The upper region has only two tiny related flower-and-leaf accents separated near the upper left and upper right. Lower region carries most visual weight. Fine open-petal outlines and short stems, no sweeping long branch, no moon or cloud imagery."
+    },
+    {
+      "id": "board_2",
+      "sets": [
+        {
+          "id": "04",
+          "name": "星月垂挂",
+          "theme": "月牙、细线和少量星形",
+          "layout": "上方偏右不等长垂挂为主，下方偏左短弧回应",
+          "silhouette": "上方竖直短线，下方小弧线",
+          "prompt": "LEFT PANEL: CELESTIAL HANGING. Three short hanging threads of unequal lengths within the top-right region end in a tiny crescent, simple four-point twinkle and hollow circle. In the lower-left region a small shallow dotted arc with two tiny related twinkles quietly echoes this celestial theme. Top is the main focal grouping, bottom is a small secondary counterweight. The hanging lines remain entirely inside the top 18 percent. No curtain across the entire top and no full star field."
+        },
+        {
+          "id": "05",
+          "name": "几何四角",
+          "theme": "开口圆弧、圆环、短线",
+          "layout": "四角局部呼应，中央与边缘中段留空",
+          "silhouette": "短几何弧、四角开放、分量均衡",
+          "prompt": "MIDDLE PANEL: OPEN GEOMETRIC FOUR CORNERS. Localized ornaments sit at the four corners only: two fine partial concentric arcs and a small hollow ring at upper left, a shorter related arc pair at upper right, and complementary shorter arc-and-dash arrangements in the lower two corners. Coherent modern geometric rhythm, similar curve radii and stroke weight. Balanced but not exact mirrored copies. All arcs are short and open, mostly neutral empty space, no complete enclosing frame or vertical side rail, no botanical or celestial subjects."
+        },
+        {
+          "id": "06",
+          "name": "书茶偏轴",
+          "theme": "阅读与茶杯、翻页和蒸汽曲线",
+          "layout": "上方中偏左的小书，下方中偏右的茶杯；隐含S形走势",
+          "silhouette": "上方扁宽书页，下方小杯轮廓与短蒸汽",
+          "prompt": "RIGHT PANEL: QUIET READING-AND-TEA OFFSET. One small open book in the upper region slightly left of center, with two fine short page-turning curves. In the lower region slightly right of center, one small teacup and two short steam curls that echo the book's page curves. A deliberate offset S-like visual rhythm is implied only by the two groups; no connecting line crosses the middle. Book and cup have simple unfilled outlines, similar line weight and modest scale. No other random objects, no words on pages, no leaves, flowers or stars."
+        }
+      ],
+      "prompt": "Use case: stylized-concept.\nAsset type: ONE transparent art-direction sheet showing THREE COMPLETE paired top-and-bottom sticker compositions for portrait live-action short-drama video.\nLayout: a landscape sheet about 4:3 in aspect ratio, divided conceptually into THREE EQUAL VERTICAL PANELS side by side. Each panel represents one complete portrait video canvas, approximately 1080:2400 in aspect ratio. No visible dividers, no panel outlines and no text.\nWithin EACH panel, all artwork stays in the TOP 18 percent or BOTTOM 18 percent. The entire middle 64 percent must be genuinely transparent and empty. There are NO connecting strokes through this middle area. All shapes stay fully inside their panel with small outer margins. The top and bottom artwork in a panel must form one intentional, coherent visual composition with related motifs, consistent stroke weight, hierarchy, balanced negative space, and complementary directional flow.\nDrawing style across all panels: quiet flat 2D hand-drawn line art, matte warm-white with only very pale neutral gray accents, thin clear strokes and mostly open interiors. Very little solid fill. Simple shapes suitable for overlaying human footage. Crisp outlines, no broad glow, no shading, no metallic or crystal material, no 3D, no dense filigree. Do not draw the actor, scenery or any background. Actual alpha transparency throughout unused space.\nThe THREE panels must have substantially different silhouettes and arrangements; changing only color, mirroring, or small details does not count as a different design. Do not make all three into long horizontal decorative bands. No text, letters, numbers, labels, grids, watermark, mockups or full enclosing border. \nLEFT PANEL: CELESTIAL HANGING. Three short hanging threads of unequal lengths within the top-right region end in a tiny crescent, simple four-point twinkle and hollow circle. In the lower-left region a small shallow dotted arc with two tiny related twinkles quietly echoes this celestial theme. Top is the main focal grouping, bottom is a small secondary counterweight. The hanging lines remain entirely inside the top 18 percent. No curtain across the entire top and no full star field.\n\nMIDDLE PANEL: OPEN GEOMETRIC FOUR CORNERS. Localized ornaments sit at the four corners only: two fine partial concentric arcs and a small hollow ring at upper left, a shorter related arc pair at upper right, and complementary shorter arc-and-dash arrangements in the lower two corners. Coherent modern geometric rhythm, similar curve radii and stroke weight. Balanced but not exact mirrored copies. All arcs are short and open, mostly neutral empty space, no complete enclosing frame or vertical side rail, no botanical or celestial subjects.\n\nRIGHT PANEL: QUIET READING-AND-TEA OFFSET. One small open book in the upper region slightly left of center, with two fine short page-turning curves. In the lower region slightly right of center, one small teacup and two short steam curls that echo the book's page curves. A deliberate offset S-like visual rhythm is implied only by the two groups; no connecting line crosses the middle. Book and cup have simple unfilled outlines, similar line weight and modest scale. No other random objects, no words on pages, no leaves, flowers or stars."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "base_version": "2026.11.03.3",
+  "target_version": "2026.11.04.1",
+  "product_version": "3.0.2",
+  "sha256": "b5fb4e578eda7d1d018b0136c7a735e5e14723ca1df38324135b727eaf7a1aaf",
+  "release_id": "2026.11.04.1",
+  "file": "ShortDramaPlatform_V3_Update_3.0.2_2026.11.03.3_to_2026.11.04.1.exe",
+  "bytes": 30506516,
+  "changed_files": 13,
+  "removed_files": 1,
+  "changed_bytes": 20459202,
+  "source_hashes": {
+    "tools/v3_update_core.py": "7d804ecd5d8e9b691a74a21233296965ab06a3bceaee2aa5dfeadee62a6d1002",
+    "tools/v3_update_app.py": "34791511deb16294a2c4bd05f71bfb97257804459fc95c94663ca087372f36ce",
+    "packaging/build_v3_update.py": "a21340f7e856ec257b177ea0f941c16fca136e770a8bca472e5eb45dc3868726"
+  },
+  "fixed_resources_reused": true,
+  "builder": "packaging/build_v3_update.py"
+}

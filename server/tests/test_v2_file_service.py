@@ -25,6 +25,15 @@ class V2FileServiceTests(unittest.TestCase):
         service.WORKSPACE, service.DATA_ROOT, service.DATABASE_INITIALIZED_PATH = self._originals
         self.temp.cleanup()
 
+    def _register_processed_scenery(self, path):
+        # A completed processing fixture, independent of the generic resource index.
+        from server.scenery.service import get_library
+        from server.ffmpeg_templates.renderer import sha
+        import uuid
+        lib=get_library();st=path.stat()
+        with lib.connect() as c:
+            c.execute("INSERT INTO assets(id,job_id,ordinal,name,path,sha256,frames,width,height,size,mtime,state) VALUES(?,'',0,?,?,?,30,640,360,?,?,'ready')",(uuid.uuid4().hex,path.name,str(path),sha(path),st.st_size,st.st_mtime_ns))
+
     def test_connection_initializes_one_workspace_only_once_per_process(self) -> None:
         service.DATABASE_INITIALIZED_PATH = None
         first = service.connection()
@@ -196,10 +205,11 @@ class V2FileServiceTests(unittest.TestCase):
             conn.close()
 
     def test_one_resource_probe_failure_does_not_fail_the_resource_list(self) -> None:
-        root = service.WORKSPACE / "生成资源" / "真人视频"
+        root = service.WORKSPACE / "生成资源" / "风景视频"
         root.mkdir(parents=True, exist_ok=True)
         source = root / "damaged.mp4"
         source.write_bytes(b"not-a-real-video")
+        self._register_processed_scenery(source)
         with patch.object(service, "queue_resource_probe"), patch.object(service, "probe_resource_metadata", side_effect=RuntimeError("damaged media")):
             first = service.list_production_resources()
             resource = first["items"][0]
@@ -212,11 +222,12 @@ class V2FileServiceTests(unittest.TestCase):
     def test_missing_short_term_cache_is_removed_but_lead_video_cache_is_retained(self) -> None:
         root = service.WORKSPACE / "生成资源"
         lead = root / "引流视频" / "lead.mp4"
-        real = root / "真人视频" / "real.mp4"
+        real = root / "风景视频" / "real.mp4"
         lead.parent.mkdir(parents=True, exist_ok=True)
         real.parent.mkdir(parents=True, exist_ok=True)
         lead.write_bytes(b"lead")
         real.write_bytes(b"real")
+        self._register_processed_scenery(real)
         with patch.object(service, "queue_resource_probe"), patch.object(service, "probe_resource_metadata", return_value=(1.0, "1080x1920", str(service.DATA_ROOT / "cache" / "placeholder.jpg"))):
             # Use distinct cache files for the two rows.
             service.list_production_resources()
@@ -240,10 +251,63 @@ class V2FileServiceTests(unittest.TestCase):
         try:
             categories = {row["category"]: row for row in conn.execute("SELECT category, thumbnail_path FROM resource_index")}
             self.assertIn("lead_video", categories)
-            self.assertNotIn("real_video", categories)
+            self.assertNotIn("scenery_video", categories)
             self.assertTrue(Path(categories["lead_video"]["thumbnail_path"]).is_file())
         finally:
             conn.close()
+
+    def test_v3_resources_scan_scenery_and_leave_retired_files_and_indexes_untouched(self) -> None:
+        files = {}
+        for folder, filename in [("风景视频", "landscape.mp4"), ("真人图片", "photo.png"), ("引流视频", "lead.mp4"), ("真人视频", "person.mp4"), ("BGM", "music.mp3")]:
+            path = service.WORKSPACE / "生成资源" / folder / filename
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(folder.encode())
+            files[folder] = path
+        self._register_processed_scenery(files["风景视频"])
+        cache = service.DATA_ROOT / "cache" / "legacy-bgm.jpg"
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_bytes(b"preserved cache")
+        service._upsert_resource_index(resource_id="legacy-bgm", category="bgm", category_name="BGM", path=files["BGM"], stat=files["BGM"].stat(), file_identity="", thumbnail_path=str(cache), duration=1.0, resolution="", probe_status="ready")
+        with patch.object(service, "queue_resource_probe"):
+            response = service.list_production_resources()
+        self.assertEqual({"scenery_video", "real_image", "lead_video"}, {item["category"] for item in response["items"]})
+        self.assertEqual(3, len(response["items"]))
+        self.assertTrue(files["BGM"].is_file())
+        self.assertTrue(files["真人视频"].is_file())
+        self.assertTrue(cache.is_file())
+        self.assertIsNotNone(service._resource_index_row("legacy-bgm"))
+        with self.assertRaisesRegex(ValueError, "不存在"):
+            service.production_resource_media("legacy-bgm")
+
+    def test_v3_can_open_an_empty_scenery_directory_without_a_first_resource(self) -> None:
+        root = service.WORKSPACE / "生成资源" / "风景视频"
+        self.assertFalse(root.exists())
+        with patch.object(service.os, "startfile", create=True) as startfile:
+            self.assertEqual({"opened": True}, service.open_production_resource_folder("scenery_video"))
+        self.assertTrue(root.is_dir())
+        startfile.assert_called_once_with(str(root.resolve()))
+        for retired in ("real_video", "bgm", "../BGM"):
+            with self.assertRaisesRegex(ValueError, "不支持"):
+                service.open_production_resource_folder(retired)
+        self.assertFalse((service.WORKSPACE / "生成资源" / "BGM").exists())
+
+    def test_v3_scenery_preview_uses_stable_id_and_rejects_changed_source(self) -> None:
+        root = service.WORKSPACE / "生成资源" / "风景视频"
+        root.mkdir(parents=True)
+        source = root / "风景000001.mp4"
+        source.write_bytes(b"video")
+        with patch.object(service, "queue_resource_probe"):
+            self.assertEqual([],service.list_production_resources()['items'])
+            self._register_processed_scenery(source)
+            first = service.list_production_resources()["items"][0]
+            self.assertEqual(source.resolve(), service.production_resource_media(first["id"]))
+            second = service.list_production_resources()["items"][0]
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(0,second['usageCount']);self.assertEqual(5,second['remainingCount'])
+        source.write_bytes(b"a different video")
+        with self.assertRaisesRegex(ValueError, "已变化"):
+            service.production_resource_media(first["id"])
+        self.assertEqual([],service.list_production_resources()['items'])
 
     def test_scan_creates_v2_layout_and_keeps_task_identity(self) -> None:
         task = service.create_task({
@@ -256,7 +320,7 @@ class V2FileServiceTests(unittest.TestCase):
         })
         self.assertEqual(task["id"], repeated["id"])
         self.assertEqual(date.today().isoformat(), task["created_date"])
-        self.assertEqual("2026-08-27T08:00", task["planned_publish_at"])
+        self.assertEqual("2026-08-27", task["planned_publish_at"])
         materials = Path(task["paths"]["materials"])
         self.assertTrue(materials.is_dir())
         self.assertTrue(all((service.WORKSPACE / name).is_dir() for name in service.ROOT_DIRECTORIES))
@@ -443,6 +507,17 @@ class V2FileServiceTests(unittest.TestCase):
         })
         self.assertEqual(["08:00", "20:00"], settings["publish_presets"])
         self.assertEqual(1, settings["publish_date_offset_days"])
+
+    def test_work_page_interval_is_persisted_and_validated(self) -> None:
+        from server.publishing.online_posts import configured_page_interval
+        self.assertEqual(2.0, configured_page_interval(service.connection))
+        settings = service.update_v2_settings({"work_page_interval_seconds": 3.5})
+        self.assertEqual(3.5, settings["work_page_interval_seconds"])
+        self.assertEqual(3.5, configured_page_interval(service.connection))
+        for invalid in (True, 0, 61, "2", float("nan")):
+            with self.subTest(value=invalid), self.assertRaises(ValueError):
+                service.update_v2_settings({"work_page_interval_seconds": invalid})
+        self.assertEqual(3.5, configured_page_interval(service.connection))
 
     def test_local_vision_ai_mode_is_persisted_and_validated(self) -> None:
         settings = service.update_v2_settings({"local_vision_ai_mode": "disabled"})
@@ -746,6 +821,13 @@ class V2FileServiceTests(unittest.TestCase):
         service.delete_theater(str(theater["id"]))
         self.assertEqual([], service.list_theaters()["items"])
 
+    def test_theater_delete_is_rejected_when_it_has_dramas(self) -> None:
+        theater = service.create_theater({"name": "有关联剧集的剧场", "default_commission_rate": 40, "default_tax_rate": 6})
+        service.create_drama({"current_name": "关联剧集", "history_names": [], "theater_id": theater["id"]})
+        with self.assertRaisesRegex(ValueError, "已关联 1 部剧集"):
+            service.delete_theater(str(theater["id"]))
+        self.assertEqual(1, len(service.list_theaters()["items"]))
+
     def test_sub_theaters_persist_and_global_duplicate_names_are_skipped(self) -> None:
         first = service.create_theater({"name": "剧场甲", "default_commission_rate": 70, "default_tax_rate": 6})
         second = service.create_theater({"name": "剧场乙", "default_commission_rate": 70, "default_tax_rate": 6})
@@ -791,6 +873,53 @@ class V2FileServiceTests(unittest.TestCase):
         statuses = [item["status"] for item in service.list_accounts()["items"]]
         self.assertEqual(["正常", "正常", "正常", "观察", "停用"], statuses)
 
+    def test_account_batch_minimal_fields_keep_optional_values_empty(self) -> None:
+        theater = service.create_theater({"name": "最少字段剧场"})
+        result = service.create_accounts_batch({"items": [
+            {"nickname": "最少字段账号", "channel_id": "minimal-channel", "theater_name": "最少字段剧场"},
+            {"nickname": "空白字段账号", "channel_id": "blank-channel", "theater_name": "最少字段剧场",
+             "sub_theater_name": "  ", "status": "  ", "reporting_date": None, "registration_date": "", "notes": None},
+        ]})
+        self.assertEqual(2, result["created_count"])
+        for item in result["items"]:
+            self.assertEqual(theater["id"], item["theater_id"])
+            self.assertEqual("正常", item["status"])
+            for field in ("sub_theater_name", "reporting_date", "registration_date", "notes"):
+                self.assertEqual("", item[field])
+        stored = service.list_accounts()["items"]
+        self.assertEqual(2, len(stored))
+        self.assertTrue(all(item["registration_date"] == "" and item["notes"] == "" for item in stored))
+        self.assertEqual([], service.list_sub_theaters()["items"])
+        conn = service.connection()
+        try:
+            self.assertEqual(service.SCHEMA_VERSION, conn.execute("PRAGMA user_version").fetchone()[0])
+        finally:
+            conn.close()
+
+    def test_account_batch_requires_all_three_identity_fields(self) -> None:
+        service.create_theater({"name": "必填字段剧场"})
+        valid = {"nickname": "必填账号", "channel_id": "required-channel", "theater_name": "必填字段剧场"}
+        for field, message in (("nickname", "账号昵称不能为空"), ("channel_id", "平台iD不能为空"), ("theater_name", "必须填写所属剧场")):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, message):
+                service.create_accounts_batch({"items": [{**valid, field: "  "}]})
+        self.assertEqual([], service.list_accounts()["items"])
+        self.assertEqual([], service.list_sub_theaters()["items"])
+
+    def test_account_batch_optional_values_are_preserved_when_provided(self) -> None:
+        theater = service.create_theater({"name": "选填字段剧场"})
+        service.create_sub_theater({"name": "指定子剧场", "theater_id": theater["id"]})
+        result = service.create_accounts_batch({"items": [{
+            "nickname": "选填字段账号", "channel_id": "optional-channel", "theater_name": "选填字段剧场",
+            "sub_theater_name": "指定子剧场", "status": "观察", "reporting_date": "2026-10-01",
+            "registration_date": "2026-09-01", "notes": "保留备注",
+        }]})
+        item = result["items"][0]
+        self.assertEqual("指定子剧场", item["sub_theater_name"])
+        self.assertEqual("观察", item["status"])
+        self.assertEqual("2026-10-01", item["reporting_date"])
+        self.assertEqual("2026-09-01", item["registration_date"])
+        self.assertEqual("保留备注", item["notes"])
+
     def test_account_batch_rejects_missing_or_wrong_sub_theater(self) -> None:
         theater = service.create_theater({"name": "账号归属剧场", "default_commission_rate": 70, "default_tax_rate": 6})
         with self.assertRaisesRegex(ValueError, "子剧场不存在"):
@@ -816,12 +945,12 @@ class V2FileServiceTests(unittest.TestCase):
         service.create_task({"source_id": "schedule-drama-summary", "account_name": "账号甲", "drama_name": "排期剧", "planned_publish_at": "2026-08-30T19:30"})
         item = next(row for row in service.list_dramas()["items"] if row["id"] == drama["id"])
         self.assertEqual(1, item["production_count"])
-        self.assertEqual("2026-08-30T19:30", item["last_scheduled_at"])
+        self.assertEqual("2026-08-30", item["last_scheduled_at"])
         self.assertEqual(0, item["active_production_count"])
 
     def test_cover_upload_creates_named_cover_directory_only_on_upload(self) -> None:
         theater = service.create_theater({"name": "封面剧场", "default_commission_rate": 70, "default_tax_rate": 6})
         drama = service.create_drama({"current_name": "封面测试", "history_names": [], "theater_id": theater["id"]})
-        result = service.upload_drama_cover(str(drama["id"]), {"filename": "poster.PNG", "content_base64": base64.b64encode(b"image").decode()})
+        result = service.upload_drama_cover(str(drama["id"]), {"filename": "poster.PNG", "content_base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg=="})
         self.assertEqual("封面测试-封面.png", result["filename"])
         self.assertTrue(Path(result["file_path"]).is_file())

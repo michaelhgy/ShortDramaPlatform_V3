@@ -1,0 +1,32 @@
+{
+  "method": "imagegen_rebuild_from_flattened_previews",
+  "description": "四张第一版模板的透明重建稿，已去掉视频背景和剧名，仅保留模板图形与固定文字。",
+  "assets": [
+    {
+      "name": "01_原版_空剧名.png",
+      "source": "木木短剧模板预览-v1.png"
+    },
+    {
+      "name": "02_蓝_空剧名.png",
+      "source": "木木短剧模板预览-蓝-v2.png"
+    },
+    {
+      "name": "03_青_空剧名.png",
+      "source": "木木短剧模板预览-青-v2.png"
+    },
+    {
+      "name": "04_红_空剧名.png",
+      "source": "木木短剧模板预览-红-v2.png"
+    }
+  ],
+  "fixed_text": [
+    "SHORT DRAMA",
+    "木木短剧",
+    "DRAMA SERIES"
+  ],
+  "removed": [
+    "视频/人物背景",
+    "剧名"
+  ],
+  "note": "这是透明位图重建稿，不是原始分层工程文件。后续接入软件前仍需统一竖版画布尺寸和剧名变量区域。"
+}

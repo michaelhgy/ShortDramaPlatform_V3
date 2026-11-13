@@ -20,6 +20,8 @@ class V2RevenueTests(unittest.TestCase):
         try:
             conn.execute("INSERT INTO theaters (id, name, created_at, updated_at) VALUES ('t1', '青柠剧场', ?, ?)", (now, now))
             conn.execute("INSERT INTO accounts (id, nickname, channel_id, theater_id, created_at, updated_at) VALUES ('a1', '青柠账号', 'channel-1', 't1', ?, ?)", (now, now))
+            revenue.collectors.set_theater(conn, 't1', ['qingning'])
+            revenue.collectors.set_account(conn, 'a1', 't1', 'qingning')
             conn.commit()
         finally:
             conn.close()
@@ -70,7 +72,7 @@ class V2RevenueTests(unittest.TestCase):
 
             statuses = {item['account_id']: item['collection_status'] for item in revenue.revenue_daily_account_summary(conn, '2026-08-28')['items']}
 
-            self.assertEqual({'a1': 'uncollected', 'a-no-data': 'no_data', 'a-failed': 'failed'}, statuses)
+            self.assertEqual({'a1': 'uncollected', 'a-no-data': 'no_data', 'a-failed': 'failed','a-disabled':'success'}, statuses)
         finally:
             conn.close()
 
@@ -93,14 +95,86 @@ class V2RevenueTests(unittest.TestCase):
         try:
             detail = revenue.QingningRow(1, 'video-1', '测试剧集', 100, 200, revenue.Decimal('12.34'))
             with patch.object(revenue, 'fetch_qingning_day_details', return_value=(revenue.Decimal('12.34'), [detail])):
-                revenue.collect_qingning(conn, '2026-08-28', '2026-08-28')
+                revenue.collect_qingning(conn, '2026-08-28', '2026-08-28', save_details=True)
             changed = revenue.QingningRow(1, 'video-1', '测试剧集', 150, 240, revenue.Decimal('15.00'))
             with patch.object(revenue, 'fetch_qingning_day_details', return_value=(revenue.Decimal('15.00'), [changed])):
-                revenue.collect_qingning(conn, '2026-08-28', '2026-08-28')
+                revenue.collect_qingning(conn, '2026-08-28', '2026-08-28', save_details=True)
             result = revenue.revenue_video_details(conn, '2026-08-28', '2026-08-28')
             self.assertEqual(1, len(result['items']))
             self.assertEqual(150, result['items'][0]['video_views'])
             self.assertEqual('unmatched', result['items'][0]['match_status'])
+        finally:
+            conn.close()
+
+
+    def test_default_qingning_collection_keeps_detail_capability_without_persisting_details(self) -> None:
+        conn = service.connection()
+        try:
+            detail = revenue.QingningRow(1, 'video-1', '测试剧集', 100, 200, revenue.Decimal('12.34'))
+            with patch.object(revenue, 'fetch_qingning_day_details', return_value=(revenue.Decimal('12.34'), [detail])):
+                revenue.collect_qingning(conn, '2026-08-28', '2026-08-28')
+            self.assertEqual(0, conn.execute('SELECT COUNT(*) FROM v2_revenue_video_details').fetchone()[0])
+            self.assertEqual(1, conn.execute('SELECT COUNT(*) FROM v2_daily_revenues').fetchone()[0])
+        finally:
+            conn.close()
+
+    def test_completed_qingning_day_is_not_requested_again_when_skip_enabled(self) -> None:
+        conn = service.connection()
+        try:
+            with patch.object(revenue, 'fetch_qingning_day_details', return_value=(revenue.Decimal('12.34'), [])) as fetch:
+                revenue.collect_qingning(conn, '2026-08-28', '2026-08-28', skip_completed=True)
+                revenue.collect_qingning(conn, '2026-08-28', '2026-08-28', skip_completed=True)
+            self.assertEqual(1, fetch.call_count)
+            self.assertEqual(1, conn.execute("SELECT COUNT(*) FROM v2_revenue_collection_attempts WHERE revenue_date='2026-08-28'").fetchone()[0])
+        finally:
+            conn.close()
+
+
+    def test_cumulative_theater_amount_is_written_to_collection_date(self) -> None:
+        conn = service.connection()
+        try:
+            now = "2026-08-29T10:00:00"
+            conn.execute("INSERT INTO theaters (id, name, created_at, updated_at) VALUES ('t-touch', '触摸剧场', ?, ?)", (now, now))
+            conn.execute("INSERT INTO accounts (id, nickname, channel_id, theater_id, created_at, updated_at) VALUES ('a-touch', '触摸账号', 'touch-1', 't-touch', ?, ?)", (now, now))
+            conn.commit()
+            revenue.collectors.set_theater(conn, 't-touch', ['touch'])
+            revenue.collectors.set_account(conn, 'a-touch', 't-touch', 'touch')
+            with patch.object(revenue, 'fetch_touch_latest', return_value=('success', revenue.Decimal('88.00'), '')):
+                result = revenue.collect_supported_theaters(conn, '2026-08-28', '2026-08-28', ['触摸剧场'], skip_completed=True, collected_at=datetime(2026, 8, 29, 10))
+            self.assertEqual('2026-08-29', result['items'][0]['date'])
+            row = conn.execute("SELECT revenue_date,amount FROM v2_daily_revenues WHERE account_id='a-touch'").fetchone()
+            self.assertEqual(('2026-08-29', '88.00'), (row['revenue_date'], row['amount']))
+        finally:
+            conn.close()
+
+
+    def test_first_qingning_collection_backfills_until_seven_explicit_empty_days(self) -> None:
+        conn = service.connection()
+        try:
+            calls = []
+            def fetch(_channel: str, day: str):
+                calls.append(day)
+                return (revenue.Decimal('12.00'), []) if len(calls) == 1 else (None, [])
+            with patch.object(revenue, 'fetch_qingning_day_details', side_effect=fetch):
+                result = revenue.collect_qingning(conn, '2026-08-28', '2026-08-28', initial_backfill=True, max_initial_days=20, empty_streak_stop=7, skip_completed=True)
+            self.assertEqual(8, len(result['items']))
+            self.assertEqual('2026-08-28', calls[0])
+            self.assertEqual('2026-08-21', calls[-1])
+        finally:
+            conn.close()
+
+    def test_collector_inventory_marks_registered_and_unimplemented_theaters(self) -> None:
+        conn = service.connection()
+        try:
+            now = "2026-08-29T10:00:00"
+            conn.execute("INSERT INTO theaters (id, name, status, created_at, updated_at) VALUES ('t-new', '添翼剧场', '启用', ?, ?)", (now, now))
+            conn.commit()
+            inventory = revenue.revenue_collector_inventory(conn)
+            by_name = {item['name']: item for item in inventory['items']}
+            self.assertEqual('ready', by_name['青柠剧场']['adapter_status'])
+            self.assertEqual('unimplemented', by_name['添翼剧场']['adapter_status'])
+            self.assertIn('青柠剧场', inventory['supported_theaters'])
+            self.assertNotIn('添翼剧场', inventory['supported_theaters'])
         finally:
             conn.close()
 
@@ -117,21 +191,23 @@ class V2RevenueTests(unittest.TestCase):
             self.assertEqual(2, total)
             conn.execute("INSERT INTO accounts (id, nickname, channel_id, theater_id, status, created_at, updated_at) VALUES ('a-disabled', '停用账号', 'channel-2', 't1', '停用', '2026-08-29T10:00:00', '2026-08-29T10:00:00')")
             conn.commit()
-            self.assertEqual(2, revenue.estimate_collection_units(conn, '2026-08-27', '2026-08-28', ['青柠剧场']))
+            self.assertEqual(3, revenue.estimate_collection_units(conn, '2026-08-27', '2026-08-28', ['青柠剧场']))
         finally:
             conn.close()
 
-    def test_only_disabled_account_is_excluded_from_collection(self) -> None:
+    def test_paused_accounts_still_collect_revenue(self) -> None:
         conn = service.connection()
         try:
             now = "2026-08-29T10:00:00"
             conn.execute("INSERT INTO accounts (id, nickname, channel_id, theater_id, status, created_at, updated_at) VALUES ('a2', '异常账号', 'channel-2', 't1', '异常', ?, ?)", (now, now))
             conn.execute("INSERT INTO accounts (id, nickname, channel_id, theater_id, status, created_at, updated_at) VALUES ('a3', '停用账号', 'channel-3', 't1', '停用', ?, ?)", (now, now))
             conn.commit()
+            revenue.collectors.set_account(conn, 'a2', 't1', 'qingning')
+            revenue.collectors.set_account(conn, 'a3', 't1', 'qingning')
             with patch.object(revenue, 'fetch_qingning_day_details', return_value=(None, [])) as collect:
                 result = revenue.collect_qingning(conn, '2026-08-28', '2026-08-28')
-            self.assertEqual(2, result['total_accounts'])
-            self.assertEqual(2, collect.call_count)
+            self.assertEqual(3, result['total_accounts'])
+            self.assertEqual(3, collect.call_count)
         finally:
             conn.close()
 

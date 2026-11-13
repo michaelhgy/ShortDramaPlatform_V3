@@ -1,0 +1,19 @@
+{
+  "source_frame_seconds": 6,
+  "inputs": {
+    "/mnt/d/短剧推广运营系统/生产文件/9月23日/千层蛋糕酥脆/别惹那个装傻的学霸/素材/别惹那个装傻的学霸-3.mp4": [
+      59030421,
+      1790155913652395400
+    ],
+    "/mnt/c/Users/Michael/Videos/FFmpeg_AI三组风格测试_20261017_154346/00_共用风景底层/effect_colour.mp4": [
+      88740937,
+      1792223256785238100
+    ],
+    "/mnt/c/Users/Michael/Videos/FFmpeg_AI三组风格测试_20261017_154346/00_共用风景底层/effect_alpha.mkv": [
+      68591738,
+      1792223256785738300
+    ]
+  },
+  "unchanged_after_extract": true,
+  "note": "Only extracted the same frame and existing scenery/2% cache; no original source writes"
+}

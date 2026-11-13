@@ -1,135 +1,18 @@
-"""Restart the V2 development desktop as one owned local runtime."""
+"""V3 compatibility entry: open the copied runtime without stopping V2."""
 
 from __future__ import annotations
 
-import importlib.util
 import os
-import shutil
-import socket
-import subprocess
-import sys
-import time
-from pathlib import Path
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_SCRIPT = (PROJECT_ROOT / "tools" / "run_v2_file_service.py").resolve()
-DESKTOP_SCRIPT = (PROJECT_ROOT / "tools" / "run_v2_desktop_test.py").resolve()
-SERVICE_PORT = 8782
-FRONTEND_PORT = 3000
-V2_PORTS = (SERVICE_PORT, FRONTEND_PORT)
-
-
-def _powershell_quote(value: str) -> str:
-    return value.replace("'", "''")
-
-
-def stop_v2_processes() -> None:
-    """Stop only V2 processes before starting a fresh, single-owner pair.
-
-    The release executable and the source checkout both use port 8782. The
-    old implementation stopped only the source service, leaving a Portable
-    process (or Vite on port 3000) alive and causing SQLite lock contention.
-    """
-    project_marker = _powershell_quote(str(PROJECT_ROOT))
-    service_marker = _powershell_quote(str(SERVICE_SCRIPT))
-    desktop_marker = _powershell_quote(str(DESKTOP_SCRIPT))
-    command = (
-        f"$project = '{project_marker}'; "
-        f"$service = '{service_marker}'; "
-        f"$desktop = '{desktop_marker}'; "
-        "$listen = @(Get-NetTCPConnection -State Listen -LocalPort 8782,3000 "
-        "-ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess); "
-        "$target = Get-CimInstance Win32_Process | Where-Object { "
-        "$cmd = [string]$_.CommandLine; "
-        "$_.ProcessId -ne $PID -and ("
-        "($cmd -like ('*' + $service + '*')) -or "
-        "($cmd -like ('*' + $desktop + '*')) -or "
-        "($_.ProcessId -in $listen -and (($cmd -like '*ShortDramaPlatform_V2*') -or "
-        "$_.Name -eq 'ShortDramaPlatform.exe' -or $cmd -like '*run_v2_file_service.py*'))"
-        ") "
-        "}; $target | Sort-Object ProcessId -Unique | "
-        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-    )
-    subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
-        cwd=PROJECT_ROOT,
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-
-def _port_is_free(port: int) -> bool:
-    """Probe the port by connecting to it.
-
-    The previous implementation started a PowerShell process for every single
-    check, and the wait loop checks both ports repeatedly; process startup alone
-    costs a second or two each time, which is why a cold start could take the
-    better part of a minute before the window appeared.
-
-    Connecting (rather than binding) is deliberate: on Windows a plain bind to
-    an already-listening port can still succeed, and some port ranges are
-    reserved outright, so bind is not a reliable "is anything listening" test.
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.settimeout(0.3)
-        try:
-            probe.connect(("127.0.0.1", port))
-        except OSError:
-            return True
-    return False
-
-
-def wait_for_ports_to_close() -> None:
-    """只等后端端口释放。
-
-    前端开发服务器（Vite）刻意保留：它的热更新会自动把前端改动推给页面，
-    重启它反而要等一次冷编译（那正是"双击后要等一分钟"的主因）。
-    """
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        if _port_is_free(SERVICE_PORT):
-            return
-        time.sleep(0.25)
-    raise RuntimeError(f"无法释放 V2 后端端口：{SERVICE_PORT}。请关闭残留的 V2 窗口后重试。")
-
-
-def _runtime_command() -> tuple[str, list[str]]:
-    """Prefer a Python installation that actually contains pywebview.
-
-    The check runs in-process first: spawning an interpreter just to ask
-    ``import webview`` costs another second or two on every single launch.
-    """
-    if importlib.util.find_spec("webview") is not None:
-        return sys.executable, []
-    launcher = shutil.which("py.exe") or shutil.which("py")
-    if launcher:
-        # 以前这里写的是未定义变量 `probe`（只在 _port_is_free 里是局部变量）：
-        # 当前解释器没有 pywebview 时会抛 NameError，而旧服务已在前面被强杀，
-        # 结果是"双击后什么都没发生"。改成真正的探测命令。
-        candidate = subprocess.run(
-            [launcher, "-3.12", "-c", "import webview"],
-            check=False,
-            capture_output=True,
-        )
-        if candidate.returncode == 0:
-            return launcher, ["-3.12"]
-    raise RuntimeError("找不到已安装 pywebview 的 Python 运行时；请使用 Python 3.12 环境启动 V2。")
-
-
-def main() -> None:
-    """双击即重启后端，并复用前端。
-
-    后端（8782）**总是被替换**：开发测试时改了 Python 代码，只有重启后端才生效，
-    这是这个入口存在的意义，不能为了"看起来快"而跳过。
-    前端开发服务器（3000）保留不动，交给 Vite 热更新。
-    """
-    stop_v2_processes()
-    wait_for_ports_to_close()
-    executable, prefix = _runtime_command()
-    os.execv(executable, [executable, *prefix, str(DESKTOP_SCRIPT), *sys.argv[1:]])
+from run_v2_desktop import StartupCancelled, main, report_startup_failure
 
 
 if __name__ == "__main__":
-    main()
+    os.environ["V2_DESKTOP_TITLE"] = "短剧推广运营系统 V3（开发版）"
+    try:
+        main()
+    except StartupCancelled:
+        pass
+    except Exception as exc:
+        report_startup_failure(exc)
+        raise SystemExit(1) from exc

@@ -1,0 +1,1 @@
+[0:v]format=rgba,split=2[t][b];[t]crop=456:337:26:30,scale=541:400:flags=lanczos[ta];[b]crop=307:254:141:803,scale=364:301:flags=lanczos[ba];color=c=black@0:s=1080x2400:r=1:d=1,format=rgba[bg];[bg][ta]overlay=24:24:format=rgb:alpha=straight:shortest=1[p];[p][ba]overlay=692:2075:format=rgb:alpha=straight:shortest=1[out]

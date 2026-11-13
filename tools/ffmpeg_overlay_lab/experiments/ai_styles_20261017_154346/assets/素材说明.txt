@@ -1,0 +1,11 @@
+﻿本次AI生成素材：三组风格，每组两份PNG。
+
+01 暖金流光：gold_texture.png 用于两侧；gold_stickers.png 为银杏叶、金色细线与星点的上下透明装饰。
+02 青蓝柔光：cyan_texture.png 用于两侧；cyan_stickers.png 为云纹、水波和荷叶的上下透明装饰。
+03 粉紫星点：purple_texture.png 用于两侧；purple_stickers.png 为星月、花朵和细线的上下透明装饰。
+
+图片使用内置 image_gen 生成，共6次独立调用。完整生成提示词见 prompts.json；原始输出来源见 generation_manifest.json。
+纹理图片自身是静态的，左右流动来自FFmpeg的镜像拼接、滚动和移动裁切；贴纸采用真实透明通道，轻微浮动由FFmpeg完成。
+三版保留相同的主轨原声、上下风景、羽化范围和原有2%全屏层，替换原来的HAPPY/Travel等上下贴纸。
+每组上下装饰来自一张PNG的顶部、底部，等比例缩放后分别裁出，保持原有图形比例。
+这些文件属于本次实验素材，尚未加入正式生产素材库。

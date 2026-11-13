@@ -1,60 +1,66 @@
 import React, { useState, useEffect } from 'react';
-import { AccountBusinessItem, AccountBusinessStatus } from '../../../assetsTypes';
+import { AccountBusinessItem, AccountBusinessStatus, TheaterBusinessItem } from '../../../assetsTypes';
+import type { RevenueCollectorDefinition } from '../../../api/v2Catalog';
 import { X, UserPlus, Save, Trash2, AlertCircle } from 'lucide-react';
 
 interface AccountModalProps {
   isOpen: boolean;
   onClose: () => void;
   account: AccountBusinessItem | null;
-  theaters: { id: string; name: string }[];
+  theaters: TheaterBusinessItem[];
+  collectorDefinitions: RevenueCollectorDefinition[];
+  collectorError?: string;
   subTheaters: { id: string; name: string; theaterName: string }[];
   onSave: (accountData: Omit<AccountBusinessItem, 'id'>, id?: string) => void;
   onDelete?: (id: string, name: string) => void;
 }
 
-const ALL_STATUSES: AccountBusinessStatus[] = ['正常', '观察', '限流', '二限', '实名', '封禁', '停用'];
+const ALL_STATUSES: AccountBusinessStatus[] = ['正常', '观察', '限流', '二限', '实名', '封禁', '停用', '注销'];
 
 export const AccountModal: React.FC<AccountModalProps> = ({
   isOpen,
   onClose,
   account,
   theaters,
+  collectorDefinitions,
+  collectorError,
   subTheaters,
   onSave,
   onDelete,
 }) => {
   const [nickname, setNickname] = useState('');
   const [accountId, setAccountId] = useState('');
-  const [theaterName, setTheaterName] = useState(theaters[0]?.name || '九州剧场');
+  const [theaterId, setTheaterId] = useState(theaters[0]?.id || '');
+  const [collectorId, setCollectorId] = useState('');
   const [subTheaterName, setSubTheaterName] = useState('');
   const [status, setStatus] = useState<AccountBusinessStatus>('正常');
-  const [whitelistedDate, setWhitelistedDate] = useState('');
-  const [registeredDate, setRegisteredDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
     if (account) {
       setNickname(account.nickname);
       setAccountId(account.accountId);
-      setTheaterName(account.theaterName);
+      setTheaterId(account.theaterId);
+      setCollectorId(account.revenueCollectorId || '');
       setSubTheaterName(account.subTheaterName);
       setStatus(account.status);
-      setWhitelistedDate(account.whitelistedDate === '未报白' ? '' : account.whitelistedDate);
-      setRegisteredDate(account.registeredDate);
       setNotes(account.notes || '');
     } else {
       setNickname('');
       setAccountId('');
-      setTheaterName(theaters[0]?.name || '九州剧场');
+      setTheaterId(theaters[0]?.id || '');
+      setCollectorId('');
       setSubTheaterName('');
       setStatus('正常');
-      setWhitelistedDate('');
-      setRegisteredDate(new Date().toISOString().slice(0, 10));
       setNotes('');
     }
   // A background catalog refresh replaces `theaters` with a new array. It is
   // reference data, not a request to reset a form the user is currently typing.
   }, [account?.id, isOpen]);
+
+  const chosenTheater = theaters.find(item => item.id === theaterId);
+  const theaterName = chosenTheater?.name || '';
+  const availableCollectors = collectorDefinitions.filter(item => chosenTheater?.revenueCollectorIds?.includes(item.id));
 
   // Filter subtheaters belonging to chosen theater
   const filteredSubTheaters = subTheaters.filter(s => s.theaterName === theaterName);
@@ -65,17 +71,16 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     e.preventDefault();
     if (!nickname.trim() || !accountId.trim()) return;
 
-    const matchedTheater = theaters.find(t => t.name === theaterName);
+    if (!chosenTheater) return;
     
     onSave({
       nickname: nickname.trim(),
       accountId: accountId.trim(),
-      theaterId: matchedTheater?.id || 'th-01',
+      theaterId: chosenTheater.id,
+      revenueCollectorId: collectorId,
       theaterName,
-      subTheaterName: subTheaterName.trim() || '主分发专区',
+      subTheaterName: subTheaterName.trim(),
       status,
-      whitelistedDate: whitelistedDate || '未报白',
-      registeredDate: registeredDate || new Date().toISOString().slice(0, 10),
       notes: notes.trim(),
       isUsedInBusiness: account ? account.isUsedInBusiness : false,
     }, account ? account.id : undefined);
@@ -157,15 +162,17 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 所属剧场 <span className="text-rose-500">*</span>
               </label>
               <select
-                value={theaterName}
+                value={theaterId}
                 onChange={e => {
-                  setTheaterName(e.target.value);
+                  setTheaterId(e.target.value);
+                  setCollectorId('');
                   setSubTheaterName('');
                 }}
                 className="w-full px-3 py-2 rounded-xl border border-black/[0.1] bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1D2E]/20 text-xs font-medium text-[#1A1D2E]"
               >
+                <option value="">请选择剧场</option>
                 {theaters.map(t => (
-                  <option key={t.id} value={t.name}>
+                  <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
                 ))}
@@ -197,7 +204,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             <label className="block font-semibold text-[#1A1D2E] mb-1.5">
               账号当前状态 <span className="text-rose-500">*</span>
             </label>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-4 gap-1.5">
               {ALL_STATUSES.map(s => {
                 const isSelected = status === s;
                 let activeStyle = 'bg-slate-100 text-slate-600 border-black/[0.06] hover:bg-slate-200/60';
@@ -208,6 +215,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   else if (s === '二限') activeStyle = 'bg-orange-600 text-white font-bold shadow-xs border-orange-600';
                   else if (s === '实名') activeStyle = 'bg-purple-600 text-white font-bold shadow-xs border-purple-600';
                   else if (s === '封禁') activeStyle = 'bg-rose-600 text-white font-bold shadow-xs border-rose-600';
+                  else if (s === '注销') activeStyle = 'bg-slate-800 text-white font-bold shadow-xs border-slate-800';
                   else if (s === '停用') activeStyle = 'bg-slate-600 text-white font-bold shadow-xs border-slate-600';
                 }
 
@@ -223,33 +231,17 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 );
               })}
             </div>
+            {status === '注销' && <p className="mt-2 text-xs leading-relaxed text-slate-500">注销后退出日常列表和新发布选择，并停止采集；已保存的作品、流量、收益和任务历史继续保留，可切换状态范围查看。</p>}
           </div>
 
-          {/* Row 4: Whitelisted Date & Registered Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block font-semibold text-[#1A1D2E] mb-1.5 flex items-center justify-between">
-                <span>报白时间</span>
-                <span className="text-[10px] text-slate-400 font-normal">未报白可留空</span>
-              </label>
-              <input
-                type="date"
-                value={whitelistedDate}
-                onChange={e => setWhitelistedDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-black/[0.1] bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1D2E]/20 text-xs font-medium text-[#1A1D2E]"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold text-[#1A1D2E] mb-1.5">
-                注册时间
-              </label>
-              <input
-                type="date"
-                value={registeredDate}
-                onChange={e => setRegisteredDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-black/[0.1] bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1D2E]/20 text-xs font-medium text-[#1A1D2E]"
-              />
-            </div>
+          <div>
+            <label className="block font-semibold text-[#1A1D2E] mb-1.5" htmlFor="account-revenue-collector">收益采集器</label>
+            <select id="account-revenue-collector" value={collectorId} onChange={event => setCollectorId(event.target.value)} className="w-full px-3 py-2 rounded-xl border border-black/[0.1] bg-slate-50/50 text-xs" disabled={!!collectorError || availableCollectors.length === 0}>
+              <option value="">{availableCollectors.length ? '待配置，请选择' : '当前剧场未配置采集器'}</option>
+              {collectorId && !availableCollectors.some(item => item.id === collectorId) && <option value={collectorId}>原采集器暂不可用（{collectorId}）</option>}
+              {availableCollectors.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <p className="mt-1.5 text-[11px] text-slate-500">{collectorError || '只能选择所属剧场已确认的采集器；请先在剧场管理中复核配置。'}</p>
           </div>
 
           {/* Row 5: Notes */}

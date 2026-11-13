@@ -1,0 +1,118 @@
+{
+  "tool": "built-in image_gen",
+  "purpose": "Independent reusable stickers and randomized top/bottom placements",
+  "prompts": [
+    {
+      "id": "01",
+      "name": "回环曲线",
+      "type": "abstract",
+      "subject": "one airy irregular looping line, two gently interlaced arcs, compact open gesture",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one airy irregular looping line, two gently interlaced arcs, compact open gesture. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "02",
+      "name": "交错波纹",
+      "type": "abstract",
+      "subject": "three loosely interweaving short wavy lines, asymmetrical horizontal flowing silhouette",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: three loosely interweaving short wavy lines, asymmetrical horizontal flowing silhouette. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "03",
+      "name": "空心圆环",
+      "type": "abstract",
+      "subject": "one loose ornamental arrangement of three imperfect hollow rings of different sizes, slim open silhouette",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one loose ornamental arrangement of three imperfect hollow rings of different sizes, slim open silhouette. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "04",
+      "name": "折叠丝带",
+      "type": "abstract",
+      "subject": "a small loosely folded ribbon, a single flowing outlined fabric strip with an open center and two ends",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: a small loosely folded ribbon, a single flowing outlined fabric strip with an open center and two ends. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "05",
+      "name": "纸飞机",
+      "type": "objects",
+      "subject": "one small folded paper airplane, seen diagonally, readable simple outline, without a motion trail",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one small folded paper airplane, seen diagonally, readable simple outline, without a motion trail. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "06",
+      "name": "信封",
+      "type": "objects",
+      "subject": "one small slightly open envelope with a corner of plain paper visible, simple clean contour, no writing",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one small slightly open envelope with a corner of plain paper visible, simple clean contour, no writing. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "07",
+      "name": "翻开的书",
+      "type": "objects",
+      "subject": "one small open book seen at a gentle angle, few page lines and simple contour, no writing",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one small open book seen at a gentle angle, few page lines and simple contour, no writing. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "08",
+      "name": "茶杯",
+      "type": "objects",
+      "subject": "one small teacup and saucer, one tiny curved steam line, airy simple contour",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one small teacup and saucer, one tiny curved steam line, airy simple contour. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "09",
+      "name": "月牙",
+      "type": "symbols",
+      "subject": "one small slender crescent moon with a delicate irregular outline, no additional stars",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one small slender crescent moon with a delicate irregular outline, no additional stars. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "10",
+      "name": "卷云",
+      "type": "symbols",
+      "subject": "one small loosely curled cloud, asymmetrical rounded contour and a couple of interior curves",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one small loosely curled cloud, asymmetrical rounded contour and a couple of interior curves. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "11",
+      "name": "小钥匙",
+      "type": "objects",
+      "subject": "one small ornamental old key, an oval bow and two simple teeth, diagonal silhouette",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one small ornamental old key, an oval bow and two simple teeth, diagonal silhouette. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "12",
+      "name": "纸风车",
+      "type": "symbols",
+      "subject": "one small four-bladed paper pinwheel on a short slender stem, simple open fold outlines",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one small four-bladed paper pinwheel on a short slender stem, simple open fold outlines. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "13",
+      "name": "蝴蝶",
+      "type": "nature",
+      "subject": "one delicate butterfly with spread wings, asymmetric natural pose, sparse interior wing contour lines",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one delicate butterfly with spread wings, asymmetric natural pose, sparse interior wing contour lines. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "14",
+      "name": "小花",
+      "type": "nature",
+      "subject": "one single small five-petaled wildflower with a short curved stalk, two leaves and an open outlined center",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one single small five-petaled wildflower with a short curved stalk, two leaves and an open outlined center. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "15",
+      "name": "羽毛",
+      "type": "nature",
+      "subject": "one gently curved narrow feather, sparse long separated barbs and a fine central shaft, diagonal silhouette",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one gently curved narrow feather, sparse long separated barbs and a fine central shaft, diagonal silhouette. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    },
+    {
+      "id": "16",
+      "name": "三叶枝",
+      "type": "nature",
+      "subject": "one short gently bent twig carrying three different-sized outlined oval leaves, irregular open silhouette",
+      "prompt": "Use case: stylized-concept. Asset type: ONE standalone transparent decorative sticker, for randomized mixing with many other small stickers above and below portrait videos. Create only the following motif: one short gently bent twig carrying three different-sized outlined oval leaves, irregular open silhouette. Hand drawn lightweight clean contour illustration, muted off-white and pale silver lines, very small touches of soft warm gray, almost entirely open transparent interior. A modest casual decorative doodle, not an elaborate illustration. Consistent fine-to-medium stroke weight that stays legible when the motif is reduced to about 140 to 250 pixels tall. Keep the motif complete, centered, occupying about 70 percent of the canvas with generous fully transparent margin. Broadly usable and visually quiet, naturally asymmetric where appropriate. No lettering, numbers, logos, sticker backing, border, cast shadow, colored background, big glow, faces or photorealism. Genuine transparent alpha background. Square canvas. Do not create a sticker sheet or multiple separate stickers."
+    }
+  ]
+}

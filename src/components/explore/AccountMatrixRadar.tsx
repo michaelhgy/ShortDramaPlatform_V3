@@ -1,3 +1,4 @@
+import { AccountAvatar } from '../AccountAvatar';
 import React, { useState } from 'react';
 import { ExploreAccount } from '../../exploreTypes';
 import { ManualAccountStatus } from '../../types';
@@ -188,9 +189,7 @@ export const AccountMatrixRadar: React.FC<AccountMatrixRadarProps> = ({
               >
                 {/* Account info + Health tag */}
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 border border-black/[0.06] flex items-center justify-center font-black text-sm text-[#1A1D2E] shrink-0">
-                    {account.name.slice(0, 1)}
-                  </div>
+                  <AccountAvatar name={account.name} url={account.avatarUrl} className="w-10 h-10" />
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

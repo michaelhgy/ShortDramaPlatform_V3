@@ -1,3 +1,4 @@
+import { PlatformDramaSources } from './PlatformDramaSources';
 import React, { useState, useMemo, useRef } from 'react';
 import { useAdaptivePageSize } from '../../hooks/useAdaptivePageSize';
 import { formatDisplayDateTime } from '../../utils/dateDisplay';
@@ -29,6 +30,7 @@ import {
   Save,
   Filter,
   ChevronLeft,
+  Download,
 } from 'lucide-react';
 import { ResourcePreviewModal, PreviewResourceData } from './modals/ResourcePreviewModal';
 import { createV2DramaProfile, uploadV2DramaCover } from '../../api/v2Catalog';
@@ -41,6 +43,7 @@ interface DramaLibraryTabProps {
   onSelectDrama?: (dramaId: string) => void;
   onUpdateProfiles?: (profiles: DramaContentProfile[]) => void;
   onOpenFolder: (path: string) => void;
+  onOpenDramaDownload: () => void;
   onShowToast: (msg: string) => void;
 }
 
@@ -52,6 +55,7 @@ export const DramaLibraryTab: React.FC<DramaLibraryTabProps> = ({
   onSelectDrama,
   onUpdateProfiles,
   onOpenFolder,
+  onOpenDramaDownload,
   onShowToast,
 }) => {
   const [currentDramaId, setCurrentDramaId] = useState<string>(
@@ -433,7 +437,11 @@ export const DramaLibraryTab: React.FC<DramaLibraryTabProps> = ({
                     <div className="flex items-center gap-4 text-xs text-[#64748B] pt-0.5">
                       <span className="flex items-center gap-1">
                         <Film className="w-3.5 h-3.5 text-slate-400" />
-                        <span>共 {currentProfile.totalEpisodes || currentProfile.masterVideoPackage.totalFiles} 集原片</span>
+                        <span>
+                          {currentProfile.totalEpisodes ? `小V猫 ${currentProfile.totalEpisodes} 集 · ` : '小V猫集数未同步 · '}
+                          已下载 {currentProfile.masterVideoPackage.totalFiles} 集
+                          {currentProfile.totalEpisodes > currentProfile.masterVideoPackage.totalFiles ? ` · 缺 ${currentProfile.totalEpisodes - currentProfile.masterVideoPackage.totalFiles} 集` : ''}
+                        </span>
                       </span>
                       <span className="flex items-center gap-1">
                         <HardDrive className="w-3.5 h-3.5 text-slate-400" />
@@ -450,11 +458,11 @@ export const DramaLibraryTab: React.FC<DramaLibraryTabProps> = ({
                 {/* Primary Action: Open Windows Folder */}
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => onOpenFolder(currentProfile.masterVideoPackage.folderPath)}
+                    onClick={onOpenDramaDownload}
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black/90 active:scale-[0.98] text-xs font-bold shadow-xs transition-all cursor-pointer"
                   >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                    <span>打开 Windows 原片目录</span>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>短剧原片下载</span>
                   </button>
                 </div>
               </div>
@@ -518,6 +526,8 @@ export const DramaLibraryTab: React.FC<DramaLibraryTabProps> = ({
                   </button>
                 )}
               </div>
+
+              <PlatformDramaSources sources={currentProfile.platformSources} conflict={currentProfile.episodeCountConflict} />
 
               {/* Sub Navigation Bar for Drama Profile */}
               <div className="pt-2 border-t border-black/[0.06] flex flex-wrap items-center gap-2">

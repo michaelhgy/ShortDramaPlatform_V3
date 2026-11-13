@@ -1,0 +1,44 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium}=require('C:/Users/Michael/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const out=path.resolve('local-test-output/vcat-catalog-integration-20261026'),info=JSON.parse(fs.readFileSync(path.join(out,'current.json'),'utf8'));
+(async()=>{
+ const browser=await chromium.launch({channel:'msedge',headless:true}),context=await browser.newContext({viewport:{width:1480,height:1050},timezoneId:'Asia/Shanghai'}),page=await context.newPage(),checks=[],errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ const api=async url=>{const r=await context.request.get(info.url+url);assert.ok(r.ok(),await r.text());return r.json();};
+ const post=async(url,data)=>{const r=await context.request.post(info.url+url,{data});assert.ok(r.ok(),await r.text());return r.json();};
+ const waitJob=async id=>{let job;for(let i=0;i<80;i++){job=await api('/api/v3/drama-catalog/jobs/'+id);if(!['queued','running','stopping'].includes(job.status))return job;await page.waitForTimeout(100);}throw Error('job timeout');};
+ try{
+  await page.goto(info.url);await page.locator('#btn-explore-add-schedule').click();
+  const dialog=page.getByRole('dialog',{name:'安排制作任务',exact:true});await dialog.waitFor();
+  const rect=await dialog.boundingBox();assert.ok(rect.x>100&&Math.abs(rect.x+rect.width/2-740)<3);checks.push('centered-dialog');
+  assert.equal(await dialog.locator('#btn-confirm-save-schedule').isDisabled(),true);
+  await dialog.getByRole('button',{name:'小程序 小程序短剧挂载',exact:true}).click();
+  await dialog.getByRole('button',{name:'同步验收账号 联动验收剧场',exact:true}).click();
+  assert.equal(await dialog.getByRole('button',{name:'其他剧场账号 不同剧场',exact:true}).isDisabled(),true);checks.push('mount-first-and-bidirectional-theater-lock');
+  await dialog.getByRole('button',{name:'从小V获取',exact:true}).click();
+  await page.waitForFunction(async()=>{const r=await fetch('/api/v3/drama-catalog/latest');const j=await r.json();return j&&!['queued','running','stopping'].includes(j.status);});
+  await dialog.getByText(/新建 31/).waitFor();
+  const dramas=(await api('/api/v2/dramas')).items;assert.equal(dramas.length,32);assert.equal(dramas.find(d=>d.id===info.drama_id).current_name,'手工名称保留');
+  assert.ok((await api('/api/v2/accounts')).items.find(a=>a.id===info.account_id).avatar_url);checks.push('usable-fetch-auto-import-associate-avatar-cover');
+  assert.equal((await api(`/api/v3/drama-catalog/items?account_id=${info.account_id}&source=mini_drama`)).total,33);
+  await dialog.getByRole('button',{name:'下一页',exact:true}).click();await dialog.getByText('2 / 2',{exact:true}).waitFor();checks.push('catalog-pagination-24');
+  await dialog.getByLabel('获取范围').selectOption('all');await dialog.getByRole('button',{name:'从小V获取',exact:true}).click();
+  await page.waitForFunction(async()=>{const j=await(await fetch('/api/v3/drama-catalog/latest')).json();return j.mode==='all'&&j.status==='completed';});
+  await dialog.getByText(/新建 1 ·/).waitFor();assert.equal((await api('/api/v2/dramas')).items.length,33);await dialog.getByRole('button',{name:'下一页',exact:true}).click();await dialog.getByText('未版权保护',{exact:true}).waitFor();checks.push('all-fetch-imports-unusable-with-reason');
+  await dialog.getByLabel('搜索剧集').fill('生恩如纸');
+  const title=dialog.getByRole('button',{name:'选择挂载剧集 生恩如纸 养恩如山',exact:true});await title.click();
+  await dialog.locator('#btn-confirm-save-schedule').waitFor();await page.waitForFunction(()=>!document.querySelector('#btn-confirm-save-schedule')?.disabled);
+  assert.equal(await dialog.getByText('暂不设置计划日期',{exact:true}).count(),0);await dialog.getByLabel('统一计划日期').fill('2026-11-02');assert.equal(await dialog.getByLabel('同步验收账号的计划日期',{exact:true}).inputValue(),'2026-11-02');checks.push('planned-date-always-present-no-defer-checkbox');await page.screenshot({path:path.join(out,'小程序获取与新建任务.png'),fullPage:true});
+  await dialog.locator('#btn-confirm-save-schedule').click();await dialog.waitFor({state:'hidden'});
+  const tasks=(await api('/api/v2/production-task-summaries')).items;assert.equal(tasks.length,1);assert.equal(tasks[0].mount_source,'mini_drama');assert.equal(tasks[0].mount_external_id,'mini-0');assert.match(tasks[0].planned_publish_at,/^\d{4}-\d{2}-\d{2}$/);checks.push('task-persists-exact-mount-source-and-id');
+  const guard=await context.request.post(info.url+`/api/v2/publishing/tasks/${tasks[0].id}/drafts`,{data:{}});assert.equal(guard.status(),400);assert.ok((await guard.json()).error.includes('小程序'));checks.push('legacy-publisher-cannot-silently-use-wrong-type');
+  const video=await post('/api/v3/drama-catalog/sync',{account_ids:[info.account_id],sources:['channels_drama'],mode:'all'});assert.equal((await waitJob(video.id)).status,'completed');
+  const detail=await api('/api/v2/dramas/'+info.drama_id);assert.equal(detail.platform_sources.length,2);assert.equal(detail.official_total_episodes,104);assert.equal((await api('/api/v2/dramas')).items.length,33);checks.push('both-sources-same-drama-no-duplicate');
+  await page.locator('#btn-explore-add-schedule').click();await dialog.getByRole('button',{name:'插件 使用现有剧集资料',exact:true}).click();await dialog.getByRole('button',{name:'同步验收账号 联动验收剧场',exact:true}).click();
+  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});checks.push('escape-closes-main-dialog');
+  await page.locator('#btn-explore-add-schedule').click();await dialog.getByRole('button',{name:'插件 使用现有剧集资料',exact:true}).click();await dialog.getByRole('button',{name:'同步验收账号 联动验收剧场',exact:true}).click();await dialog.getByRole('button',{name:'新增剧集',exact:true}).click();
+  await page.keyboard.press('Escape');await dialog.waitFor();assert.equal(await page.getByText('快速录入新剧集',{exact:true}).count(),0);checks.push('escape-closes-child-before-parent');
+  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});assert.deepEqual(errors,[]);
+  fs.writeFileSync(path.join(out,'ui-checks.json'),JSON.stringify({checks,errors,fixture:info.root},null,2));console.log(JSON.stringify({checks,errors},null,2));
+ }catch(error){await page.screenshot({path:path.join(out,'ui-failure.png'),fullPage:true});throw error;}finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

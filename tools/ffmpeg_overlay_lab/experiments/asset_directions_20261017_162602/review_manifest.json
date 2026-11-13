@@ -1,0 +1,222 @@
+{
+  "tool": "built-in image_gen",
+  "acceptance": "USER_PENDING",
+  "assets": [
+    {
+      "id": "A1",
+      "category": "sticker",
+      "name": "疏叶枝条",
+      "file": "A1_疏叶枝条.png",
+      "transparent": true,
+      "prompt": "Use case: stylized-concept. Create one standalone raster decoration asset for the top OR bottom of a vertical short-drama video. Landscape canvas. A single shallow horizontal ornament runs across the middle third of the canvas, with generous genuinely transparent space above and below and a little transparent padding at both ends. This is a reusable separate decoration, not a whole video frame and not paired top/bottom bands. Fine, clean, continuous line art, very little filled area, restrained and harmonious over real human footage. Soft pearl-white and very light warm-gray ink with only the tiny accent color explicitly requested. Keep lines readable rather than making the whole asset nearly invisible; final opacity is controlled later. No text, lettering, logo, watermark, border rectangle, paper, solid background, checkerboard drawing, mockup, heavy shadows or broad luminous halos. Real alpha transparency. Subject: two or three slender gently curving botanical stems extending inward from opposite ends, with a few small oval leaves and tiny buds. An asymmetrical airy arrangement; left side a little fuller, center mostly open, right side lighter. Delicate hand-drawn botanical contours with a tiny amount of desaturated sage in a few leaves. No large flowers, detailed leaf veins, dense bouquet, thick metallic outlines or gold glow.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-97698bff-5fa5-4d5b-b343-9130f936c44c.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/A1_疏叶枝条.png",
+      "checks": {
+        "width": 2079,
+        "height": 756,
+        "pixel_format": "rgba",
+        "sha256": "61ee0d53fb4c635e39551ec0d783fdc667925ad2f5785eaaf37728cb80b303e7",
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "fully_transparent_fraction": 0.898457,
+        "bbox": [
+          0,
+          189,
+          2079,
+          371
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "category": "sticker",
+      "name": "云水细线",
+      "file": "A2_云水细线.png",
+      "transparent": true,
+      "prompt": "Use case: stylized-concept. Create one standalone raster decoration asset for the top OR bottom of a vertical short-drama video. Landscape canvas. A single shallow horizontal ornament runs across the middle third of the canvas, with generous genuinely transparent space above and below and a little transparent padding at both ends. This is a reusable separate decoration, not a whole video frame and not paired top/bottom bands. Fine, clean, continuous line art, very little filled area, restrained and harmonious over real human footage. Soft pearl-white and very light warm-gray ink with only the tiny accent color explicitly requested. Keep lines readable rather than making the whole asset nearly invisible; final opacity is controlled later. No text, lettering, logo, watermark, border rectangle, paper, solid background, checkerboard drawing, mockup, heavy shadows or broad luminous halos. Real alpha transparency. Subject: an airy horizontal composition of a few small simplified cloud curls at the two sides, connected by two or three gently flowing water-like contour lines and short ripple arcs. Sparse, light, relaxed curved strokes, mostly pearl-white with a tiny pale gray-blue accent. The central area is calmer and less dense than the ends. No landscape painting, filled clouds, lotus flowers, horizon, detailed scene or large glow.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-70110003-06f9-4cc0-aad7-ea5b4c7c5039.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/A2_云水细线.png",
+      "checks": {
+        "width": 2048,
+        "height": 768,
+        "pixel_format": "rgba",
+        "sha256": "9d17db5573f416c287535ca290270acb4164879d1a1b88d1e2d92fcab7701108",
+        "alpha_min": 0,
+        "alpha_max": 254,
+        "fully_transparent_fraction": 0.920074,
+        "bbox": [
+          0,
+          280,
+          2048,
+          204
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "category": "sticker",
+      "name": "柔弧几何",
+      "file": "A3_柔弧几何.png",
+      "transparent": true,
+      "prompt": "Use case: stylized-concept. Create one standalone raster decoration asset for the top OR bottom of a vertical short-drama video. Landscape canvas. A single shallow horizontal ornament runs across the middle third of the canvas, with generous genuinely transparent space above and below and a little transparent padding at both ends. This is a reusable separate decoration, not a whole video frame and not paired top/bottom bands. Fine, clean, continuous line art, very little filled area, restrained and harmonious over real human footage. Soft pearl-white and very light warm-gray ink with only the tiny accent color explicitly requested. Keep lines readable rather than making the whole asset nearly invisible; final opacity is controlled later. No text, lettering, logo, watermark, border rectangle, paper, solid background, checkerboard drawing, mockup, heavy shadows or broad luminous halos. Real alpha transparency. Subject: three long fine organic curved lines loosely interweaving across the width, with a few tiny hollow circles and short line accents distributed near the ends. Refined abstract hand-drawn ornament, gentle asymmetric rhythm, open middle, warm-white and pale neutral-gray only. Avoid botanical, celestial or cloud imagery; this version should feel neutral and easy to combine. No dense knot, full geometric grid, confetti, bold ribbon fill or bright sparkle.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-c45f470c-a5ca-4a84-a806-0a97b114619c.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/A3_柔弧几何.png",
+      "checks": {
+        "width": 2172,
+        "height": 724,
+        "pixel_format": "rgba",
+        "sha256": "c60b7fc61dbc5ffa7708edc66a726e0d595960fc3f9b4e0351c287ea46499b76",
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "fully_transparent_fraction": 0.943651,
+        "bbox": [
+          18,
+          258,
+          2137,
+          202
+        ]
+      }
+    },
+    {
+      "id": "B1",
+      "category": "texture",
+      "name": "断续微光",
+      "file": "B1_断续微光.png",
+      "transparent": false,
+      "prompt": "Use case: stylized-concept. Create the actual flat full-bleed abstract texture, portrait 2:3 composition, for cropping and animating extremely narrow 5 to 10 pixel video side strips. Opaque texture covering the entire canvas. Useful small-scale structure across all horizontal positions, with alternating lighter and darker sections along the height so a narrow vertical slice has a visible rhythmic pattern. Restrained midtone brightness and modest highlights. No focal subject, recognizable scene, objects, face, text, watermark, frame, border rails, blank center, large white flare or presentation mockup. Top and bottom should have comparable detail density. Visual structure: many slender warm pearl and muted champagne-gold vertical glints of different SHORT lengths on a soft dark taupe-gray base, arranged at staggered heights. Each filament has several breaks and soft tapered ends. Tiny restrained light flecks between filaments. Fine parallel rhythm, not thick continuous bright stripes; no single luminous line spans the full height. The texture should resemble quiet flowing specks and short light threads rather than fireworks.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-8f1ce729-88cb-4703-b8a1-525a45ff86d9.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/B1_断续微光.png",
+      "checks": {
+        "width": 1024,
+        "height": 1536,
+        "pixel_format": "rgb24",
+        "sha256": "06f5ed1be72151b916bafd9dae5994f88ba8aad81cfbebc804b5b97d31869e3c",
+        "bbox": [
+          0,
+          0,
+          1024,
+          1536
+        ]
+      }
+    },
+    {
+      "id": "B2",
+      "category": "texture",
+      "name": "柔和水纹",
+      "file": "B2_柔和水纹.png",
+      "transparent": false,
+      "prompt": "Use case: stylized-concept. Create the actual flat full-bleed abstract texture, portrait 2:3 composition, for cropping and animating extremely narrow 5 to 10 pixel video side strips. Opaque texture covering the entire canvas. Useful small-scale structure across all horizontal positions, with alternating lighter and darker sections along the height so a narrow vertical slice has a visible rhythmic pattern. Restrained midtone brightness and modest highlights. No focal subject, recognizable scene, objects, face, text, watermark, frame, border rails, blank center, large white flare or presentation mockup. Top and bottom should have comparable detail density. Visual structure: small meandering refracted-water-light contours, narrow soft loops and wavy channels flowing mostly vertically, on a muted slate-blue and gray-teal base. Desaturated icy pearl highlights, softly interrupted bright ridges with darker gaps along their height. Fine local detail, gentle contrast, quiet watery motion potential. No saturated electric cyan, foamy sea, water surface perspective, horizon or broad white ribbons.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-a06b63f5-59f7-4654-aab6-bad2032193ce.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/B2_柔和水纹.png",
+      "checks": {
+        "width": 1024,
+        "height": 1536,
+        "pixel_format": "rgb24",
+        "sha256": "8809f32983ffb190741c44b6154d9c4938ea15ec952720929b697ac6e7ef559a",
+        "bbox": [
+          0,
+          0,
+          1024,
+          1536
+        ]
+      }
+    },
+    {
+      "id": "B3",
+      "category": "texture",
+      "name": "珠光细砂",
+      "file": "B3_珠光细砂.png",
+      "transparent": false,
+      "prompt": "Use case: stylized-concept. Create the actual flat full-bleed abstract texture, portrait 2:3 composition, for cropping and animating extremely narrow 5 to 10 pixel video side strips. Opaque texture covering the entire canvas. Useful small-scale structure across all horizontal positions, with alternating lighter and darker sections along the height so a narrow vertical slice has a visible rhythmic pattern. Restrained midtone brightness and modest highlights. No focal subject, recognizable scene, objects, face, text, watermark, frame, border rails, blank center, large white flare or presentation mockup. Top and bottom should have comparable detail density. Visual structure: tiny pearlescent grains, soft silver flecks and faint short diagonal-to-vertical wisps evenly spread over a muted gray-lavender base. Small alternating clusters and gaps, subtle granular sparkle with softly varying midtones. The grain should be visible and varied rather than a smooth gradient. No large stars, starburst crosses, planets, smoky central nebula, fabric object or bright neon colors.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-13c7bb5b-4588-499d-bae6-355e6081ed15.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/B3_珠光细砂.png",
+      "checks": {
+        "width": 1024,
+        "height": 1536,
+        "pixel_format": "rgb24",
+        "sha256": "033c1469e6b9e9731ac201a7b009d581cf8d880b2ad7c1fba3b623480598cbf0",
+        "bbox": [
+          0,
+          0,
+          1024,
+          1536
+        ]
+      }
+    },
+    {
+      "id": "C1",
+      "category": "particle",
+      "name": "四角星芒",
+      "file": "C1_四角星芒.png",
+      "transparent": true,
+      "prompt": "Use case: stylized-concept. Create one standalone small decorative particle sprite, centered and fully visible on a genuinely transparent square canvas. One motif only, with ample empty transparent padding. Clean readable silhouette suitable for shrinking to a tiny floating detail over live-action video. Restrained pearl-white tones, no text, watermark, square background, checkerboard drawing, product mockup, particle field or whole scene. Preserve actual alpha transparency. Subject: one delicate four-point twinkle star, longer vertical axis and shorter horizontal axis, slender tapered arms, small pearl-white center with a very slight warm-silver edge. Smooth antialiased contour, minimally luminous just around the center, no broad haze. Simple quiet sparkle rather than a thick cartoon star or photographic lens flare.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-192bac0c-42e8-40f6-b3ef-01e1a758b933.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/C1_四角星芒.png",
+      "checks": {
+        "width": 1254,
+        "height": 1254,
+        "pixel_format": "rgba",
+        "sha256": "4bc8dfced457979a3e6e5d927309f90c4597d565270d4994fc10877039ec9d96",
+        "alpha_min": 0,
+        "alpha_max": 253,
+        "fully_transparent_fraction": 0.979884,
+        "bbox": [
+          472,
+          348,
+          313,
+          549
+        ]
+      }
+    },
+    {
+      "id": "C2",
+      "category": "particle",
+      "name": "六瓣雪花",
+      "file": "C2_六瓣雪花.png",
+      "transparent": true,
+      "prompt": "Use case: stylized-concept. Create one standalone small decorative particle sprite, centered and fully visible on a genuinely transparent square canvas. One motif only, with ample empty transparent padding. Clean readable silhouette suitable for shrinking to a tiny floating detail over live-action video. Restrained pearl-white tones, no text, watermark, square background, checkerboard drawing, product mockup, particle field or whole scene. Preserve actual alpha transparency. Subject: one complete six-armed snowflake in a clear front view. Six main slender branches, two simple pairs of short offshoots on each arm, well-spaced open structure. Soft ivory-white and a very subtle frosted pale-blue tint. Simple clean icy outline, readable at small size, no dense filigree, photoreal background, pile of snow, multiple snowflakes or broad glow.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-d3aa79c5-bce5-4afc-aa61-1202992da25a.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/C2_六瓣雪花.png",
+      "checks": {
+        "width": 1254,
+        "height": 1254,
+        "pixel_format": "rgba",
+        "sha256": "ea852f2f24a07d247f6f88624ef8b51c40458066c6f8da04abfc10fc70843e50",
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "fully_transparent_fraction": 0.872591,
+        "bbox": [
+          260,
+          220,
+          739,
+          848
+        ]
+      }
+    },
+    {
+      "id": "C3",
+      "category": "particle",
+      "name": "柔光微尘",
+      "file": "C3_柔光微尘.png",
+      "transparent": true,
+      "prompt": "Use case: stylized-concept. Create one standalone small decorative particle sprite, centered and fully visible on a genuinely transparent square canvas. One motif only, with ample empty transparent padding. Clean readable silhouette suitable for shrinking to a tiny floating detail over live-action video. Restrained pearl-white tones, no text, watermark, square background, checkerboard drawing, product mockup, particle field or whole scene. Preserve actual alpha transparency. Subject: one small softly irregular luminous dust fleck, a compact pale champagne-white seed of light with two or three tiny adjoining translucent granular facets and a very short soft tapered trail. It is an organic speck, not a star, circle icon, snowflake or flower. Gentle semi-transparent edge and compact local glow; the outer majority of the canvas must remain fully transparent, without a broad hazy cloud or full-canvas gradient.",
+      "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-58389a13-f80d-4489-91e4-4f5823e5c8c7.png",
+      "saved_path": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/asset_directions_20261017_162602/assets/C3_柔光微尘.png",
+      "checks": {
+        "width": 1254,
+        "height": 1254,
+        "pixel_format": "rgba",
+        "sha256": "0c6b5831cccdfee52603b93d69fd260af311684649e1ed4c46b14fe5ab3916af",
+        "alpha_min": 0,
+        "alpha_max": 254,
+        "fully_transparent_fraction": 0.977739,
+        "bbox": [
+          507,
+          508,
+          256,
+          271
+        ]
+      }
+    }
+  ]
+}

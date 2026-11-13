@@ -18,6 +18,11 @@ export interface V2InsertionSlot {
   mode: 'latest' | 'locked';
   /** mode 为 locked 时的文件名（不含目录）；latest 时为空串。 */
   file: string;
+  /** 中插触发门槛，单位秒。仅中插使用。 */
+  min_source_duration_seconds?: number;
+  /** 中插位置范围，单位秒。仅中插使用。 */
+  position_start_seconds?: number;
+  position_end_seconds?: number;
 }
 
 export interface V2MidrollEndrollStrategy {
@@ -39,7 +44,7 @@ export interface V2EngineParameters {
   };
   midroll_endroll: {
     strategy: V2MidrollEndrollStrategy;
-    /** 用户是否曾经设置过（false = 仍在使用"两条都要、各取最新"的历史行为）。 */
+    /** 用户是否曾经设置过（false = FFmpeg 保持无插片，保存后启用所选全局规则）。 */
     configured: boolean;
   };
 }

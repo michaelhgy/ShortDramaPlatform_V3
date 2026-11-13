@@ -12,6 +12,7 @@ import threading
 from datetime import date, datetime, timedelta
 
 from server import v2_file_service as service
+from server.revenue_collection_state import SHANGHAI
 
 
 _STOP = threading.Event()
@@ -42,7 +43,8 @@ def run_due_auto_collection(now: datetime | None = None) -> dict[str, object] | 
     The existing immediate-collection UI uses the prior calendar day. The
     automatic path deliberately invokes that same single-date behavior.
     """
-    current = now or datetime.now()
+    current = now or datetime.now(SHANGHAI)
+    current = current.replace(tzinfo=SHANGHAI) if current.tzinfo is None else current.astimezone(SHANGHAI)
     settings = service.get_v2_settings()
     if not bool(settings["revenue_auto_collection_enabled"]):
         return None

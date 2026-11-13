@@ -50,7 +50,7 @@ CHANGE_TYPE_LABELS = {
     "video_changed": "成片生成",
     "video_export_changed": "视频导出",
     "task_changed": "任务中心派发",
-    "resource_changed": "生成资源扫描（真人视频 / 图片 / BGM / 引流视频）",
+    "resource_changed": "生成资源扫描（风景视频 / 图片 / 引流视频）",
     "settings_changed": "设置",
     "revenue_changed": "收益采集",
     "account_changed": "账号资料",

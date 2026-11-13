@@ -20,7 +20,6 @@ const revenuePageCache = new Map<string, RevenuePageData>();
 // 旧写法是单个变量：A 时间段的请求还在飞时切到 B 时间段，B 会**直接复用 A 的结果** ——
 // 于是"筛选项写着 30 天、眼睛看到的却是 7 天的数字"（用户报的毛病）。
 const revenuePageRequests = new Map<string, Promise<RevenuePageData>>();
-const revenueOverviewRequests = new Map<string, Promise<RevenuePageData>>();
 const REVENUE_CACHE_KEY = 'v2-revenue-page-cache-v1';
 
 function revenueCacheKey(input: { timeRange: TimeRangeFilter; theaterFilter: TheaterFilter; customStart?: string; customEnd?: string }): string {
@@ -55,32 +54,6 @@ function persistRevenuePageData(input: { timeRange: TimeRangeFilter; theaterFilt
     };
     localStorage.setItem(persistentCacheKey(input), JSON.stringify(lightweight));
   } catch { /* cache is optional and must never block the real request */ }
-}
-
-export function loadRevenueOverviewData(input: { timeRange: TimeRangeFilter; theaterFilter: TheaterFilter; customStart?: string; customEnd?: string }, force = false): Promise<RevenuePageData> {
-  const key = revenueCacheKey(input);
-  const cached = getCachedRevenuePageData(input);
-  if (cached && !force) return Promise.resolve(cached);
-  const overviewInFlight = revenueOverviewRequests.get(key);
-  if (overviewInFlight) return overviewInFlight;
-  const yesterday = resolveV1RevenueRange('yesterday').currentEnd;
-  const overviewRequest = Promise.all([loadV2RevenueSourceData(), loadV2RevenueCollectionLogs(), loadV2DailyAccountRevenueSummary(yesterday)]).then(([source, logs, collectionSummary]) => {
-    const analytics = toRevenueAnalytics(source.rows, source.accounts, source.theaters, input.timeRange, input.theaterFilter, input.customStart, input.customEnd, collectionSummary);
-    return {
-      source: 'v2' as const,
-      analytics,
-      collectionLogs: logs.items.map(toLog),
-      accounts: toRevenueAccountAnalytics(source.rows, source.accounts, source.theaters, input.timeRange, input.theaterFilter, input.customStart, input.customEnd),
-      videoAnalysis: { hasVideoLevelData: false, unsupportedReason: '视频明细正在后台读取', totalPlatformVideosCount: 0, totalDailyRecordsCount: 0, videos: [], p75Views: 0, p75Revenue: 0, isLowSampleCount: true, maxViews: 10000, maxRevenue: 100 },
-      videoDetailsTruncated: false,
-      dramas: [],
-    };
-  }).then((data) => {
-    revenuePageCache.set(key, data);
-    return data;
-  }).finally(() => { revenueOverviewRequests.delete(key); });
-  revenueOverviewRequests.set(key, overviewRequest);
-  return overviewRequest;
 }
 
 export async function loadRevenuePageData(input: { timeRange: TimeRangeFilter; theaterFilter: TheaterFilter; customStart?: string; customEnd?: string }, force = false): Promise<RevenuePageData> {
@@ -147,6 +120,7 @@ export async function requestRevenueCollection(scopeName: string, mode: 'immedia
     const progress = await loadV2RevenueCollectionRun(started.run_id);
     onProgress?.(progress);
     if (progress.status === 'completed') return;
+    if (progress.status === 'stopped') throw new Error('收益采集已停止，已保存结果保留');
     if (progress.status === 'failed') throw new Error(progress.error_message || '收益采集任务失败');
     await new Promise((resolve) => window.setTimeout(resolve, 700));
   }
@@ -155,8 +129,8 @@ export async function requestRevenueCollection(scopeName: string, mode: 'immedia
 function toLog(item: V2RevenueCollectionLog): RevenueCollectionLog {
   return {
     id: item.id, theaterName: item.theater_name, accountName: item.account_name,
-    period: item.revenue_date, status: item.collection_status,
+    period: item.revenue_date, status: item.collection_status === 'pending' ? 'indeterminate' : item.collection_status,
     collectedAmount: item.amount == null ? undefined : Number(item.amount), qualityTier: 'direct',
-    updatedAt: String(item.collected_at || new Date().toISOString()).replace('T', ' '), note: item.error_message || (item.collection_status === 'no_data' ? '来源正常返回：该日没有收益记录' : '已读取并校验收益数据'),
+    updatedAt: String(item.collected_at || new Date().toISOString()).replace('T', ' '), note: item.error_message || (item.collection_status === 'pending' ? '来源尚未更新，待下次查询' : item.collection_status === 'no_data' ? '来源正常返回：该日没有收益记录' : '已读取并校验收益数据'),
   };
 }

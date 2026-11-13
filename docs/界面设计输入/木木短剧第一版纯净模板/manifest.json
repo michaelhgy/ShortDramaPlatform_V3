@@ -1,0 +1,40 @@
+{
+  "assets": [
+    {
+      "name": "01_原版",
+      "source": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧模板预览-v1.png",
+      "output": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧第一版纯净模板\\01_原版_空剧名.png",
+      "size": [
+        941,
+        1672
+      ]
+    },
+    {
+      "name": "02_蓝",
+      "source": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧模板预览-蓝-v2.png",
+      "output": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧第一版纯净模板\\02_蓝_空剧名.png",
+      "size": [
+        937,
+        1679
+      ]
+    },
+    {
+      "name": "03_青",
+      "source": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧模板预览-青-v2.png",
+      "output": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧第一版纯净模板\\03_青_空剧名.png",
+      "size": [
+        936,
+        1680
+      ]
+    },
+    {
+      "name": "04_红",
+      "source": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧模板预览-红-v2.png",
+      "output": "D:\\ShortDramaPlatform_V3\\docs\\界面设计输入\\木木短剧第一版纯净模板\\04_红_空剧名.png",
+      "size": [
+        936,
+        1680
+      ]
+    }
+  ]
+}

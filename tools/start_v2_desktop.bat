@@ -1,4 +1,3 @@
 @echo off
-cd /d "%~dp0.."
-py -3.12 "%~dp0run_v2_desktop_restart.py"
-if errorlevel 1 pause
+call "%~dp0..\启动V3开发版.bat"
+exit /b %errorlevel%

@@ -1,0 +1,18 @@
+{
+  "tool": "built-in image_gen",
+  "tool_wall_seconds": 36.743,
+  "generation_calls": 1,
+  "artifact_type": "one art-direction contact sheet, not 15 individually accepted production assets",
+  "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-ff1bb846-8ba5-4fa1-8011-19a84547f00f.png",
+  "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/样式板_透明原图.png",
+  "sha256": "b2ef92f6abc36d12f3120ba5ed212e4bdaa6d9b6a219468c9a63a517bb2a1a02",
+  "original_copy_identical": true,
+  "width": 971,
+  "height": 1619,
+  "pix_fmt": "rgba",
+  "alpha_min": 0,
+  "alpha_max": 255,
+  "fully_transparent_fraction": 0.66311,
+  "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_forms_20261017_164145/样式板_编号预览.jpg",
+  "acceptance": "USER_PENDING"
+}

@@ -1,31 +1,25 @@
+import { RevenueVerificationModal } from './components/RevenueVerificationModal';
+import { plannedDate, formatPlannedDate, planningDayOffset, planningToday } from './utils/plannedDate';
 import React, { useEffect, useState } from 'react';
 import { 
   NavTab, 
   ScheduleTask, 
   AccountItem, 
-  DramaPrediction,
   DramaItem, 
 } from './types';
 import { 
-  INITIAL_ACCOUNTS, 
-  DRAMA_LIBRARY, 
-  RECENT_DRAMA_PREDICTIONS, 
-  INITIAL_SCHEDULE_TASKS,
   INITIAL_TASK_CENTER_QUEUE
 } from './mockData';
 import { Header } from './components/Header';
-import { TodayScheduleSection } from './components/TodayScheduleSection';
-import { YesterdayAccountsSection } from './components/YesterdayAccountsSection';
-import { RecentDramasSection } from './components/RecentDramasSection';
-import { WorkbenchExplore } from './components/explore/WorkbenchExplore';
+import { CockpitView } from './components/cockpit/CockpitView';
 import { ProductionCenter } from './components/production/ProductionCenter';
-import { DataAnalyticsView } from './components/analytics/DataAnalyticsView';
+import { ContentProductionView } from './components/content/ContentProductionView';
+import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { AssetsCenterView } from './components/assets/AssetsCenterView';
 import { ParameterCenterView } from './components/parameters/ParameterCenterView';
 import { SettingsView } from './components/settings/SettingsView';
 import { TaskCenterModal } from './components/taskcenter/TaskCenterModal';
 import { ScheduleModal } from './components/ScheduleModal';
-import { EditTimePopover } from './components/EditTimePopover';
 import { CheckCircle2 } from 'lucide-react';
 import { createV2ProductionTask } from './api/v2Production';
 import { createBusinessDrama, fetchAssetsCenterSeedForDataHub, loadAssetsCenterSeed } from './services/assetsCenterService';
@@ -33,12 +27,10 @@ import { getV2Accounts, getV2Settings, type V2AccountRecord } from './api/v2Cata
 import { loadV2DailyAccountRevenueSummary, type V2DailyAccountRevenueSummary } from './api/v2Revenue';
 import { eventDetail } from './services/dataChangeEvents';
 import { useDataArea } from './hooks/useDataArea';
+import { refreshArea } from './services/dataHub';
 
 function yesterdayDateValue(): string {
-  const value = new Date();
-  value.setDate(value.getDate() - 1);
-  const offset = value.getTimezoneOffset() * 60_000;
-  return new Date(value.getTime() - offset).toISOString().slice(0, 10);
+  return planningDayOffset(-1);
 }
 
 function toScheduleAccount(account: V2AccountRecord, daily?: V2DailyAccountRevenueSummary['items'][number]): AccountItem {
@@ -46,6 +38,7 @@ function toScheduleAccount(account: V2AccountRecord, daily?: V2DailyAccountReven
     id: account.id,
     name: account.nickname,
     avatarSeed: account.nickname,
+    avatarUrl: account.avatar_url,
     yesterdayRevenue: Number(daily?.amount || 0),
     yesterdayRevenueState: daily?.collection_status || 'uncollected',
     monthRevenue: 0,
@@ -57,22 +50,24 @@ function toScheduleAccount(account: V2AccountRecord, daily?: V2DailyAccountReven
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<NavTab>('workbench');
-  const [workbenchMode, setWorkbenchMode] = useState<'standard' | 'explore'>('explore'); // Default to Explore version
+  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+  const [sceneryOpenRequest, setSceneryOpenRequest] = useState(0);
+  const openScenery = () => {
+    setSceneryOpenRequest(value => value + 1);
+    setActiveTab('assets');
+    window.scrollTo({ top: 0 });
+  };
   // 刷新大修 · 第 6 步：记住"已经打开过的页签"。
   // 第一次切到某个页签才挂载它，之后**只藏起来、不拆掉** —— 这样筛选、选中的剧都还在。
   // （以前是切走就销毁、切回来重建，靠"重建"顺带刷新；现在刷新由统一数据层负责，不再需要。
   //   不能一上来就把所有页面都挂载 —— 那样开软件要等半天，所以用懒挂载。）
-  const [mountedTabs, setMountedTabs] = useState<Set<NavTab>>(() => new Set<NavTab>(['workbench']));
+  const [mountedTabs, setMountedTabs] = useState<Set<NavTab>>(() => new Set<NavTab>(['dashboard']));
   useEffect(() => {
     setMountedTabs((previous) => (previous.has(activeTab) ? previous : new Set(previous).add(activeTab)));
   }, [activeTab]);
-  const [tasks, setTasks] = useState<ScheduleTask[]>(INITIAL_SCHEDULE_TASKS);
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [dramas, setDramas] = useState<DramaItem[]>([]);
-  const [predictions] = useState<DramaPrediction[]>(RECENT_DRAMA_PREDICTIONS);
   const [taskQueue, setTaskQueue] = useState(INITIAL_TASK_CENTER_QUEUE);
-  const [publishTimePresets, setPublishTimePresets] = useState<string[]>(['12:00', '18:30', '19:45', '21:00']);
   const [publishDateOffsetDays, setPublishDateOffsetDays] = useState(0);
   const [scheduleTheaters, setScheduleTheaters] = useState<{ id: string; name: string }[]>([]);
 
@@ -91,7 +86,6 @@ export default function App() {
   const [isTaskCenterModalOpen, setIsTaskCenterModalOpen] = useState(false);
   const [modalAccountId, setModalAccountId] = useState<string | undefined>();
   const [modalDramaId, setModalDramaId] = useState<string | undefined>();
-  const [editingTimeTask, setEditingTimeTask] = useState<ScheduleTask | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // 刷新大修 · 第 8 步：剧集/剧场名单原来只在挂载时读一次 —— 在资料中心改了剧名或新增剧集，
@@ -112,12 +106,14 @@ export default function App() {
       if (catalogArea.error) showToast('安排今日的真实账号和剧集加载失败。');
       return;
     }
+    const profilesById = new Map(seed.profiles.map(profile => [profile.dramaId,profile]));
     setDramas(seed.dramas.map((drama) => ({
       id: drama.id,
       name: drama.currentName,
+      totalEpisodes: drama.officialTotalEpisodes,
       theaterId: drama.theaterId,
       theaterName: drama.theaterName,
-      coverUrl: seed.profiles.find((profile) => profile.dramaId === drama.id)?.cover.mainCoverUrl,
+      coverUrl: profilesById.get(drama.id)?.cover.mainCoverUrl,
       productionCount: drama.productionCount || 0,
       lastScheduledAt: drama.lastScheduledAt || '',
       activeProductionCount: drama.activeProductionCount || 0,
@@ -132,6 +128,9 @@ export default function App() {
       const detail = eventDetail(event);
       if (detail.changeType !== 'account_changed' || !detail.accountId) return;
       void refreshScheduleAccounts().catch(() => undefined);
+      void refreshArea('production');
+      void refreshArea('taskCenter');
+      void refreshArea('revenue');
     };
     window.addEventListener('v2-data-changed', onDataChanged);
     return () => window.removeEventListener('v2-data-changed', onDataChanged);
@@ -139,7 +138,6 @@ export default function App() {
 
   useEffect(() => {
     getV2Settings().then((settings) => {
-      setPublishTimePresets(settings.publish_presets);
       setPublishDateOffsetDays(settings.publish_date_offset_days);
     }).catch(() => undefined);
   }, []);
@@ -158,40 +156,13 @@ export default function App() {
     void Promise.all([getV2Settings().catch(() => null), refreshScheduleAccounts().catch(() => undefined)])
       .then(([settings]) => {
         if (!settings) return;
-        setPublishTimePresets(settings.publish_presets);
-        setPublishDateOffsetDays(settings.publish_date_offset_days);
+          setPublishDateOffsetDays(settings.publish_date_offset_days);
       });
   };
 
-  // Derived state
-  const arrangedAccountIds = Array.from(new Set(tasks.map(t => t.accountId)));
-  // Actions
+  // 首页现在只保留新驾驶舱；“安排今天”仍从 V3 的全局入口打开原有弹窗。
   const handleOpenGlobalSchedule = () => {
     setModalAccountId(undefined);
-    setModalDramaId(undefined);
-    openSchedule();
-  };
-
-  const handleScheduleFromAccount = (account: AccountItem) => {
-    setModalAccountId(account.id);
-    setModalDramaId(undefined);
-    openSchedule();
-  };
-
-  const handleScheduleFromDrama = (drama: DramaPrediction) => {
-    setModalAccountId(undefined);
-    setModalDramaId(drama.dramaId);
-    openSchedule();
-  };
-
-  const handleScheduleFromDramaModal = (dramaId: string, accountId?: string) => {
-    setModalDramaId(dramaId);
-    setModalAccountId(accountId);
-    openSchedule();
-  };
-
-  const handleAddDramaToAccount = (accountId: string, _accountName: string) => {
-    setModalAccountId(accountId);
     setModalDramaId(undefined);
     openSchedule();
   };
@@ -199,22 +170,24 @@ export default function App() {
   const handleSaveNewSchedule = async (newTasksData: Omit<ScheduleTask, 'id'>[]) => {
     try {
       await Promise.all(newTasksData.map((task) => createV2ProductionTask({
-        source_id: `schedule-${task.accountId}-${task.dramaId}-${task.plannedPublishAt || task.publishTime}`,
+        source_id: `schedule-${task.accountId}-${task.dramaId}-${plannedDate(task.plannedPublishAt) || planningToday()}`,
         account_name: task.accountName,
         drama_name: task.dramaName,
-        planned_publish_at: task.plannedPublishAt || task.publishTime,
+        planned_publish_at: plannedDate(task.plannedPublishAt),
+        mount_source: task.mountSource,
+        mount_external_id: task.mountExternalId,
       })));
     } catch (error) {
       showToast(error instanceof Error ? error.message : '生产任务创建失败，请稍后重试。');
-      return;
+      return false;
     }
     const createdTasks: ScheduleTask[] = newTasksData.map((task, idx) => ({
       ...task,
+      plannedPublishAt: plannedDate(task.plannedPublishAt),
+      publishTime: formatPlannedDate(task.plannedPublishAt),
       id: `task-new-${Date.now()}-${idx}`,
     }));
 
-    setTasks(prev => [...prev, ...createdTasks]);
-    
     // Also add to background task queue
     createdTasks.forEach(task => {
       setTaskQueue(prev => [
@@ -231,16 +204,7 @@ export default function App() {
     });
 
     showToast(`已成功创建 ${createdTasks.length} 项制作安排`);
-  };
-
-  const handleDeleteTask = (taskId: string) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-    showToast('已移除该项制作安排');
-  };
-
-  const handleUpdateTime = (taskId: string, newTime: string) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, publishTime: newTime } : t));
-    showToast(`发布时间已更新为：${newTime}`);
+    return true;
   };
 
   return (
@@ -249,44 +213,48 @@ export default function App() {
       <Header
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        onOpenScenery={openScenery}
         taskQueue={taskQueue}
         onOpenSettings={() => setActiveTab('settings')}
         onQuickSchedule={handleOpenGlobalSchedule}
-        workbenchMode={workbenchMode}
-        onWorkbenchModeChange={setWorkbenchMode}
         onOpenTaskCenterModal={() => setIsTaskCenterModalOpen(true)}
         showToast={showToast}
       />
 
       {/* Main View Area */}
-      <main className="flex-1 px-6 sm:px-8 py-6 max-w-[1780px] w-full mx-auto">
+      <main className={`flex-1 px-6 sm:px-8 py-6 w-full mx-auto ${activeTab === 'production' ? 'max-w-[1904px]' : 'max-w-[1780px]'}`}>
         {mountedTabs.has('production') && (
           <div style={{ display: activeTab === 'production' ? undefined : 'none' }}>
             <ProductionCenter
-              onBackToWorkbench={() => setActiveTab('workbench')}
+              onBackToWorkbench={() => setActiveTab('dashboard')}
+              onParameters={() => setActiveTab('parameters')}
               showToast={showToast}
             />
           </div>
         )}
 
+        {mountedTabs.has('content') && (
+          <div style={{ display: activeTab === 'content' ? undefined : 'none' }}>
+            <ContentProductionView showToast={showToast} />
+          </div>
+        )}
+
+        {mountedTabs.has('dashboard') && (
+          <div style={{ display: activeTab === 'dashboard' ? undefined : 'none' }}>
+            <CockpitView showToast={showToast} />
+          </div>
+        )}
+
         {mountedTabs.has('analytics') && (
           <div style={{ display: activeTab === 'analytics' ? undefined : 'none' }}>
-            <DataAnalyticsView
-              onScheduleToday={(dramaId, accountId) => {
-                if (dramaId || accountId) {
-                  handleScheduleFromDramaModal(dramaId || 'drama-1', accountId);
-                } else {
-                  handleOpenGlobalSchedule();
-                }
-              }}
-              showToast={showToast}
-            />
+            <AnalyticsDashboard showToast={showToast} />
           </div>
         )}
 
         {mountedTabs.has('assets') && (
           <div style={{ display: activeTab === 'assets' ? undefined : 'none' }}>
             <AssetsCenterView
+              sceneryOpenRequest={sceneryOpenRequest}
               showToast={showToast}
             />
           </div>
@@ -308,55 +276,10 @@ export default function App() {
           </div>
         )}
 
-        {mountedTabs.has('workbench') && (
-          <div style={{ display: activeTab === 'workbench' ? undefined : 'none' }}>
-            {/* 工作台内部的"探索版 / 标准版"切换仍保持互斥挂载（工作台是未完成的模块，不投入）。 */}
-            {workbenchMode === 'explore' ? (
-              <WorkbenchExplore
-                tasks={tasks}
-                accounts={accounts}
-                dramas={dramas}
-                onAddDramaToAccount={handleAddDramaToAccount}
-                onAddNewAccountSchedule={handleOpenGlobalSchedule}
-                onEditTime={(task) => setEditingTimeTask(task)}
-                onDeleteTask={handleDeleteTask}
-                onOpenProduction={() => setActiveTab('production')}
-                onSaveNewSchedule={handleSaveNewSchedule}
-                showToast={showToast}
-                onScheduleFromDramaModal={handleScheduleFromDramaModal}
-              />
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-7 xl:col-span-7">
-                  <TodayScheduleSection
-                    tasks={tasks}
-                    onAddDramaToAccount={handleAddDramaToAccount}
-                    onAddNewAccountSchedule={handleOpenGlobalSchedule}
-                    onEditTime={(task) => setEditingTimeTask(task)}
-                    onDeleteTask={handleDeleteTask}
-                    onOpenProduction={() => setActiveTab('production')}
-                  />
-                </div>
-
-                <div className="lg:col-span-5 xl:col-span-5 flex flex-col gap-6">
-                  <YesterdayAccountsSection
-                    accounts={accounts}
-                    arrangedAccountIds={arrangedAccountIds}
-                    onScheduleAccount={handleScheduleFromAccount}
-                  />
-
-                  <RecentDramasSection
-                    predictions={predictions}
-                    onScheduleDrama={handleScheduleFromDrama}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </main>
 
       {/* Global Task Center Modal */}
+      <RevenueVerificationModal />
       <TaskCenterModal
         isOpen={isTaskCenterModalOpen}
         onClose={() => setIsTaskCenterModalOpen(false)}
@@ -371,7 +294,6 @@ export default function App() {
         dramas={dramas}
         initialAccountId={modalAccountId}
         initialDramaId={modalDramaId}
-        publishTimePresets={publishTimePresets}
         publishDateOffsetDays={publishDateOffsetDays}
         theaters={scheduleTheaters}
         onCreateDrama={async (data) => {
@@ -381,14 +303,6 @@ export default function App() {
           return item;
         }}
         onSaveSchedule={handleSaveNewSchedule}
-      />
-
-      {/* Popover: 修改发布时间 */}
-      <EditTimePopover
-        isOpen={!!editingTimeTask}
-        task={editingTimeTask}
-        onClose={() => setEditingTimeTask(null)}
-        onUpdateTime={handleUpdateTime}
       />
 
       {/* Floating Toast Notification */}

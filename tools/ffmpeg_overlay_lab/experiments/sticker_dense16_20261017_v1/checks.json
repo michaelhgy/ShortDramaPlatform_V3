@@ -1,0 +1,64 @@
+{
+  "generation_calls": 1,
+  "tool_wall_seconds": 27.021,
+  "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-0a59093c-eead-41a4-8df2-39208f12a144.png",
+  "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/sticker_dense16_20261017_v1/自然主题16图案_透明原图.png",
+  "source_copy_sha256": "5abf4b69eb902a98c295eaa02b63514d470d8522ab5feee8f934c676f1fd3445",
+  "actual_preview_opacity": 0.55,
+  "canvas": [
+    1080,
+    2400
+  ],
+  "fully_transparent_fraction": 0.749667,
+  "center_alpha_max": 1,
+  "central_above_8": 0,
+  "expected_graphics": 16,
+  "expected_upper": 8,
+  "expected_lower": 8,
+  "groups": [
+    {
+      "area": "左上",
+      "items": [
+        "银杏叶",
+        "单朵雏菊",
+        "蝴蝶",
+        "蕨叶"
+      ]
+    },
+    {
+      "area": "右上",
+      "items": [
+        "枫叶",
+        "风铃花枝",
+        "蒲公英",
+        "花苞短枝"
+      ]
+    },
+    {
+      "area": "左下",
+      "items": [
+        "郁金香",
+        "龟背叶",
+        "三叶草",
+        "蜻蜓"
+      ]
+    },
+    {
+      "area": "右下",
+      "items": [
+        "荷花",
+        "细草",
+        "五瓣花",
+        "橄榄叶短枝"
+      ]
+    }
+  ],
+  "count_review": "PASS_MANUAL",
+  "user_acceptance": "REJECTED_DIRECTION",
+  "note": "One complete direction study, not sixteen individually exported production sticker files",
+  "observed_graphics": 16,
+  "observed_upper": 8,
+  "observed_lower": 8,
+  "final_comparison": "16图案_构图与同帧对照_v2.jpg",
+  "user_feedback": "用户明确表示整体方向完全不对；原样片贴纸也不是当前目标。数量检查通过不代表视觉需求满足。"
+}

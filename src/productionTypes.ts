@@ -21,6 +21,7 @@ export type TemplateStatus =
   | 'video_error';       // 视频异常
 
 export type VideoClipStatus = 
+  | 'cancelled'          // FFmpeg任务由用户取消
   | 'not_generated'      // 未生成
   | 'draft_queued'       // 草稿排队中
   | 'draft_generating'   // 草稿生成中
@@ -30,6 +31,25 @@ export type VideoClipStatus =
   | 'exported'           // 已导出
   | 'draft_error'        // 草稿异常
   | 'video_error';       // 视频异常
+
+export interface InsertionSlotSetting {
+  enabled: boolean;
+  mode: 'latest' | 'locked';
+  file: string;
+  min_source_duration_seconds?: number;
+  position_start_seconds?: number;
+  position_end_seconds?: number;
+}
+
+export interface InsertionStrategy {
+  midroll: InsertionSlotSetting;
+  endroll: InsertionSlotSetting;
+}
+
+export interface MaterialInsertionOverride {
+  midroll?: { enabled?: boolean; mode?: 'latest' | 'locked'; file?: string; min_source_duration_seconds?: number; position_start_seconds?: number; position_end_seconds?: number };
+  endroll?: { enabled?: boolean; mode?: 'latest' | 'locked'; file?: string };
+}
 
 export interface ScannedMaterialClip {
   id: string;
@@ -45,6 +65,8 @@ export interface ScannedMaterialClip {
   filePath?: string;        // 完整文件路径 (仅用于 Tooltip / 详情查看)
   scannedAt: string;
   isValid: boolean;
+  status?: string;
+  insertionStrategy?: MaterialInsertionOverride | null;
 }
 
 export interface ProductionVideoItem {
@@ -53,8 +75,13 @@ export interface ProductionVideoItem {
   title: string;            // e.g. 辣厨回乡鲜椒越香店越旺-1
   dramaPrefix: string;      // 纯剧名
   durationSec: number;      // 视频时长 (秒)
+  insertionResultText?: string;
   fileSizeText: string;     // e.g. 18MB 或 —
   status: VideoClipStatus;
+  engine?: string;
+  generationStage?: string;
+  generationDuration?: string;
+  generationDurationSeconds?: number;
   totalDuration?: string;   // 草稿与导出两个实际执行阶段的合计耗时
   draftDurationSeconds?: number;
   exportDurationSeconds?: number;
@@ -71,6 +98,9 @@ export interface ProductionVideoItem {
 }
 
 export interface ProductionUnit {
+  mountSource?: import('./api/dramaCatalog').MountSource | '';
+  mountExternalId?: string;
+  manualOrder?: number;
   id: string; // e.g. "prod-acc1-drama1"
   accountId: string;
   accountName: string;
@@ -80,7 +110,8 @@ export interface ProductionUnit {
   
   // 计划与状态
   scheduledDate: string;     // 日期，如 "2026-08-22", "2026-08-23"
-  scheduledTime: string;     // 如 "8月22日 19:30", "今天 18:30", "明天 09:00"
+  scheduledTime: string;     // Compatibility name: planned calendar date display, no clock.
+  createdAt?: string;        // Same-day planning ties follow original creation order.
   sortTimestamp: number;     // 排序时间戳
   isOverdue?: boolean;       // 是否逾期未完成
   isCompleted: boolean;      // 是否已登记发布 (已登记发布即已完成)
@@ -139,6 +170,7 @@ export interface ProductionUnit {
   releaseDetailAddress?: string;
   
   lastUpdated: string;
+  insertionStrategy?: MaterialInsertionOverride | null;
 }
 
 export interface CleanupItemDetail {

@@ -1,8 +1,9 @@
-"""Launch the V2 production desktop runtime from built frontend assets."""
+"""Launch the V3 production desktop runtime from built frontend assets."""
 
 from __future__ import annotations
 
 import argparse
+import base64
 import ctypes
 import json
 import os
@@ -35,6 +36,34 @@ class StartupCancelled(Exception):
     """The user deliberately closed the first-run setup window."""
 
 
+class DesktopApi:
+    """Small native bridge exposed only to the local pywebview window."""
+
+    def save_png(self, data_url: str, filename: str = "封面.png") -> dict[str, object]:
+        import webview
+
+        if not isinstance(data_url, str) or not data_url.startswith("data:image/png;base64,"):
+            raise ValueError("封面数据格式无效。")
+        try:
+            payload = base64.b64decode(data_url.split(",", 1)[1], validate=True)
+        except (ValueError, base64.binascii.Error) as exc:
+            raise ValueError("封面数据无法解码。") from exc
+        safe_name = Path(str(filename or "封面.png")).name
+        if not safe_name.lower().endswith(".png"):
+            safe_name += ".png"
+        window = webview.windows[0]
+        selected = window.create_file_dialog(
+            webview.SAVE_DIALOG,
+            save_filename=safe_name,
+            file_types=("PNG 图片 (*.png)",),
+        )
+        if not selected:
+            return {"saved": False, "canceled": True}
+        path = Path(selected[0] if isinstance(selected, (tuple, list)) else selected)
+        path.write_bytes(payload)
+        return {"saved": True, "path": str(path)}
+
+
 def wait_until_reachable(url: str, label: str) -> None:
     deadline = time.monotonic() + 20
     opener = build_opener(ProxyHandler({}))
@@ -53,7 +82,7 @@ def startup_diagnostic_log_path() -> Path:
     """Keep desktop-start failures outside the install folder for remote support."""
     local_app_data = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
     base = Path(local_app_data).expanduser() if local_app_data else Path.home()
-    return base / "ShortDramaPlatformV2" / "logs" / "desktop-startup.log"
+    return base / "ShortDramaPlatformV3" / "logs" / "desktop-startup.log"
 
 
 def report_startup_failure(exc: BaseException) -> None:
@@ -63,7 +92,7 @@ def report_startup_failure(exc: BaseException) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text(
             "\n\n".join((
-                f"[{datetime.now().isoformat(timespec='seconds')}] V2 desktop startup failed",
+                f"[{datetime.now().isoformat(timespec='seconds')}] V3 desktop startup failed",
                 f"executable={sys.executable}",
                 f"frozen={bool(getattr(sys, 'frozen', False))}",
                 "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
@@ -74,12 +103,12 @@ def report_startup_failure(exc: BaseException) -> None:
         # A visible dialog remains useful even if a restrictive machine policy
         # prevents writing the optional local diagnostic log.
         log_path = None
-    message = "短剧推广运营系统 V2 启动失败。\n\n"
+    message = "短剧推广运营系统 V3 启动失败。\n\n"
     message += f"原因：{exc}\n"
     if log_path is not None:
         message += f"\n完整错误日志：\n{log_path}"
     try:
-        ctypes.windll.user32.MessageBoxW(None, message, "V2 启动失败", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, message, "V3 启动失败", 0x10)
     except Exception:
         # Source/console launchers still receive the traceback from the caller.
         print(message, file=sys.stderr, flush=True)
@@ -88,7 +117,7 @@ def report_startup_failure(exc: BaseException) -> None:
 def choose_initial_data_drive(drives: list[str]) -> str | None:
     """Ask once where this computer should keep V2's working data."""
     if not drives:
-        raise RuntimeError("未发现可用磁盘，无法创建 V2 数据目录")
+        raise RuntimeError("未发现可用磁盘，无法创建 V3 数据目录")
     try:
         import tkinter as tk
         from tkinter import ttk
@@ -96,7 +125,7 @@ def choose_initial_data_drive(drives: list[str]) -> str | None:
         raise RuntimeError("当前 Windows 环境无法显示首次数据盘选择窗口") from exc
 
     root = tk.Tk()
-    root.title("首次设置 V2 数据盘")
+    root.title("首次设置 V3 数据盘")
     root.resizable(False, False)
     root.attributes("-topmost", True)
     selected = tk.StringVar(value=drives[0])
@@ -148,8 +177,8 @@ def start_production_server() -> tuple[object, str]:
     try:
         address = f"http://{service.HOST}:{server.server_address[1]}/"
         threading.Thread(target=server.serve_forever, name="v2-production-server", daemon=True).start()
-        wait_until_reachable(f"{address}api/v2/health", "V2 本地服务")
-        wait_until_reachable(address, "V2 正式前端")
+        wait_until_reachable(f"{address}api/v2/health", "V3 本地服务")
+        wait_until_reachable(address, "V3 正式前端")
         return server, address
     except Exception:
         server.shutdown()
@@ -166,8 +195,9 @@ def main() -> None:
         from mitmproxy.tools.main import mitmdump
         mitmdump()
         return
-    parser = argparse.ArgumentParser(description="启动 V2 正式桌面运行环境（不使用 Vite）")
+    parser = argparse.ArgumentParser(description="启动 V3 正式桌面运行环境（不使用 Vite）")
     parser.add_argument("--debug", action="store_true", help="启用 pywebview 调试模式")
+    parser.add_argument("--probe-output", help="将只读运行检查结果写入指定文件")
     parser.add_argument("--runtime-probe", action="store_true", help="仅检查冻结运行时依赖，不启动窗口")
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
@@ -188,12 +218,22 @@ def main() -> None:
         resources = (GLOBAL_EFFECT_POOL, REAL_PHOTO_EFFECT_POOL)
         for resource in resources:
             json.loads(resource.read_text(encoding="utf-8"))
-        print(json.dumps({
+        from server.release_runtime import probe_v3_resources
+        from server.product_version import get_product_version
+        from server.ffmpeg_finals.insertion import timeline_graph  # noqa: F401
+        result = {
             "status": "ok",
+            "version": get_product_version(),
+            "insertion_timeline_available": True,
+            "v3": probe_v3_resources(),
             "ffmpeg": str(resolve_ffmpeg()),
             "ffprobe": str(resolve_ffprobe()),
             "runtime_resources": [str(resource) for resource in resources],
-        }, ensure_ascii=False), flush=True)
+        }
+        if args.probe_output:
+            Path(args.probe_output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        if sys.stdout is not None:
+            print(json.dumps(result, ensure_ascii=False), flush=True)
         return
     if args.width < MIN_WIDTH or args.height < MIN_HEIGHT:
         raise RuntimeError(f"窗口尺寸不得小于 {MIN_WIDTH}x{MIN_HEIGHT}。")
@@ -201,22 +241,28 @@ def main() -> None:
     server = None
     try:
         server, address = start_production_server()
+        from server.operations_collection import start_publication_tracking
+        from server.v2_file_service import connection as operations_connection
+        server.v3_publication_tracking_stop = start_publication_tracking(operations_connection)
         try:
             import webview
         except ImportError as exc:
-            raise RuntimeError("当前 Python 环境未安装 pywebview，无法启动 V2 桌面窗口") from exc
+            raise RuntimeError("当前 Python 环境未安装 pywebview，无法启动 V3 桌面窗口") from exc
         webview.create_window(
-            "短剧推广运营系统 V2",
+            os.environ.get("V2_DESKTOP_TITLE", "短剧推广运营系统 V3"),
             address,
             width=args.width,
             height=args.height,
             maximized=True,
             min_size=(MIN_WIDTH, MIN_HEIGHT),
+            js_api=DesktopApi(),
         )
-        print(f"V2 正式桌面窗口已打开：{address}", flush=True)
+        print(f"V3 正式桌面窗口已打开：{address}", flush=True)
         webview.start(gui="edgechromium", debug=args.debug)
     finally:
         if server is not None:
+            if getattr(server, 'v3_publication_tracking_stop', None):
+                server.v3_publication_tracking_stop.set()
             server.shutdown()
             server.server_close()
 

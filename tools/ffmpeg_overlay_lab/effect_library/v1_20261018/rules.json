@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "version": "v1_20261018",
+  "status": "saved_for_library_trials",
+  "cache_profile": {
+    "aspect_ratio": "9:20",
+    "fps": 30,
+    "variant_canvas": [
+      360,
+      800
+    ],
+    "output_example": [
+      1080,
+      2400
+    ],
+    "rebuild_on_aspect_or_fps_change": true
+  },
+  "selection": {
+    "effect_count": [
+      3,
+      5
+    ],
+    "category_balancing": true,
+    "usage_metric": "seconds in successfully rendered templates",
+    "baseline_weight": 0.5,
+    "relative_strength_percent": [
+      90,
+      100
+    ],
+    "avoid_adjacent_identical_assets": true,
+    "avoid_adjacent_single_same_effect": true,
+    "avoid_same_variant_on_effect_return": true,
+    "persist_seed_and_asset_keys": true,
+    "duplicate_signature_ignores_phase_and_strength": true
+  },
+  "timeline": {
+    "segment_seconds": [
+      30,
+      60
+    ],
+    "dual_duration_share": [
+      0.15,
+      0.3
+    ],
+    "dual_share_min_template_seconds": 120,
+    "short_template_policy": "reduce selected effects; a single short segment is allowed; dual share is not forced",
+    "max_simultaneous_logical_effects": 2,
+    "adjacent_dual_stages": false,
+    "transition_seconds": [
+      1,
+      2
+    ],
+    "same_flatten_mode_transition": "cache the effect crossfade ahead of final composition",
+    "mixed_or_background_transition": "fade out the whole outgoing result, then fade in the incoming result through the unmodified base",
+    "independent_of_landscape_cuts": true,
+    "exact_total_frames": true
+  },
+  "pairs": {
+    "default_pool": "preflattened_cache_only",
+    "supported_modes": [
+      "screen+screen",
+      "normal+normal"
+    ],
+    "weights": [
+      0.7,
+      0.3
+    ],
+    "fixed_member_order": true,
+    "exclude_background_dependent": true,
+    "exclude_addition_softlight_overlay": true,
+    "no_cartesian_product_prebuild": true,
+    "max_live_cache_layers_during_crossfade": 2
+  },
+  "reuse": {
+    "across_templates": true,
+    "delete_after_usage_count": false,
+    "cache_originals_are_preserved": true,
+    "versioned_cache_keys": true,
+    "cache_full_template_by_default": false,
+    "runtime_heavy_geometry": false
+  },
+  "activation": {
+    "accepted_reference_assets": 35,
+    "expanded_assets": "available for library trial planning with visual status retained",
+    "production_generator_connected": false,
+    "source_originals_immutable": true
+  }
+}

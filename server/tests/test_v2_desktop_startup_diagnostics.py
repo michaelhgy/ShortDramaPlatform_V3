@@ -21,9 +21,9 @@ class DesktopStartupDiagnosticsTests(unittest.TestCase):
             fake_windll = SimpleNamespace(user32=SimpleNamespace(MessageBoxW=message_box))
             with patch.dict(os.environ, {"LOCALAPPDATA": directory}, clear=False), patch.object(launcher.ctypes, "windll", fake_windll, create=True):
                 launcher.report_startup_failure(RuntimeError("测试启动错误"))
-            log_path = Path(directory) / "ShortDramaPlatformV2" / "logs" / "desktop-startup.log"
+            log_path = Path(directory) / "ShortDramaPlatformV3" / "logs" / "desktop-startup.log"
             self.assertIn("测试启动错误", log_path.read_text(encoding="utf-8"))
-            self.assertEqual("V2 启动失败", message_box.call_args.args[2])
+            self.assertEqual("V3 启动失败", message_box.call_args.args[2])
             self.assertIn(str(log_path), message_box.call_args.args[1])
 
     def test_first_run_persists_the_drive_selected_by_the_user(self) -> None:

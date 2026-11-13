@@ -1,3 +1,4 @@
+import { formatPlannedDate } from '../../utils/plannedDate';
 import React from 'react';
 import { ScheduleTask, DramaProductionStatus } from '../../types';
 import { DramaCover } from '../DramaCover';
@@ -35,7 +36,7 @@ export const PipelineCanvasSection: React.FC<PipelineCanvasSectionProps> = ({
   onBatchPushToCapCut,
 }) => {
   // Group by time windows
-  const noonTasks = tasks.filter(t => t.publishTime.includes('12:') || t.publishTime.includes('09:'));
+  const noonTasks = tasks.filter(t => t.publishTime.includes('12:') || t.publishTime.includes('09:') || !/\d{1,2}:\d{2}/.test(t.publishTime));
   const primeTasks = tasks.filter(t => t.publishTime.includes('18:') || t.publishTime.includes('19:') || t.publishTime.includes('20:'));
   const lateTasks = tasks.filter(t => t.publishTime.includes('21:') || t.publishTime.includes('22:') || t.publishTime.includes('23:'));
 
@@ -229,11 +230,11 @@ export const PipelineCanvasSection: React.FC<PipelineCanvasSectionProps> = ({
                           <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                             <button
                               onClick={() => onEditTime(task)}
-                              title="点击修改发布时间"
+                              title="点击修改计划发布日期"
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#F8FAFC] hover:bg-slate-200 text-[#1A1D2E] text-[10px] font-bold border border-black/[0.06] cursor-pointer"
                             >
                               <Clock className="w-2.5 h-2.5 text-[#64748B]" />
-                              <span>{task.publishTime}</span>
+                              <span>{formatPlannedDate(task.plannedPublishAt || task.publishTime)}</span>
                             </button>
                             {getStatusBadge(task.status)}
                           </div>

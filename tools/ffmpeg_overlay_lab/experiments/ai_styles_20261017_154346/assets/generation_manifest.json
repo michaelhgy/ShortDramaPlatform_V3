@@ -1,0 +1,44 @@
+[
+  {
+    "id": "gold_texture",
+    "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-fe7ee2b9-b3b8-4b9d-8b87-e6461d6c4de2.png",
+    "destination": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/gold_texture.png",
+    "transparent_requested": false,
+    "method": "built-in image_gen"
+  },
+  {
+    "id": "gold_stickers",
+    "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-f92b53c9-9606-4b2c-81cd-0097f12b8784.png",
+    "destination": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/gold_stickers.png",
+    "transparent_requested": true,
+    "method": "built-in image_gen"
+  },
+  {
+    "id": "cyan_texture",
+    "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-4b6863e3-05f7-4bda-b7ac-bbaecbd67d5c.png",
+    "destination": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/cyan_texture.png",
+    "transparent_requested": false,
+    "method": "built-in image_gen"
+  },
+  {
+    "id": "cyan_stickers",
+    "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-1549b1fd-6ea0-466a-bda7-53a70f2371d5.png",
+    "destination": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/cyan_stickers.png",
+    "transparent_requested": true,
+    "method": "built-in image_gen"
+  },
+  {
+    "id": "purple_texture",
+    "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-5d553901-b46c-4de4-a9a6-31fdd9690e40.png",
+    "destination": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/purple_texture.png",
+    "transparent_requested": false,
+    "method": "built-in image_gen"
+  },
+  {
+    "id": "purple_stickers",
+    "source": "/mnt/c/Users/Michael/.codex/generated_images/01a1486a-3506-7003-ba92-a8df08cf754d/exec-51d99be3-0fe4-4ca9-b60f-a600467e5de7.png",
+    "destination": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/ai_styles_20261017_154346/assets/purple_stickers.png",
+    "transparent_requested": true,
+    "method": "built-in image_gen"
+  }
+]

@@ -1,7 +1,13 @@
+import type { ScenerySnapshot } from './scenery';
 import { v2Client } from './client';
+import type { FinalSnapshot } from './finalComposition';
+import type { GenerationSnapshot } from './templateGeneration';
 import type { DramaSchedulePriority, ExecutorInfo, TaskItem } from '../components/taskcenter/taskCenterTypes';
 
 export interface V2TaskCenterSnapshot {
+  sceneryProcessing?: ScenerySnapshot;
+  templateGeneration?: GenerationSnapshot;
+  finalComposition?: FinalSnapshot;
   executors: ExecutorInfo[];
   tasks: TaskItem[];
   dramaPriorities: DramaSchedulePriority[];

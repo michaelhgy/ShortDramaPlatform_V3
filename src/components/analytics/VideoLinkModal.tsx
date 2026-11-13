@@ -1,3 +1,4 @@
+import { formatPlannedDate } from '../../utils/plannedDate';
 import React, { useState } from 'react';
 import { AggregatedPlatformVideo } from '../../utils/videoEngine';
 import type { V2RevenueVideoCandidate } from '../../api/v2Revenue';
@@ -164,7 +165,7 @@ export const VideoLinkModal: React.FC<VideoLinkModalProps> = ({
                           </strong>
                         </div>
                         <div className={`text-[10px] ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
-                          计划发布时间: {cand.planned_publish_at || '未填写'}
+                          计划发布日期: {formatPlannedDate(cand.planned_publish_at)}
                         </div>
                       </div>
                     </div>

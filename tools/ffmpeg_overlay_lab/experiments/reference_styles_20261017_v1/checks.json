@@ -1,0 +1,11 @@
+{
+  "reference_groups": 6,
+  "existing_assets": 24,
+  "ai_generation_calls": 0,
+  "source_hashes_unchanged": true,
+  "final_reference_image_decodes": true,
+  "visual_check": "24 reference previews are visible",
+  "user_selection": "PENDING",
+  "production_library_changed": false,
+  "note": "Original and AI attempts rejected as target references; these cards only elicit visual preferences"
+}

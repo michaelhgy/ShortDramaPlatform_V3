@@ -37,6 +37,7 @@ export interface ExploreDrama extends DramaItem {
 }
 
 export interface ExploreAccount {
+  avatarUrl?: string;
   id: string;
   name: string;
   platform: string;

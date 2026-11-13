@@ -1,5 +1,7 @@
+import versionInfo from '../../../packaging/version.json';
 import React, { useEffect, useState } from 'react';
-import { downloadLocalVisionAiModel, getLocalVisionAiStatus, getV2Drives, getV2Settings, LocalVisionAiStatus, updateV2Settings } from '../../api/v2Catalog';
+import { downloadLocalVisionAiModel, getLocalVisionAiStatus, getV2Drives, getV2Settings, LocalVisionAiStatus, openV2Folder, updateV2Settings } from '../../api/v2Catalog';
+import { getGptRelayConfig, GptRelayConfig, GptRelayRoute, refreshGptRelayModels, saveGptRelayConfig, testGptRelayConnection } from '../../api/gptRelay';
 import { selectV2Path } from '../../api/v2Settings';
 import { useDataArea } from '../../hooks/useDataArea';
 import { 
@@ -33,7 +35,9 @@ import {
   ChevronDown,
   Edit2,
   Minus,
-  Sparkles
+  Sparkles,
+  Network,
+  RefreshCw
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -49,6 +53,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [dataDrive, setDataDrive] = useState('');
   const [availableDrives, setAvailableDrives] = useState<string[]>([]);
   const [isChangingDataDrive, setIsChangingDataDrive] = useState(false);
+  const [dramaDownloadRoot, setDramaDownloadRoot] = useState('Z:\\04短剧原片');
   const [jianyingExePath, setJianyingExePath] = useState('');
   const [capcutDraftPath, setCapcutDraftPath] = useState('');
   const [jianyingUserDataPath, setJianyingUserDataPath] = useState('');
@@ -99,10 +104,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [checkingLocalVisionAi, setCheckingLocalVisionAi] = useState(false);
 
   // ==========================================
+  // 7. GPT 中转站 (GPT Relay)
+  // ==========================================
+  const [gptRelay, setGptRelay] = useState<GptRelayConfig | null>(null);
+  const [gptProviderName, setGptProviderName] = useState('');
+  const [gptBaseUrl, setGptBaseUrl] = useState('');
+  const [gptApiFormat, setGptApiFormat] = useState<'responses' | 'openai_chat_completions'>('responses');
+  const [gptApiKey, setGptApiKey] = useState('');
+  const [gptUseSystemProxy, setGptUseSystemProxy] = useState(false);
+  const [gptRoutes, setGptRoutes] = useState<Record<GptRelayRoute, string>>({ highlight: '', continuous: '', jump: '', review: '' });
+  const [gptBusy, setGptBusy] = useState<'save' | 'models' | 'test' | null>(null);
+
+  // ==========================================
   // 7. 系统诊断状态 (Diagnostics)
   // ==========================================
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null);
-  const [selectingPath, setSelectingPath] = useState<'file' | 'draft' | 'userData' | null>(null);
+  const [selectingPath, setSelectingPath] = useState<'file' | 'draft' | 'userData' | 'dramaDownloadRoot' | null>(null);
 
   // ── 统一数据层接入（刷新大修 · 第 4 步）────────────────────────────
   // 设置属于"装完机基本不动"的配置类：**打开读一次 + 改完立刻刷**（间隔 0）。
@@ -115,6 +132,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const settings = settingsArea.data;
     if (!settings) return;
     setDataDrive(settings.data_drive || '');
+    setDramaDownloadRoot(settings.drama_download_root || 'Z:\\04短剧原片');
     setRawMaterialRetentionDays(settings.raw_material_retention_days);
     setShortTermCleanupHours(settings.short_term_cleanup_hours);
     setPublishPresets(settings.publish_presets);
@@ -131,6 +149,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSyncTimeSlots(settings.revenue_auto_collection_times);
     setLocalVisionAiMode(settings.local_vision_ai_mode);
   }, [settingsArea.data]);
+
+  useEffect(() => {
+    getGptRelayConfig()
+      .then((config) => {
+        setGptRelay(config);
+        setGptProviderName(config.provider_name || '');
+        setGptBaseUrl(config.base_url || '');
+        setGptApiFormat(config.api_format || 'responses');
+        setGptUseSystemProxy(Boolean(config.use_system_proxy));
+        setGptRoutes({ highlight: '', continuous: '', jump: '', review: '', ...config.model_routes });
+      })
+      .catch(() => showToast('GPT 中转配置读取失败，请稍后重试。'));
+  }, []);
 
   useEffect(() => {
     if (settingsArea.error) showToast('基础设置读取失败，请稍后重试。');
@@ -168,6 +199,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (isChangingDataDrive && !window.confirm(`确认将数据盘改为 ${dataDrive}？已有数据不会自动搬迁。`)) return;
     updateV2Settings({
       data_drive: dataDrive,
+      drama_download_root: dramaDownloadRoot.trim(),
       raw_material_retention_days: rawMaterialRetentionDays,
       short_term_cleanup_hours: shortTermCleanupHours,
       publish_presets: publishPresets,
@@ -208,7 +240,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSelectPath = (kind: 'file' | 'directory', directoryTarget: 'draft' | 'userData' = 'draft') => {
+  const handleSaveGptRelay = async () => {
+    setGptBusy('save');
+    try {
+      const config = await saveGptRelayConfig({
+        provider_name: gptProviderName,
+        base_url: gptBaseUrl,
+        api_format: gptApiFormat,
+        api_key: gptApiKey,
+        use_system_proxy: gptUseSystemProxy,
+        model_routes: gptRoutes,
+      });
+      setGptRelay(config);
+      setGptApiKey('');
+      showToast('GPT 中转配置已保存');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'GPT 中转配置保存失败');
+    } finally {
+      setGptBusy(null);
+    }
+  };
+
+  const handleRefreshGptModels = async () => {
+    setGptBusy('models');
+    try {
+      const config = await refreshGptRelayModels();
+      setGptRelay(config);
+      setGptRoutes((current) => ({ ...current, ...config.model_routes }));
+      showToast(`已获取 ${config.models.length} 个可用模型`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '模型列表获取失败');
+    } finally {
+      setGptBusy(null);
+    }
+  };
+
+  const handleTestGptRelay = async () => {
+    setGptBusy('test');
+    try {
+      const result = await testGptRelayConnection(gptRoutes.highlight);
+      setGptRelay(result.config);
+      showToast(`连接测试成功：${result.model}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'GPT 中转连接测试失败');
+    } finally {
+      setGptBusy(null);
+    }
+  };
+
+  const handleSelectPath = (kind: 'file' | 'directory', directoryTarget: 'draft' | 'userData' | 'dramaDownloadRoot' = 'draft') => {
     setSelectingPath(kind === 'file' ? 'file' : directoryTarget);
     selectV2Path(kind).then((result) => {
       if (!result.path) {
@@ -217,9 +297,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
       if (kind === 'file') setJianyingExePath(result.path);
       else if (directoryTarget === 'userData') setJianyingUserDataPath(result.path);
+      else if (directoryTarget === 'dramaDownloadRoot') setDramaDownloadRoot(result.path);
       else setCapcutDraftPath(result.path);
-      showToast(kind === 'file' ? '已选择剪映程序' : directoryTarget === 'userData' ? '已选择剪映用户数据目录' : '已选择剪映草稿目录');
-    }).catch((error: unknown) => showToast(error instanceof Error && error.message ? error.message : '路径选择失败，请检查 V2 本地服务。'))
+      showToast(kind === 'file' ? '已选择剪映程序' : directoryTarget === 'userData' ? '已选择剪映用户数据目录' : directoryTarget === 'dramaDownloadRoot' ? '已选择短剧原片下载目录' : '已选择剪映草稿目录');
+    }).catch((error: unknown) => showToast(error instanceof Error && error.message ? error.message : '路径选择失败，请检查 V3 本地服务。'))
       .finally(() => setSelectingPath(null));
   };
 
@@ -328,6 +409,7 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
           </div>
           <div>
             <h2 className="text-lg font-black text-[#1A1D2E] tracking-tight">系统设置 (Settings)</h2>
+            <p className="mt-0.5 text-[11px] text-[#64748B]">产品版本 {versionInfo.product_version} · 发布编号 {versionInfo.release_id}</p>
             <p className="text-xs text-[#64748B] mt-0.5">
               存储路径与程序绑定、执行器超时、文件生命周期清理、常用发布预设与定时采集
             </p>
@@ -341,6 +423,89 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
           <Save className="w-3.5 h-3.5" />
           <span>保存所有配置</span>
         </button>
+      </div>
+
+      {/* =========================================================================
+          GPT 中转站
+          ========================================================================= */}
+      <div className="bg-white rounded-3xl p-6 border border-black/[0.06] shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-black/[0.04]">
+          <div className="flex items-center gap-2">
+            <Network className="w-4 h-4 text-[#1A1D2E]" />
+            <div>
+              <h3 className="font-extrabold text-base text-[#1A1D2E]">GPT 中转站</h3>
+              <p className="text-[11px] text-[#64748B] mt-0.5">V3 直接调用中转站，模型列表从中转站实时获取。</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className={`px-2 py-1 rounded-full border font-bold ${gptRelay?.enabled ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+              {gptRelay?.enabled ? '已配置' : '未配置'}
+            </span>
+            {gptRelay?.api_key_set && <span className="text-slate-500">密钥 {gptRelay.api_key_masked}</span>}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+          <label className="space-y-1.5">
+            <span className="font-bold text-[#1A1D2E]">服务名称</span>
+            <input value={gptProviderName} onChange={(event) => setGptProviderName(event.target.value)} placeholder="例如 M2AI" className="w-full px-3 py-2 bg-[#F8FAFC] border border-black/[0.06] rounded-xl focus:outline-none focus:bg-white focus:border-[#1A1D2E]" />
+          </label>
+          <label className="space-y-1.5">
+            <span className="font-bold text-[#1A1D2E]">Base URL</span>
+            <input value={gptBaseUrl} onChange={(event) => setGptBaseUrl(event.target.value)} placeholder="https://example.com" className="w-full px-3 py-2 bg-[#F8FAFC] border border-black/[0.06] rounded-xl font-mono focus:outline-none focus:bg-white focus:border-[#1A1D2E]" />
+          </label>
+          <label className="space-y-1.5">
+            <span className="font-bold text-[#1A1D2E]">API 格式</span>
+            <select value={gptApiFormat} onChange={(event) => setGptApiFormat(event.target.value as typeof gptApiFormat)} className="w-full px-3 py-2 bg-[#F8FAFC] border border-black/[0.06] rounded-xl focus:outline-none focus:bg-white focus:border-[#1A1D2E]">
+              <option value="responses">OpenAI Responses</option>
+              <option value="openai_chat_completions">OpenAI Chat Completions</option>
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="font-bold text-[#1A1D2E]">API 密钥</span>
+            <input type="password" value={gptApiKey} onChange={(event) => setGptApiKey(event.target.value)} placeholder={gptRelay?.api_key_set ? '已保存，留空则保持不变' : '输入中转站 API 密钥'} className="w-full px-3 py-2 bg-[#F8FAFC] border border-black/[0.06] rounded-xl font-mono focus:outline-none focus:bg-white focus:border-[#1A1D2E]" autoComplete="new-password" />
+          </label>
+          <label className="md:col-span-2 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={gptUseSystemProxy} onChange={(event) => setGptUseSystemProxy(event.target.checked)} className="mt-0.5 w-4 h-4 accent-[#1A1D2E]" />
+            <span className="space-y-0.5">
+              <span className="block font-bold text-[#1A1D2E]">通过系统代理访问中转站</span>
+              <span className="block text-xs text-black/50">默认关闭，直连中转站。开了梯子/VPN 时若出现"无法连接代理 / Unable to connect to proxy"，请保持关闭；仅当你的中转站必须靠代理才能访问时才勾选。</span>
+            </span>
+          </label>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-[#F8FAFC] border border-black/[0.05] space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-bold text-[#1A1D2E]">任务模型分配</p>
+              <p className="text-[11px] text-[#64748B] mt-0.5">先保存地址和密钥，再获取模型。这里选择的是任务默认模型。</p>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => void handleSaveGptRelay()} disabled={gptBusy !== null} className="px-3 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] font-bold disabled:opacity-50 cursor-pointer">{gptBusy === 'save' ? '保存中…' : '保存中转配置'}</button>
+              <button type="button" onClick={() => void handleRefreshGptModels()} disabled={gptBusy !== null} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-black/[0.08] text-[#1A1D2E] font-bold disabled:opacity-50 cursor-pointer"><RefreshCw className="w-3 h-3" />{gptBusy === 'models' ? '获取中…' : '获取模型'}</button>
+              <button type="button" onClick={() => void handleTestGptRelay()} disabled={gptBusy !== null} className="px-3 py-1.5 rounded-xl bg-white border border-black/[0.08] text-[#1A1D2E] font-bold disabled:opacity-50 cursor-pointer">{gptBusy === 'test' ? '测试中…' : '测试连接'}</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {([
+              ['highlight', '高光判断'],
+              ['continuous', '连续播放规划'],
+              ['jump', '跳集播放规划'],
+              ['review', '结果复核'],
+            ] as Array<[GptRelayRoute, string]>).map(([route, label]) => (
+              <label key={route} className="flex items-center gap-2">
+                <span className="w-24 text-[11px] font-bold text-[#475569]">{label}</span>
+                <select value={gptRoutes[route] || ''} onChange={(event) => setGptRoutes((current) => ({ ...current, [route]: event.target.value }))} className="min-w-0 flex-1 px-2.5 py-1.5 bg-white border border-black/[0.08] rounded-xl font-mono text-[11px] focus:outline-none focus:border-[#1A1D2E]">
+                  <option value="">未分配</option>
+                  {(gptRelay?.models || []).map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
+          <div className="text-[11px] text-[#64748B]">
+            {gptRelay?.models?.length ? `已获取 ${gptRelay.models.length} 个模型${gptRelay.models_fetched_at ? ` · ${new Date(gptRelay.models_fetched_at).toLocaleString()}` : ''}` : '尚未获取模型列表'}
+          </div>
+        </div>
       </div>
 
       {/* =========================================================================
@@ -385,7 +550,7 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
             </div>
 
             <p className="text-[11px] text-[#64748B] leading-relaxed">
-              选择盘符后，软件自动使用 {dataRootDir || '<盘符>\\短剧推广运营系统'}，并在其中创建和维护生产文件、剧集资料、爆款素材、真人视频/图片、BGM 及系统数据等标准目录，无需逐项配置。
+              选择盘符后，软件自动使用 {dataRootDir || '<盘符>\\短剧推广运营系统'}，并在其中创建和维护生产文件、剧集资料、爆款素材、风景视频、真人图片、引流视频 及系统数据等标准目录，无需逐项配置。
             </p>
 
             <div className="flex items-center gap-2">
@@ -417,7 +582,40 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
             </div>
           </div>
 
-          {/* 1.2 剪映程序路径 */}
+          {/* 1.2 短剧原片下载目录 */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-[#1A1D2E] flex items-center gap-1.5">
+              <span>短剧原片下载目录</span>
+            </label>
+            <p className="text-[11px] text-[#64748B]">
+              原片按“剧场 / 剧名 / 分集文件”保存，支持选择本机磁盘或已映射的共享盘，例如 Z:\\04短剧原片。
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={dramaDownloadRoot}
+                onChange={(e) => setDramaDownloadRoot(e.target.value)}
+                className="flex-1 px-3 py-2 bg-[#F8FAFC] border border-black/[0.06] rounded-xl text-[#1A1D2E] font-mono text-xs focus:outline-none focus:bg-white focus:border-[#1A1D2E]"
+              />
+              <button
+                type="button"
+                onClick={() => handleSelectPath('directory', 'dramaDownloadRoot')}
+                disabled={selectingPath !== null}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#1A1D2E] font-bold cursor-pointer transition-colors shrink-0"
+              >
+                {selectingPath === 'dramaDownloadRoot' ? '选择中...' : '选择目录'}
+              </button>
+              <button
+                type="button"
+                onClick={() => openV2Folder(dramaDownloadRoot).then(() => showToast('已打开短剧原片下载目录')).catch((error: unknown) => showToast(error instanceof Error ? error.message : '目录打开失败。'))}
+                className="px-3.5 py-2 rounded-xl bg-[#1A1D2E] text-white hover:bg-black font-bold cursor-pointer transition-colors shrink-0"
+              >
+                打开目录
+              </button>
+            </div>
+          </div>
+
+          {/* 1.3 剪映程序路径 */}
           <div className="space-y-1.5">
             <label className="font-bold text-[#1A1D2E] flex items-center gap-1.5">
               <span>剪映程序路径 (JianyingPro.exe)</span>
@@ -443,7 +641,7 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
             </div>
           </div>
 
-          {/* 1.3 剪映草稿根目录路径 */}
+          {/* 1.4 剪映草稿根目录路径 */}
           <div className="space-y-1.5">
             <label className="font-bold text-[#1A1D2E] flex items-center gap-1.5">
               <span>剪映草稿根目录路径</span>
@@ -697,7 +895,7 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
               <span className="text-[10px] text-slate-400">默认 24 小时</span>
             </div>
             <p className="text-[11px] text-[#64748B] leading-relaxed">
-              用于生产过程中模板、成片草稿、真人视频/图片中间耗材等短期文件的统一清理周期。同样从发布登记记录的发布时间开始计算。
+              用于生产过程中模板、成片草稿、风景视频/图片中间文件等短期文件的统一清理周期。同样从发布登记记录的发布时间开始计算。
             </p>
             <div className="flex items-center gap-2 pt-1">
               <input
@@ -720,7 +918,7 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
             <span>长期保护资产范围（永久保留，不受自动清理影响）：</span>
           </div>
           <p className="pl-5 text-slate-500">
-            • 爆款素材库中的收藏分镜与片段 • 音乐库 (BGM) 母本 • 短剧剧集母本资料与分镜结构库。
+            • 爆款素材库中的收藏分镜与片段 • 短剧剧集母本资料与分镜结构库。
           </p>
         </div>
       </div>
@@ -732,16 +930,16 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
         <div className="flex items-center justify-between pb-3 border-b border-black/[0.04]">
           <div className="flex items-center gap-2">
             <CalendarClock className="w-4 h-4 text-[#1A1D2E]" />
-            <h3 className="font-extrabold text-base text-[#1A1D2E]">常用发布时间预设</h3>
+            <h3 className="font-extrabold text-base text-[#1A1D2E]">默认计划发布日期</h3>
           </div>
           <span className="text-[11px] text-[#64748B] font-medium">
-            排期时可一键快捷选用，并自动带入默认发布日期
+            新建制作任务只安排日期，实际发布时间在自动发布中设置
           </span>
         </div>
 
         <div className="space-y-3 text-xs">
           <p className="text-[#64748B]">
-            在「安排今日制作与发布」时，这些时间将作为快捷标签展示。支持自由增删与上下排序。
+            设置新建制作任务的默认计划日期偏移，日期仍可逐条调整或暂不设置。
           </p>
 
           <div className="flex items-center justify-between gap-4 rounded-xl bg-[#F8FAFC] border border-black/[0.06] px-3 py-2.5">
@@ -771,104 +969,6 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
             </div>
           </div>
 
-          {/* Presets List */}
-          <div className="flex flex-wrap items-center gap-2">
-            {publishPresets.map((preset, index) => {
-              const isEditing = editingPresetIndex === index;
-
-              if (isEditing) {
-                return (
-                  <div key={index} className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-[#1A1D2E] shadow-2xs">
-                    <input
-                      type="time"
-                      value={editingPresetValue}
-                      onChange={(e) => setEditingPresetValue(e.target.value)}
-                      className="w-24 text-xs font-bold text-[#1A1D2E] focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveEditPreset}
-                      className="text-emerald-700 hover:text-emerald-900 p-0.5 cursor-pointer"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingPresetIndex(null)}
-                      className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              }
-
-              return (
-                <span
-                  key={index}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 border border-black/[0.06] text-xs font-bold text-[#1A1D2E] flex items-center gap-2 group hover:border-black/[0.12] transition-all"
-                >
-                  <span className="font-mono">{preset}</span>
-                  
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-0.5 text-slate-400">
-                    <button
-                      type="button"
-                      title="上移"
-                      disabled={index === 0}
-                      onClick={() => handleMovePreset(index, 'up')}
-                      className="hover:text-slate-700 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      <ChevronUp className="w-3 h-3" />
-                    </button>
-                    <button
-                      type="button"
-                      title="下移"
-                      disabled={index === publishPresets.length - 1}
-                      onClick={() => handleMovePreset(index, 'down')}
-                      className="hover:text-slate-700 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      <ChevronDown className="w-3 h-3" />
-                    </button>
-                    <button
-                      type="button"
-                      title="修改"
-                      onClick={() => handleStartEditPreset(index)}
-                      className="hover:text-slate-700 ml-0.5 cursor-pointer"
-                    >
-                      <Edit2 className="w-2.5 h-2.5" />
-                    </button>
-                    <button
-                      type="button"
-                      title="删除"
-                      onClick={() => handleRemovePreset(index)}
-                      className="hover:text-rose-600 ml-0.5 cursor-pointer"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </span>
-              );
-            })}
-
-            {/* Add Preset Input */}
-            <div className="flex items-center gap-1">
-              <input
-                type="time"
-                value={newPresetInput}
-                onChange={(e) => setNewPresetInput(e.target.value)}
-                className="w-28 px-2.5 py-1.5 bg-[#F8FAFC] border border-black/[0.08] rounded-xl text-xs font-semibold focus:outline-none focus:bg-white"
-              />
-              <button
-                type="button"
-                onClick={handleAddPreset}
-                className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 font-bold text-[#1A1D2E] cursor-pointer transition-colors flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                <span>新增预设</span>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 

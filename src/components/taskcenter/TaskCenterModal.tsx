@@ -1,3 +1,4 @@
+import { FfmpegTaskCenter } from './FfmpegTaskCenter';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Zap, 
@@ -26,7 +27,7 @@ import { ExecutorsOverview } from './ExecutorsOverview';
 import { TaskListSection } from './TaskListSection';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
 import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, storeSharedTaskCenterSnapshot } from '../../services/taskCenterService';
-import { cleanupV2OrphanRecords, cleanupV2OrphanTask, loadV2OrphanRecords, regenerateV2Template, reorderV2ProductionUnit, retryV2Template, reExportV2Task, setV2ExecutorPaused, setV2TaskCenterPaused } from '../../api/v2TaskCenter';
+import { cleanupV2OrphanRecords, cleanupV2OrphanTask, loadV2OrphanRecords, regenerateV2Template, reorderV2ProductionUnit, retryV2Template, reExportV2Task, setV2ExecutorPaused } from '../../api/v2TaskCenter';
 import { dataSource } from '../../services/dataSource';
 import { useDataArea } from '../../hooks/useDataArea';
 
@@ -36,7 +37,7 @@ interface TaskCenterModalProps {
   showToast: (msg: string) => void;
 }
 
-export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
+const LegacyTaskCenterModal: React.FC<TaskCenterModalProps> = ({
   isOpen,
   onClose,
   showToast,
@@ -96,9 +97,21 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
     setExecutors(snapshot.executors);
     tasksRef.current = snapshot.tasks;
     setTasks(snapshot.tasks);
+    setSelectedTaskForDetail(current => current ? snapshot.tasks.find(task => task.id === current.id) || null : null);
+    setRetryConfirmTask(current => current && snapshot.tasks.some(task => task.id === current.id) ? current : null);
+    setOrphanCleanupTask(current => current && snapshot.tasks.some(task => task.id === current.id) ? current : null);
     setLastRefreshAt(taskCenterArea.updatedAt ? new Date(taskCenterArea.updatedAt) : null);
     if (typeof snapshot.isQueuePaused === 'boolean') setIsQueuePaused(snapshot.isQueuePaused);
   }, [taskCenterArea.data, taskCenterArea.updatedAt]);
+
+  useEffect(() => {
+    if (!isOpen || dataSource === 'mock') return;
+    let active = true;
+    loadV2OrphanRecords()
+      .then((result) => { if (active) setOrphanTotal(result.total || 0); })
+      .catch(() => { if (active) setOrphanTotal(0); });
+    return () => { active = false; };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -135,7 +148,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
             durationSeconds: 1,
             durationFormatted: '01秒 (已重试重启)',
             progress: 10,
-            diagnosticLog: `[${new Date().toLocaleTimeString()}] User triggered [RETRY]. Process aborted and cleanly re-spawned.\n` + (t.diagnosticLog || ''),
+            diagnosticLog: `[${new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })}] User triggered [RETRY]. Process aborted and cleanly re-spawned.\n` + (t.diagnosticLog || ''),
           };
         }
         return t;
@@ -247,22 +260,6 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
   };
 
   // Action 4: 队列暂停/继续控制
-  const handleToggleQueue = () => {
-    const next = !isQueuePaused;
-    setIsQueuePaused(next);
-    if (dataSource !== 'mock') {
-      setV2TaskCenterPaused(next).then((snapshot) => {
-        storeSharedTaskCenterSnapshot(snapshot);
-        setExecutors(snapshot.executors);
-        setTasks(snapshot.tasks);
-      }).catch(() => {
-        setIsQueuePaused(!next);
-        showToast('任务中心状态更新失败，请检查 V2 服务是否启动');
-      });
-    }
-    showToast(next ? '⏸️ 全局后台执行队列已暂停' : '▶️ 全局后台执行队列已恢复调度');
-  };
-
   // 手动调整生产顺序：后端把"手动位次"和"三个执行器的取任务顺序"算成同一个东西，
   // 所以这里只要把动作发过去、把回来的顺序落进界面即可，前端不再自己排序。
   const handleReorderUnit = (productionTaskId: string, action: 'top' | 'up' | 'down') => {
@@ -279,15 +276,6 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
       .then(() => showToast(action === 'top' ? '已置顶 —— 执行器下一个就做这部剧' : action === 'up' ? '已上移一位' : '已下移一位'))
       .catch((error: unknown) => showToast(error instanceof Error ? error.message : '顺序调整失败，请稍后重试。'));
   };
-
-  useEffect(() => {
-    if (!isOpen || dataSource === 'mock') return;
-    let active = true;
-    loadV2OrphanRecords()
-      .then((result) => { if (active) setOrphanTotal(result.total || 0); })
-      .catch(() => { if (active) setOrphanTotal(0); });
-    return () => { active = false; };
-  }, [isOpen]);
 
   const handleCleanupOrphans = () => {
     cleanupV2OrphanRecords()
@@ -332,7 +320,7 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-extrabold text-base text-[#1A1D2E]">
-                  全局任务中心 (Full Task Center)
+                  剪映历史任务
                 </h2>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-[#1A1D2E] text-[#DDFD00] font-bold">
                   3大执行器 · 剧集优先级调度 · 异常自愈
@@ -344,25 +332,13 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-[#64748B] mt-0.5">
-                实时把控视频导出器、成片生成器、模板生成器运行状态与整体生产节奏{lastRefreshAt && <span className="ml-2 text-slate-400">更新于 {lastRefreshAt.toLocaleTimeString('zh-CN')}</span>}
+                实时把控视频导出器、成片生成器、模板生成器运行状态与整体生产节奏{lastRefreshAt && <span className="ml-2 text-slate-400">更新于 {lastRefreshAt.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })}</span>}
               </p>
             </div>
           </div>
 
           {/* Top Actions: Pause Queue, Fullscreen Toggle, Close */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleToggleQueue}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                isQueuePaused
-                  ? 'bg-amber-500 text-white shadow-xs'
-                  : 'bg-slate-100 hover:bg-slate-200 text-[#1A1D2E]'
-              }`}
-            >
-              {isQueuePaused ? <Play className="w-3.5 h-3.5 fill-white" /> : <Pause className="w-3.5 h-3.5" />}
-              <span>{isQueuePaused ? '恢复执行队列' : '暂停执行队列'}</span>
-            </button>
-
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
               className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-black/[0.04] transition-colors cursor-pointer"
@@ -560,4 +536,15 @@ export const TaskCenterModal: React.FC<TaskCenterModalProps> = ({
       )}
     </div>
   );
+};
+
+/** Current FFmpeg queues are primary; the old view remains available for historical work. */
+export const TaskCenterModal: React.FC<TaskCenterModalProps> = props => {
+  const [legacy, setLegacy] = useState(false);
+  const area = useDataArea<Awaited<ReturnType<typeof loadSharedTaskCenter>>>('taskCenter', () => loadSharedTaskCenter(true));
+  useEffect(() => { if (!props.isOpen) setLegacy(false); }, [props.isOpen]);
+  if (!props.isOpen) return null;
+  if (legacy) return <LegacyTaskCenterModal {...props} onClose={() => setLegacy(false)} />;
+  return <FfmpegTaskCenter snapshot={area.data} error={area.error} updatedAt={area.updatedAt}
+    onClose={props.onClose} onLegacy={() => setLegacy(true)} showToast={props.showToast} />;
 };

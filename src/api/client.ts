@@ -129,12 +129,12 @@ export class ApiClient {
       try {
         payload = text ? JSON.parse(text) : {};
       } catch {
-        throw new ApiError('V2 本地服务返回了无法识别的结果。', response.status);
+        throw new ApiError('V3 本地服务返回了无法识别的结果。', response.status);
       }
       if (!response.ok) {
         const message = typeof payload === 'object' && payload && 'error' in payload
           ? String(payload.error)
-          : 'V2 本地服务请求失败。';
+          : 'V3 本地服务请求失败。';
         throw new ApiError(message, response.status, payload);
       }
       if (init.method && init.method !== 'GET') {
@@ -164,14 +164,14 @@ export class ApiClient {
     } catch (error) {
       if (error instanceof ApiError) throw error;
       if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new ApiError(`请求 V2 本地服务超时（${this.timeoutMs}ms）。`);
+        throw new ApiError(`请求 V3 本地服务超时（${this.timeoutMs}ms）。`);
       }
       // fetch throws TypeError("Failed to fetch") when the local service is
       // unavailable. Surface an actionable product message instead.
       if (error instanceof TypeError) {
-        throw new ApiError('V2 本地服务请求失败，请检查服务是否已启动。');
+      throw new ApiError('V3 本地服务请求失败，请检查服务是否已启动。');
       }
-      throw new ApiError('V2 本地服务请求失败。');
+      throw new ApiError('V3 本地服务请求失败。');
     } finally {
       window.clearTimeout(timer);
     }

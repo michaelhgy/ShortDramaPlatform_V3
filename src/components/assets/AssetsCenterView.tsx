@@ -10,14 +10,16 @@ import {
   ViralAssetItem,
 } from '../../assetsTypes';
 import { calculateResourceMetrics } from '../../utils/resourceMetrics';
-import { fetchAssetsCenterSeedForDataHub, getCachedAssetsCenterSeed, loadAssetsCenterSeed } from '../../services/assetsCenterService';
+import { fetchAssetsCenterSeedForDataHub, getCachedAssetsCenterSeed, loadAssetsCenterSeed, loadProductionResources } from '../../services/assetsCenterService';
 import { BusinessDataTab } from './BusinessDataTab';
+import { QueryManagementTab } from './QueryManagementTab';
 import { DramaLibraryTab } from './DramaLibraryTab';
 import { ProductionResourcesTab } from './ProductionResourcesTab';
 import { ViralAssetsTab } from './ViralAssetsTab';
-import { openV2Folder } from '../../api/v2Catalog';
-import { getV2ProductionResources } from '../../api/v2Catalog';
+import { DramaDownloadModal } from './modals/DramaDownloadModal';
+import { getDramaDownloadReadTask, getV2Settings, openV2Folder, startDramaDownloadPipeline, stopDramaDownloadPipeline, type DramaDownloadReadTaskState } from '../../api/v2Catalog';
 import { useDataArea } from '../../hooks/useDataArea';
+import { refreshArea } from '../../services/dataHub';
 import {
   Building2,
   Film,
@@ -27,15 +29,18 @@ import {
   FolderOpen,
   X,
   Layers,
+  Link2,
   ArrowRight,
 } from 'lucide-react';
 
 interface AssetsCenterViewProps {
+  sceneryOpenRequest?: number;
   showToast?: (msg: string) => void;
 }
 
-export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: externalShowToast }) => {
-  const [activeTab, setActiveTab] = useState<AssetsCenterTab>('business_data');
+export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: externalShowToast, sceneryOpenRequest = 0 }) => {
+  const [activeTab, setActiveTab] = useState<AssetsCenterTab>(sceneryOpenRequest ? 'production_resources' : 'business_data');
+  useEffect(() => { if (sceneryOpenRequest) setActiveTab('production_resources'); }, [sceneryOpenRequest]);
 
   // State collections
   const cachedSeed = getCachedAssetsCenterSeed();
@@ -52,6 +57,9 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
 
   // Selected drama for library tab navigation
   const [targetDramaIdForLibrary, setTargetDramaIdForLibrary] = useState<string | undefined>(undefined);
+  const [dramaDownloadRoot, setDramaDownloadRoot] = useState('Z:\\04短剧原片');
+  const [isDramaDownloadOpen, setIsDramaDownloadOpen] = useState(false);
+  const [readTaskState, setReadTaskState] = useState<DramaDownloadReadTaskState>({ status: 'idle', phase: 'read-task' });
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -67,7 +75,7 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
   );
   const resourceArea = useDataArea<ProductionResourceItem[]>(
     'resourceIndex',
-    async () => (await getV2ProductionResources()).items as ProductionResourceItem[],
+    loadProductionResources,
   );
 
   useEffect(() => {
@@ -92,6 +100,20 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
     setLastRefreshAt(resourceArea.updatedAt ? new Date(resourceArea.updatedAt) : null);
   }, [resourceArea.data, resourceArea.updatedAt]);
 
+  useEffect(() => {
+    if (!isDramaDownloadOpen) return;
+    getV2Settings().then((settings) => setDramaDownloadRoot(settings.drama_download_root || 'Z:\\04短剧原片')).catch(() => undefined);
+  }, [isDramaDownloadOpen]);
+
+  useEffect(() => {
+    if (!isDramaDownloadOpen) return undefined;
+    let cancelled = false;
+    const refresh = () => getDramaDownloadReadTask().then((value) => { if (!cancelled) setReadTaskState(value); }).catch(() => undefined);
+    refresh();
+    const timer = window.setInterval(refresh, 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [isDramaDownloadOpen]);
+
   const showToast = (msg: string) => {
     if (externalShowToast) {
       externalShowToast(msg);
@@ -106,6 +128,28 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
   // Open Windows Folder handler
   const handleOpenFolder = (folderPath: string) => {
     openV2Folder(folderPath).then(() => showToast('已打开本地目录')).catch((error: unknown) => showToast(error instanceof Error ? error.message : '目录打开失败。'));
+  };
+
+  const downloadRefreshKey = React.useRef('');
+  useEffect(() => {
+    const finished = (readTaskState.status === 'succeeded' && readTaskState.phase === 'completed') || readTaskState.status === 'failed' || readTaskState.status === 'stopped';
+    const key = `${readTaskState.created_at || ''}:${readTaskState.completed_task_count || 0}:${finished ? readTaskState.status : ''}`;
+    if ((finished || readTaskState.completed_task_count) && key !== downloadRefreshKey.current) {
+      downloadRefreshKey.current = key;
+      void refreshArea('catalog');
+    }
+  }, [readTaskState.created_at, readTaskState.completed_task_count, readTaskState.status, readTaskState.phase]);
+
+  const handleStartDramaDownload = () => {
+    startDramaDownloadPipeline()
+      .then((value) => setReadTaskState(value))
+      .catch((error: unknown) => showToast(error instanceof Error ? error.message : '启动短剧原片下载失败。'));
+  };
+
+  const handleStopDramaDownload = () => {
+    stopDramaDownloadPipeline()
+      .then((value) => setReadTaskState(value))
+      .catch((error: unknown) => showToast(error instanceof Error ? error.message : '停止短剧原片下载失败。'));
   };
 
   // Capacity calculation
@@ -130,7 +174,7 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-base font-black text-[#1A1D2E] tracking-tight">资料中心</h1>{lastRefreshAt && <span className="text-[10px] font-normal text-slate-400">更新于 {lastRefreshAt.toLocaleTimeString('zh-CN')}</span>}
+                  <h1 className="text-base font-black text-[#1A1D2E] tracking-tight">资料中心</h1>{lastRefreshAt && <span className="text-[10px] font-normal text-slate-400">更新于 {lastRefreshAt.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai' })}</span>}
                   <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
                     资产与生产资源总库
                   </span>
@@ -142,7 +186,7 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
             </div>
 
             {/* 4 Core Area Tab Buttons */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl border border-black/[0.04]">
+            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl border border-black/[0.04]">
               {/* Tab 1: 业务资料 */}
               <button
                 onClick={() => setActiveTab('business_data')}
@@ -154,6 +198,14 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
               >
                 <Building2 className={`w-3.5 h-3.5 ${activeTab === 'business_data' ? 'text-[#DDFD00]' : ''}`} />
                 <span>业务资料</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('query_management')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'query_management' ? 'bg-[#1A1D2E] text-white shadow-xs' : 'text-[#64748B] hover:text-[#1A1D2E] hover:bg-slate-200/50'}`}
+              >
+                <Link2 className={`w-3.5 h-3.5 ${activeTab === 'query_management' ? 'text-[#DDFD00]' : ''}`} />
+                <span>查单管理</span>
               </button>
 
               {/* Tab 2: 剧集资料库 */}
@@ -185,7 +237,7 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
                     ? 'bg-[#DDFD00] text-[#1A1D2E]'
                     : 'bg-slate-200 text-slate-700'
                 }`}>
-                  支持 {resourceMetrics.supportableDramas} 剧
+                  {resourceMetrics.totalResourceCount} 项
                 </span>
               </button>
 
@@ -219,9 +271,12 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
             onUpdateSubTheaters={setSubTheaters}
             onUpdateDramas={setDramas}
             onNavigateToDramaProfile={handleNavigateToDramaProfile}
+            onManageQueryLinks={() => setActiveTab('query_management')}
             onShowToast={showToast}
           />
         )}
+
+        {activeTab === 'query_management' && <QueryManagementTab onShowToast={showToast} />}
 
         {activeTab === 'drama_library' && (
           <DramaLibraryTab
@@ -232,12 +287,14 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
             onSelectDrama={setTargetDramaIdForLibrary}
             onUpdateProfiles={setProfiles}
             onOpenFolder={handleOpenFolder}
+            onOpenDramaDownload={() => setIsDramaDownloadOpen(true)}
             onShowToast={showToast}
           />
         )}
 
         {activeTab === 'production_resources' && (
           <ProductionResourcesTab
+            sceneryOpenRequest={sceneryOpenRequest}
             resources={productionResources}
             metrics={resourceMetrics}
             onOpenFolder={handleOpenFolder}
@@ -265,6 +322,17 @@ export const AssetsCenterView: React.FC<AssetsCenterViewProps> = ({ showToast: e
           />
         )}
       </main>
+
+      <DramaDownloadModal
+        isOpen={isDramaDownloadOpen}
+        downloadRoot={dramaDownloadRoot}
+        readTaskState={readTaskState}
+        onClose={() => setIsDramaDownloadOpen(false)}
+        onOpenFolder={handleOpenFolder}
+        onStartPipeline={handleStartDramaDownload}
+        onStopPipeline={handleStopDramaDownload}
+        onShowToast={showToast}
+      />
 
       {/* 3. FLOATING SYSTEM TOAST FEEDBACK */}
       {toastMessage && (

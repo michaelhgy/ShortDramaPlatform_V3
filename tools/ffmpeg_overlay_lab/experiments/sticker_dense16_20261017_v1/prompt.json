@@ -1,0 +1,46 @@
+{
+  "purpose": "一套上下合计16个可辨认贴纸图案，上8下8；同主题分四组，避免散乱",
+  "tool": "built-in image_gen",
+  "total_graphics": 16,
+  "upper": 8,
+  "lower": 8,
+  "groups": [
+    {
+      "area": "左上",
+      "items": [
+        "银杏叶",
+        "单朵雏菊",
+        "蝴蝶",
+        "蕨叶"
+      ]
+    },
+    {
+      "area": "右上",
+      "items": [
+        "枫叶",
+        "风铃花枝",
+        "蒲公英",
+        "花苞短枝"
+      ]
+    },
+    {
+      "area": "左下",
+      "items": [
+        "郁金香",
+        "龟背叶",
+        "三叶草",
+        "蜻蜓"
+      ]
+    },
+    {
+      "area": "右下",
+      "items": [
+        "荷花",
+        "细草",
+        "五瓣花",
+        "橄榄叶短枝"
+      ]
+    }
+  ],
+  "prompt": "Use case: stylized-concept.\nAsset type: ONE complete, art-directed paired top-and-bottom decoration overlay for a portrait live-action short-drama video.\n\nCreate ONE tall portrait canvas, approximately 1080:2400 aspect ratio. The overlay contains EXACTLY SIXTEEN separately recognizable STICKER GRAPHICS: EIGHT in the upper decorative region and EIGHT in the lower decorative region. Count whole recognizable graphics, not individual petals, leaflets, dots, stems or connecting lines. All sixteen specified graphics below must be present. Keep them individually distinguishable with small clear gaps, not fused into four solid bouquets.\n\nTheme: a quiet natural garden. Shared drawing style: clean flat 2D hand-drawn outline art in warm white and pale neutral gray. Fine, simple, readable strokes, mostly open interiors, almost no solid fill. No metallic or crystal texture, no 3D, no shading, no heavy glow. Each motif should look like a separate small line-art sticker from the SAME visual collection.\n\nCOMPOSITION: the top 23 percent and bottom 23 percent are composed together as one balanced frame around the empty center. Top and bottom have related rhythm, consistent stroke weight and scale hierarchy. Organize the sixteen graphics into FOUR loose small groups of FOUR motifs, with coordinated directional flow, gentle size differences and ample breathing room. These are designed arrangements, not a random grid or evenly spaced icon catalog. Each group has one slightly larger anchor graphic and three smaller supporting graphics. Use at most a few very fine short contour curves to guide the eye; connecting lines and dots do not count toward the sixteen graphics. Spread the upper groups across the upper width and the lower groups across the lower width. No long single horizontal ornament replaces the eight individual graphics.\n\nUPPER LEFT GROUP — exactly these FOUR separate graphics:\n1. one fan-shaped ginkgo leaf on a short stem;\n2. one simple daisy flower head;\n3. one small butterfly with open outline wings;\n4. one delicate fern frond.\n\nUPPER RIGHT GROUP — exactly these FOUR separate graphics:\n5. one maple leaf;\n6. one short curved bellflower sprig, treated as one graphic;\n7. one small dandelion seed head on a short stem;\n8. one short twig with a few flower buds, treated as one graphic.\n\nLOWER LEFT GROUP — exactly these FOUR separate graphics:\n9. one tulip blossom with a short stem;\n10. one small split monstera leaf;\n11. one three-leaf clover, treated as one graphic;\n12. one small dragonfly.\n\nLOWER RIGHT GROUP — exactly these FOUR separate graphics:\n13. one simple lotus blossom;\n14. one small upright grass sprig, treated as one graphic;\n15. one simple five-petal flower;\n16. one short olive-leaf sprig, treated as one graphic.\n\nAll sixteen motifs should remain simple enough to recognize when reduced in size. Vary the silhouettes meaningfully while maintaining the same line-art treatment. The whole composition should feel coherent and moderately populated, not sparse and not cluttered.\nThe ENTIRE middle 54 percent stays truly transparent and empty for the actor and subtitles. All artwork stays in its upper or lower region. Real alpha transparency in all unused space, no scenery or background.\nNo labels, numbers, letters, text, watermark, grid, panel borders, display mockup, complete enclosing rectangle, or connecting strokes crossing the middle. All graphic edges complete and uncropped."
+}

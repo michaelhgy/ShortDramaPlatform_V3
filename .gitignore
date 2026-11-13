@@ -28,10 +28,15 @@ runtime/
 debug/
 diagnostics/
 tools/tmp_*/
+# 自动化验收/测试产物（数据库、日志、截图、csv），不纳入版本库
+artifacts/
+诊断输出/
 
 # PyInstaller Portable build output and its reproducible work cache
 packaging/output/
 packaging/work/
+packaging/releases/
+packaging/build-tools/
 
 # User-owned Jianying drafts and exported production media
 *.mp4

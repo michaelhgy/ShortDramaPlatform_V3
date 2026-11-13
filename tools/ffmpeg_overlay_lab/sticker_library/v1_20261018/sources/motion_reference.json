@@ -1,0 +1,1176 @@
+{
+  "version": 1,
+  "name": "羽化对标_增强动效",
+  "family": "国风曲水纹",
+  "count": 16,
+  "top_count": 8,
+  "bottom_count": 8,
+  "seed": 30174,
+  "canvas": [
+    1080,
+    2400
+  ],
+  "bands": [
+    [
+      0,
+      480
+    ],
+    [
+      1920,
+      2400
+    ]
+  ],
+  "seconds": 30,
+  "fps": 30,
+  "placements": [
+    {
+      "layer": 0,
+      "band": 0,
+      "order": 0,
+      "hero": true,
+      "legacy_role": "top_01_main",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 0,
+        "resource_id": "7166865127197658405",
+        "name": "3D国风曲水纹系列-荷叶",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166865127197658405/16df9685003bb43e9bc651cd2becd90f/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/00_3D国风曲水纹系列-荷叶.png",
+        "sha256": "ecfaaaf1e38aad493a39f059c4e81809e5e4176f203f1f62e5e73bbe05e83f8d",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          39,
+          540,
+          462
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        39,
+        540,
+        462
+      ],
+      "width": 303,
+      "height": 260,
+      "tile": [
+        372,
+        331
+      ],
+      "center": [
+        993,
+        168
+      ],
+      "opacity": 0.928033,
+      "angle": -0.699,
+      "motion": {
+        "drift_x": 34,
+        "drift_y": 20,
+        "wobble_degrees": 6,
+        "period": 10,
+        "rotate_period": 6,
+        "phase": 2.94524,
+        "scale_amplitude": 0.085,
+        "scale_period": 6,
+        "preset": "浮动呼吸"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 12,
+        "drift_y": 8,
+        "wobble_degrees": 2,
+        "period": 30,
+        "rotate_period": 10,
+        "phase": 2.94524,
+        "scale_amplitude": 0.025,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 1,
+      "band": 0,
+      "order": 1,
+      "hero": false,
+      "legacy_role": "top_02_support",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 1,
+        "resource_id": "7166861544335133988",
+        "name": "3D国风曲水纹系列-落花流云",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166861544335133988/2cf2f35582824793677a23a1b87d5fbf/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/01_3D国风曲水纹系列-落花流云.png",
+        "sha256": "3cf542c11b24651be677c3254a7f851f33af725dca53044826e21664eef67954",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          131,
+          540,
+          278
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        131,
+        540,
+        278
+      ],
+      "width": 214,
+      "height": 110,
+      "tile": [
+        257,
+        174
+      ],
+      "center": [
+        862,
+        50
+      ],
+      "opacity": 0.931253,
+      "angle": -4.668,
+      "motion": {
+        "drift_x": 28,
+        "drift_y": 15,
+        "wobble_degrees": 8,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 1.06561,
+        "scale_amplitude": 0.05,
+        "scale_period": 10,
+        "preset": "往返摇摆"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 9,
+        "drift_y": 6,
+        "wobble_degrees": 2,
+        "period": 30,
+        "rotate_period": 15,
+        "phase": 1.06561,
+        "scale_amplitude": 0.018,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 2,
+      "band": 0,
+      "order": 2,
+      "hero": false,
+      "legacy_role": "top_03_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 2,
+        "resource_id": "7166863661036752158",
+        "name": "3D国风曲水纹系列-荷叶",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166863661036752158/e3de48f89b0f876e803e0c324feefaa4/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/02_3D国风曲水纹系列-荷叶.png",
+        "sha256": "462a7bf6f875ae0b4ee47bf20733ee83d691c9abd70c936a8ea5a232675fd85f",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          0,
+          540,
+          540
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        0,
+        540,
+        540
+      ],
+      "width": 122,
+      "height": 122,
+      "tile": [
+        173,
+        173
+      ],
+      "center": [
+        1070,
+        316
+      ],
+      "opacity": 0.65323,
+      "angle": -1.808,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 2.13951,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 15,
+        "rotate_period": 10,
+        "phase": 2.13951,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 3,
+      "band": 0,
+      "order": 3,
+      "hero": false,
+      "legacy_role": "top_04_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 3,
+        "resource_id": "7166864207940439303",
+        "name": "3D国风曲水纹系列-荷花",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166864207940439303/445bf21ea9971903f06987b59a1311c9/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/03_3D国风曲水纹系列-荷花.png",
+        "sha256": "ed13b05a25681458913c9f49ad5bb742d0b1ba86ba1c032f1e96d238753c4fb1",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          34,
+          540,
+          472
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        34,
+        540,
+        472
+      ],
+      "width": 121,
+      "height": 106,
+      "tile": [
+        171,
+        160
+      ],
+      "center": [
+        730,
+        141
+      ],
+      "opacity": 0.662954,
+      "angle": -4.116,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 5,
+        "rotate_period": 6,
+        "phase": 4.49321,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 30,
+        "rotate_period": 15,
+        "phase": 4.49321,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 4,
+      "band": 0,
+      "order": 4,
+      "hero": false,
+      "legacy_role": "top_05_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 4,
+        "resource_id": "7166862748016512264",
+        "name": "3D国风曲水纹系列-边框",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166862748016512264/56ca5ee9a4da0b51c3f75a77ab5c2b11/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/04_3D国风曲水纹系列-边框.png",
+        "sha256": "fa5785b09caba7de72c6763adb524985225fe5bc59318855a402e38e3c809d0d",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          0,
+          540,
+          540
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        0,
+        540,
+        540
+      ],
+      "width": 96,
+      "height": 96,
+      "tile": [
+        145,
+        145
+      ],
+      "center": [
+        615,
+        25
+      ],
+      "opacity": 0.620067,
+      "angle": -6.342,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 0.77103,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 10,
+        "rotate_period": 30,
+        "phase": 0.77103,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 5,
+      "band": 0,
+      "order": 5,
+      "hero": false,
+      "legacy_role": "top_06_support",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 5,
+        "resource_id": "7166864207940472071",
+        "name": "3D国风曲水纹系列-流云",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166864207940472071/700651b40f6ae8eeba370ae06857d1a0/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/05_3D国风曲水纹系列-流云.png",
+        "sha256": "87ad46f92efbf5ba7507433af9f0f6523ad58e18a7af829d332185ae5876b8ad",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          3,
+          540,
+          534
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        3,
+        540,
+        534
+      ],
+      "width": 243,
+      "height": 240,
+      "tile": [
+        326,
+        324
+      ],
+      "center": [
+        110,
+        130
+      ],
+      "opacity": 0.944512,
+      "angle": -7.59,
+      "motion": {
+        "drift_x": 28,
+        "drift_y": 15,
+        "wobble_degrees": 8,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 5.17219,
+        "scale_amplitude": 0.05,
+        "scale_period": 10,
+        "preset": "往返摇摆"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 9,
+        "drift_y": 6,
+        "wobble_degrees": 2,
+        "period": 10,
+        "rotate_period": 15,
+        "phase": 5.17219,
+        "scale_amplitude": 0.018,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 6,
+      "band": 0,
+      "order": 6,
+      "hero": false,
+      "legacy_role": "top_07_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 6,
+        "resource_id": "7166865589640629541",
+        "name": "3D国风曲水纹系列-落花流水纹",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166865589640629541/bb246f522fb5ebaeebe8c2dc65f48677/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/06_3D国风曲水纹系列-落花流水纹.png",
+        "sha256": "ac34840a4d25aa2f35419826c490ed4e22ee863fef95bc3ae4e87b4e531030f1",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          132,
+          540,
+          276
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        132,
+        540,
+        276
+      ],
+      "width": 137,
+      "height": 70,
+      "tile": [
+        178,
+        131
+      ],
+      "center": [
+        251,
+        9
+      ],
+      "opacity": 0.775561,
+      "angle": 5.785,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 1.92594,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 30,
+        "rotate_period": 15,
+        "phase": 1.92594,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 7,
+      "band": 0,
+      "order": 7,
+      "hero": false,
+      "legacy_role": "top_08_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 7,
+        "resource_id": "7166865584175451400",
+        "name": "3D国风曲水纹系列-金鱼",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166865584175451400/e0f764d1ddb8c7577876d5a1e80082c6/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/07_3D国风曲水纹系列-金鱼.png",
+        "sha256": "09e3eae20bfc4a2803091cc5eaba4c54fe3889cfa298a8310d4cce26fe4c253d",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          41,
+          540,
+          459
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        41,
+        540,
+        459
+      ],
+      "width": 78,
+      "height": 66,
+      "tile": [
+        115,
+        107
+      ],
+      "center": [
+        16,
+        273
+      ],
+      "opacity": 0.793621,
+      "angle": -5.533,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 5,
+        "rotate_period": 6,
+        "phase": 3.14249,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 30,
+        "rotate_period": 30,
+        "phase": 3.14249,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 8,
+      "band": 1,
+      "order": 0,
+      "hero": true,
+      "legacy_role": "bottom_01_main",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 8,
+        "resource_id": "7166861983130635527",
+        "name": "3D国风曲水纹系列-曲水纹",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166861983130635527/5379c4e1db7cdfb53c26cc37d58bf442/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/08_3D国风曲水纹系列-曲水纹.png",
+        "sha256": "549ff03d06284f1349e5a95370be752cc6bf5a469434f76a4b7ea686399a26f2",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          23,
+          540,
+          494
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        23,
+        540,
+        494
+      ],
+      "width": 337,
+      "height": 308,
+      "tile": [
+        432,
+        407
+      ],
+      "center": [
+        93,
+        309
+      ],
+      "opacity": 0.970228,
+      "angle": -4.313,
+      "motion": {
+        "drift_x": 34,
+        "drift_y": 20,
+        "wobble_degrees": 6,
+        "period": 10,
+        "rotate_period": 6,
+        "phase": 6.05848,
+        "scale_amplitude": 0.085,
+        "scale_period": 6,
+        "preset": "浮动呼吸"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 12,
+        "drift_y": 8,
+        "wobble_degrees": 2,
+        "period": 30,
+        "rotate_period": 30,
+        "phase": 6.05848,
+        "scale_amplitude": 0.025,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 9,
+      "band": 1,
+      "order": 1,
+      "hero": false,
+      "legacy_role": "bottom_02_support",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 9,
+        "resource_id": "7166865554051960101",
+        "name": "3D国风曲水纹系列-云",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166865554051960101/6f5c00a6076c003ad73a18aff920948f/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/09_3D国风曲水纹系列-云.png",
+        "sha256": "265ccc7fd83e23d5a34af545f029044793f964769349229182644a3261e782f6",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          122,
+          0,
+          297,
+          540
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        122,
+        0,
+        297,
+        540
+      ],
+      "width": 133,
+      "height": 242,
+      "tile": [
+        207,
+        292
+      ],
+      "center": [
+        233,
+        427
+      ],
+      "opacity": 0.8218,
+      "angle": 5.401,
+      "motion": {
+        "drift_x": 28,
+        "drift_y": 15,
+        "wobble_degrees": 8,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 3.18867,
+        "scale_amplitude": 0.05,
+        "scale_period": 10,
+        "preset": "往返摇摆"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 9,
+        "drift_y": 6,
+        "wobble_degrees": 2,
+        "period": 10,
+        "rotate_period": 30,
+        "phase": 3.18867,
+        "scale_amplitude": 0.018,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 10,
+      "band": 1,
+      "order": 2,
+      "hero": false,
+      "legacy_role": "bottom_03_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 10,
+        "resource_id": "7166865562675481892",
+        "name": "3D国风曲水纹系列-扇",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166865562675481892/020ac7e9f03deac20ce6112db62ee36c/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/10_3D国风曲水纹系列-扇.png",
+        "sha256": "0019c1e207b855585e2083f60a4a247cdbd5157c55422c4c382c0a9eafeaade5",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          53,
+          0,
+          434,
+          540
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        53,
+        0,
+        434,
+        540
+      ],
+      "width": 67,
+      "height": 84,
+      "tile": [
+        112,
+        123
+      ],
+      "center": [
+        17,
+        168
+      ],
+      "opacity": 0.741924,
+      "angle": 7.419,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 1.80702,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 30,
+        "rotate_period": 30,
+        "phase": 1.80702,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 11,
+      "band": 1,
+      "order": 3,
+      "hero": false,
+      "legacy_role": "bottom_04_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 11,
+        "resource_id": "7166861280635030791",
+        "name": "3D国风曲水纹系列-落花流水",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166861280635030791/9c099af6f26cf99b714a8783d6e6f3e5/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/11_3D国风曲水纹系列-落花流水.png",
+        "sha256": "225f7dfb9e73c086805c0dc68d8b47fbd5aa0435c862bf02e76a3a8f3c0e8f38",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          156,
+          540,
+          228
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        156,
+        540,
+        228
+      ],
+      "width": 150,
+      "height": 63,
+      "tile": [
+        187,
+        115
+      ],
+      "center": [
+        351,
+        334
+      ],
+      "opacity": 0.722244,
+      "angle": -0.678,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 5,
+        "rotate_period": 6,
+        "phase": 3.17226,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 10,
+        "rotate_period": 30,
+        "phase": 3.17226,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 12,
+      "band": 1,
+      "order": 4,
+      "hero": false,
+      "legacy_role": "bottom_05_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 12,
+        "resource_id": "7166863327304371470",
+        "name": "3D国风曲水纹系列-明月流云",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166863327304371470/afed741d120cd4ca3a4d22840e85a8f0/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/12_3D国风曲水纹系列-明月流云.png",
+        "sha256": "df0f803050507a3bd521ada3ad6583f7cc73ad4b950e79a77b984aed2d34c930",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          0,
+          540,
+          540
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        0,
+        540,
+        540
+      ],
+      "width": 104,
+      "height": 104,
+      "tile": [
+        150,
+        150
+      ],
+      "center": [
+        471,
+        459
+      ],
+      "opacity": 0.78968,
+      "angle": 1.843,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 1.90836,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 30,
+        "rotate_period": 10,
+        "phase": 1.90836,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 13,
+      "band": 1,
+      "order": 5,
+      "hero": false,
+      "legacy_role": "bottom_06_support",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 13,
+        "resource_id": "7166865127327681822",
+        "name": "3D国风曲水纹系列-灯",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166865127327681822/a1491c1d7e10fd48528d2fcdc28d5c86/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/13_3D国风曲水纹系列-灯.png",
+        "sha256": "60bc981c1156b2fda340fb0c2663e4ecc1184b1f2586236b8020cd3d2becc4ef",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          3,
+          540,
+          533
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        3,
+        540,
+        533
+      ],
+      "width": 217,
+      "height": 215,
+      "tile": [
+        293,
+        291
+      ],
+      "center": [
+        958,
+        344
+      ],
+      "opacity": 0.841479,
+      "angle": -7.625,
+      "motion": {
+        "drift_x": 28,
+        "drift_y": 15,
+        "wobble_degrees": 8,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 2.52376,
+        "scale_amplitude": 0.05,
+        "scale_period": 10,
+        "preset": "往返摇摆"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 9,
+        "drift_y": 6,
+        "wobble_degrees": 2,
+        "period": 15,
+        "rotate_period": 15,
+        "phase": 2.52376,
+        "scale_amplitude": 0.018,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 14,
+      "band": 1,
+      "order": 6,
+      "hero": false,
+      "legacy_role": "bottom_07_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 14,
+        "resource_id": "7166865562675449124",
+        "name": "3D国风曲水纹系列-扇子",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166865562675449124/210f891eaf9ccae1badfb4699c29e011/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/14_3D国风曲水纹系列-扇子.png",
+        "sha256": "038207d65c8cfb57e070a03e48ce97a613984a8e6e80afeac7d08caaabeb5b36",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          0,
+          106,
+          540,
+          328
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        0,
+        106,
+        540,
+        328
+      ],
+      "width": 120,
+      "height": 73,
+      "tile": [
+        157,
+        118
+      ],
+      "center": [
+        823,
+        469
+      ],
+      "opacity": 0.781125,
+      "angle": -0.083,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 6,
+        "rotate_period": 5,
+        "phase": 1.16629,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 10,
+        "rotate_period": 15,
+        "phase": 1.16629,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    },
+    {
+      "layer": 15,
+      "band": 1,
+      "order": 7,
+      "hero": false,
+      "legacy_role": "bottom_08_accent",
+      "item": {
+        "family": "国风曲水纹",
+        "index": 15,
+        "resource_id": "7166865559907208479",
+        "name": "3D国风曲水纹系列-蝴蝶扇",
+        "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7166865559907208479/2bbf4c395a37144b1b4b24b054e34270/singleImage.png",
+        "copy": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/stock_sticker_strength_20261017_v1/assets/国风曲水纹/15_3D国风曲水纹系列-蝴蝶扇.png",
+        "sha256": "1473a6c02c8d9678fc764075a85880dc627a40661535ce4a52bf95b44ddb4f66",
+        "source_size": [
+          540,
+          540
+        ],
+        "crop": [
+          52,
+          0,
+          436,
+          540
+        ],
+        "alpha_min": 0,
+        "alpha_max": 255,
+        "native_animation": false
+      },
+      "crop": [
+        52,
+        0,
+        436,
+        540
+      ],
+      "width": 73,
+      "height": 90,
+      "tile": [
+        119,
+        131
+      ],
+      "center": [
+        1063,
+        209
+      ],
+      "opacity": 0.657101,
+      "angle": 6.721,
+      "motion": {
+        "drift_x": 20,
+        "drift_y": 12,
+        "wobble_degrees": 12,
+        "period": 5,
+        "rotate_period": 6,
+        "phase": 3.79191,
+        "scale_amplitude": 0.09,
+        "scale_period": 5,
+        "preset": "轻弹点缀"
+      },
+      "mirror": false,
+      "previous_global_alpha_multiplier": 0.55,
+      "current_global_alpha_multiplier": 1.0,
+      "previous_motion": {
+        "drift_x": 7,
+        "drift_y": 5,
+        "wobble_degrees": 2.7,
+        "period": 15,
+        "rotate_period": 30,
+        "phase": 3.79191,
+        "scale_amplitude": 0,
+        "scale_period": 15
+      }
+    }
+  ],
+  "loop_period_seconds": 30,
+  "allows_overlap": true,
+  "static_images_animated_by_ffmpeg": true,
+  "intrinsic_character_or_liquid_animation": false,
+  "layout_source": "Identical 16 PNGs, slot anchors, nominal sizes, alpha and colours as previous strength variant 01",
+  "colour_change": "Remove previous additional 0.55 alpha multiplier; preserve stock artwork original RGB colours",
+  "visual_acceptance": "USER_PENDING",
+  "motion_presets": [
+    "浮动呼吸",
+    "往返摇摆",
+    "轻弹点缀"
+  ],
+  "motion_change": "Independent 5/6/10-second motion periods, larger translations, rotation and breathing scale"
+}

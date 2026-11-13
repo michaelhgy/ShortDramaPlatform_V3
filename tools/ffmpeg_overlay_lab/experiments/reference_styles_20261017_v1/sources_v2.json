@@ -1,0 +1,230 @@
+{
+  "purpose": "visual preference references only",
+  "ai_generation_calls": 0,
+  "assets": [
+    {
+      "group": "A",
+      "name": "涂鸦星星",
+      "catalog_skin": "韩系甜美贴贴",
+      "resource_id": "7669691744690343193",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7669691744690343193/795945ae85973e3832757024ea2a2b67/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A1.png",
+      "source_sha256": "313ad18bc82248f09c971c6b8cd5c4e0866f2aff045ef527f7619b85c26d67bd"
+    },
+    {
+      "group": "A",
+      "name": "波点音符装饰",
+      "catalog_skin": "韩系甜美贴贴",
+      "resource_id": "7669700432779955481",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7669700432779955481/1655c41fc7445e562a263426ea7f2a6b/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A2.png",
+      "source_sha256": "2b7dfdc656d586b9607eb6e3cc08aba9bbff061fd926524f2db832a51ce4ff07"
+    },
+    {
+      "group": "A",
+      "name": "韩系黑白波点边框",
+      "catalog_skin": "韩系甜美贴贴",
+      "resource_id": "7669686037828078910",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7669686037828078910/dfce2e60a2721d8f7574f2f86e4ba188/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A3.png",
+      "source_sha256": "ed0d0c217fdcc0fe37d9bee721208cb19671ecfa5e7cc9788c1a7172f0b09e92"
+    },
+    {
+      "group": "A",
+      "name": "手绘线条猫爪",
+      "catalog_skin": "韩系甜美贴贴",
+      "resource_id": "7669976650506882366",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7669976650506882366/1688497d242ac39da2b26c3f56430391/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/A4.png",
+      "source_sha256": "311190630fdb139c5fbcd5222714f0f6300dabc05690ca09153f645e8f15239d"
+    },
+    {
+      "group": "B",
+      "name": "橙色标签复古",
+      "catalog_skin": "复古手账素材",
+      "resource_id": "7549000666090556697",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7549000666090556697/0fd6ff3c05ba78521f1fea46b8e4746b/final.gif",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B1.png",
+      "source_sha256": "58ae1afb25cde7b8e56a5a1d08df822c1ca5d724ef5fa29d6f4de54618b515b7",
+      "final_preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B1_v2.png"
+    },
+    {
+      "group": "B",
+      "name": "复古蓝黄色标签",
+      "catalog_skin": "复古手账素材",
+      "resource_id": "7549008276390890777",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7549008276390890777/d280e9ebfada98b072d2463fe2327840/final.gif",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B2.png",
+      "source_sha256": "8079612ed0822b644e132fa4a78dd0c3ecaba69ba37e6af65a11de303e117b5d",
+      "final_preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B2_v2.png"
+    },
+    {
+      "group": "B",
+      "name": "复古信封",
+      "catalog_skin": "复古手账素材",
+      "resource_id": "7549020591920008510",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7549020591920008510/460d3493819f7e1c75a7e8adc3e16e6c/final.gif",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B3.png",
+      "source_sha256": "eee170e8557def213c41d289149f73d7f07a074908506dd6d6354a32b3d71dc2",
+      "final_preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B3_v2.png"
+    },
+    {
+      "group": "B",
+      "name": "书本复古标签",
+      "catalog_skin": "复古手账素材",
+      "resource_id": "7549039490052951321",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7549039490052951321/f4686b3095f3ffa7fb7326d5d7e0182d/final.gif",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B4.png",
+      "source_sha256": "913cca0785d406b636b417c79f8e29963d8d1c6c2b18f97fabdc7f26ebe4755e",
+      "final_preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/B4_v2.png"
+    },
+    {
+      "group": "C",
+      "name": "山水和红日",
+      "catalog_skin": "水墨氛围",
+      "resource_id": "7198489010644208933",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7198489010644208933/cd1286f6136c0ff873cf8d2c7ba843df/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C1.png",
+      "source_sha256": "59140658a1b591fbef677d57fb3e5417663c857bec12db31919bb3eadbe1677a"
+    },
+    {
+      "group": "C",
+      "name": "国风燕子",
+      "catalog_skin": "水墨氛围",
+      "resource_id": "7198485364888177978",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7198485364888177978/80eb1879b8119f2ae73b9241decd1f38/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C2.png",
+      "source_sha256": "7e7f597ffdcf6dbf846c821441c9e85767be2030e159b1431e222d724fafac87"
+    },
+    {
+      "group": "C",
+      "name": "毛笔粗边框",
+      "catalog_skin": "水墨氛围",
+      "resource_id": "7198860869462265143",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7198860869462265143/c3c032ce7eb89dd881b5f3a2e5a8d7c8/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C3.png",
+      "source_sha256": "9cb9d7935a936a8d1cb3d17b3fcf3487400fdc7b6460f74bcccddd13bcfea362"
+    },
+    {
+      "group": "C",
+      "name": "水墨国风亭子",
+      "catalog_skin": "水墨氛围",
+      "resource_id": "7198491343159627069",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7198491343159627069/46e50569be809dc84c98fb51ac117dd9/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/C4.png",
+      "source_sha256": "9c7422057afdae86341ff68a9e213e98cd845abc07f2b84b873d04cbeda8c6b6"
+    },
+    {
+      "group": "D",
+      "name": "镭射卷草花纹",
+      "catalog_skin": "国潮镭射系列",
+      "resource_id": "7189595739310411068",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7189595739310411068/ba4cf635454825d6fdea3645679a88ab/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D1.png",
+      "source_sha256": "0f734ca1106412c8ca0950572a9ad411f1f25d6f8da35d14171b71f5a79a6c4a"
+    },
+    {
+      "group": "D",
+      "name": "国潮镭射鸟笼纹样",
+      "catalog_skin": "国潮镭射系列",
+      "resource_id": "7189601538287914295",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7189601538287914295/3f56cfc63eeda041ad58d040d499a025/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D2.png",
+      "source_sha256": "128223c2dd0143053e51d8005986bff07ff85db3f23d273b9110897eaaf6badb"
+    },
+    {
+      "group": "D",
+      "name": "国风卷草纹装饰",
+      "catalog_skin": "国潮镭射系列",
+      "resource_id": "7189603966877977913",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7189603966877977913/4b588b39457c90e50a5d321499f369ff/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D3.png",
+      "source_sha256": "f47dd06fc0a6f2a213145c1b606e5b660fad30e3d50e8855d70a62a8810ceef2"
+    },
+    {
+      "group": "D",
+      "name": "国潮镭射祥云",
+      "catalog_skin": "国潮镭射系列",
+      "resource_id": "7189605434582519100",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7189605434582519100/bcc41c1c113098dedbb0a77b835fa686/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/D4.png",
+      "source_sha256": "bcb03466da38c508191809387decf5ab58ad619cdda97dbcc166f81927feb986"
+    },
+    {
+      "group": "E",
+      "name": "空谷花涧-桃之夭夭水波纹",
+      "catalog_skin": "空谷花涧",
+      "resource_id": "7204975136439602491",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7204975136439602491/2b19449157d3442ea9815d0c310926a7/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E1.png",
+      "source_sha256": "9435d02e1705435b746ee7464fe85170b85726947081da35ee3cee65d45b126e"
+    },
+    {
+      "group": "E",
+      "name": "空谷花涧-青绿波点",
+      "catalog_skin": "空谷花涧",
+      "resource_id": "7204984123625131324",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7204984123625131324/ff08f6425c560c13eb4f57275da77594/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E2.png",
+      "source_sha256": "76b4efb3ffa8a6c17dd99c7580069023dd85e0d230908af47d021e93316062dc"
+    },
+    {
+      "group": "E",
+      "name": "空谷花涧-清澈之心水波纹",
+      "catalog_skin": "空谷花涧",
+      "resource_id": "7204989571673705788",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7204989571673705788/054ce804d99a3d102a57a46dcd2db89e/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E3.png",
+      "source_sha256": "fd08f6d2c588f73ced8fb6cdcd2044c728991d548e4d39573e34cfa526b66ed2"
+    },
+    {
+      "group": "E",
+      "name": "空谷花涧-爱心水波载花纹",
+      "catalog_skin": "空谷花涧",
+      "resource_id": "7204993680925560119",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7204993680925560119/77868d527c35b6a7aa55e5564f6a6e96/singleImage.png",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/E4.png",
+      "source_sha256": "72354ce87303f2adb2469a2c7bd261cd5a7b088560c20959c3d778a004c40a7a"
+    },
+    {
+      "group": "F",
+      "name": "帽子",
+      "catalog_skin": "冬日元素",
+      "resource_id": "7579229246003088702",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7579229246003088702/212c7a99831e2ab4372f148d7a07859c/final.gif",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F1.png",
+      "source_sha256": "412a1216b69a7ac0a5b82568f3e8b44cdccb0aac9e1a6e166f3141d75ae7c58f",
+      "final_preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F1_v2.png"
+    },
+    {
+      "group": "F",
+      "name": "咖啡",
+      "catalog_skin": "冬日元素",
+      "resource_id": "7579249540675669310",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7579249540675669310/061e7ff60037390533f01b47bb96ae77/final.gif",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F2.png",
+      "source_sha256": "069c860a34c76ea2a82dace31c4cbc3ca179df0abd530ddd9256132a270409c4",
+      "final_preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F2_v2.png"
+    },
+    {
+      "group": "F",
+      "name": "靴子",
+      "catalog_skin": "冬日元素",
+      "resource_id": "7579257987026636094",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7579257987026636094/ae3e60c7f859dc46b37b707933fe6f2a/final.gif",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F3.png",
+      "source_sha256": "198735efa00b574a23f0ac411dd3e4b2e988e15aac15e492b3086b0db9a4fb6d",
+      "final_preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F3_v2.png"
+    },
+    {
+      "group": "F",
+      "name": "酒",
+      "catalog_skin": "冬日元素",
+      "resource_id": "7579268845895077182",
+      "source": "/mnt/c/Users/Michael/AppData/Local/JianyingPro/User Data/Cache/artistEffect/7579268845895077182/11da27824fc7de5fc78660cba6380fc7/final.gif",
+      "preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F4.png",
+      "source_sha256": "a15f8b7eb9a89922634611e66e5176ff2f1543197b766e7aec3bc502f7979de2",
+      "final_preview": "/mnt/d/ShortDramaPlatform_V2/tools/ffmpeg_overlay_lab/experiments/reference_styles_20261017_v1/F4_v2.png"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import type { V2ProductionTaskListItem } from '../api/v2Production';
 import type { ProductionUnit, ProductionVideoItem, ScannedMaterialClip } from '../productionTypes';
-import { formatRelativeDateTime } from '../utils/dateDisplay';
+import { plannedDate, formatPlannedDate, plannedSortTimestamp, isPlanOverdue } from '../utils/plannedDate';
 import { formatElapsedSeconds } from '../utils/duration';
 
 function formatFileSize(bytes: number): string {
@@ -20,15 +20,6 @@ function elapsedFromTimestamps(startedAt?: string, finishedAt?: string): string 
   return seconds === null ? '—' : formatElapsedSeconds(seconds, '—');
 }
 
-function formatPublishTime(value: string, createdDate: string): { scheduledDate: string; scheduledTime: string; sortTimestamp: number } {
-  if (!value) {
-    return { scheduledDate: createdDate, scheduledTime: '未设置计划发布时间', sortTimestamp: new Date(`${createdDate}T23:59`).getTime() };
-  }
-  const timestamp = new Date(value).getTime();
-  const dateValue = value.slice(0, 10);
-  return { scheduledDate: dateValue, scheduledTime: formatRelativeDateTime(value), sortTimestamp: timestamp };
-}
-
 function toMaterials(items: V2ProductionTaskListItem['materials'], dramaName: string): ScannedMaterialClip[] {
   return items.map((item, index) => ({
     id: item.id,
@@ -43,6 +34,7 @@ function toMaterials(items: V2ProductionTaskListItem['materials'], dramaName: st
     videoUrl: `/api/v2/production-files/${item.id}/media`,
     filePath: item.path,
     scannedAt: item.scanned_at,
+    insertionStrategy: item.insertion_strategy || null,
     isValid: item.status === 'available' || !item.status,
     status: item.status,
   }));
@@ -60,14 +52,19 @@ function toVideos(items: V2ProductionTaskListItem['videos'], dramaName: string):
       : canonical === 'draft_error' ? 'draft_error'
       : canonical === 'video_error' ? 'video_error'
       : (canonical as ProductionVideoItem['status']) || 'not_generated';
+    // A regeneration retains the job ID but changes the media file.
+    const mediaVersion = item.engine === 'ffmpeg' ? `?version=${encodeURIComponent(item.output_media_version || item.output_path || '')}` : '';
     return {
     id: item.id,
     sequenceNumber: item.sequence_no ?? index + 1,
-    title: item.name,
+    title: (item.output_exists && item.output_path ? item.output_path.split(/[\\/]/).pop() : '') || item.name,
     dramaPrefix: dramaName,
     durationSec: item.output_duration_seconds || item.source_duration_seconds || 0,
     fileSizeText: formatFileSize(item.output_exists ? (item.output_size_bytes ?? 0) : item.size_bytes),
     status,
+    engine: item.engine,
+    generationDuration: draftSeconds === null && exportSeconds === null ? '—' : formatElapsedSeconds(totalSeconds, '—'),
+    generationDurationSeconds: draftSeconds === null && exportSeconds === null ? undefined : totalSeconds,
     totalDuration: draftSeconds === null && exportSeconds === null ? '—' : formatElapsedSeconds(totalSeconds, '—'),
     draftDurationSeconds: draftSeconds ?? undefined,
     exportDurationSeconds: exportSeconds ?? undefined,
@@ -75,8 +72,8 @@ function toVideos(items: V2ProductionTaskListItem['videos'], dramaName: string):
     exportDuration: elapsedFromTimestamps(item.export_started_at, item.export_finished_at),
     capcutDraftName: '',
     outputFilePath: item.output_exists ? (item.output_path || undefined) : undefined,
-    videoUrl: item.output_exists ? `/api/v2/production-videos/${item.id}/media` : undefined,
-    thumbnailUrl: item.output_exists ? `/api/v2/production-videos/${item.id}/thumbnail` : undefined,
+    videoUrl: item.output_exists ? `/api/v2/production-videos/${item.id}/media${mediaVersion}` : undefined,
+    thumbnailUrl: item.output_exists ? `/api/v2/production-videos/${item.id}/thumbnail${mediaVersion}` : undefined,
     materialName: item.original_name || item.name,
     exportAttemptId: item.export_attempt_id || undefined,
     errorMessage: item.export_error_message || item.error_message || undefined,
@@ -105,20 +102,23 @@ export function toProductionUnit(task: V2ProductionTaskListItem): ProductionUnit
       thumbnailUrl: material.thumbnailUrl,
     }));
   const videos = [...submittedVideos, ...pendingDisplays].sort((a, b) => a.sequenceNumber - b.sequenceNumber);
-  const schedule = formatPublishTime(task.planned_publish_at, task.created_date);
-  const isOverdue = Boolean(task.planned_publish_at) && schedule.sortTimestamp < Date.now();
+  const dateValue = plannedDate(task.planned_publish_at);
   const template = task.template;
   const templateStatus = (task.template_display_status || 'not_generated') as ProductionUnit['templateStatus'];
   return {
     id: task.id,
-    accountId: task.account_name,
+    accountId: task.account_id || '',
     accountName: task.account_name,
+    mountSource: task.mount_source,
+    mountExternalId: task.mount_external_id,
     dramaId: task.drama_name,
     dramaName: task.drama_name,
-    scheduledDate: schedule.scheduledDate,
-    scheduledTime: schedule.scheduledTime,
-    sortTimestamp: schedule.sortTimestamp,
-    isOverdue,
+    scheduledDate: dateValue,
+    manualOrder: task.manual_order || 0,
+    scheduledTime: formatPlannedDate(dateValue),
+    sortTimestamp: plannedSortTimestamp(dateValue),
+    isOverdue: isPlanOverdue(dateValue),
+    createdAt: task.created_at || task.created_date,
     isCompleted: task.release_status === 'registered',
     currentStage: task.release_status === 'registered' ? 'completed' : 'materials',
     taskDisplayStatus: task.task_display_status,
@@ -164,5 +164,6 @@ export function toProductionUnit(task: V2ProductionTaskListItem): ProductionUnit
     releaseDistrict: task.release_district || undefined,
     releaseDetailAddress: task.release_detail_address || undefined,
     lastUpdated: task.created_date,
+    insertionStrategy: task.midroll_endroll_strategy || null,
   };
 }

@@ -1,3 +1,4 @@
+import { calculateResourceMetrics as calculateInventoryMetrics } from './utils/resourceMetrics';
 import { 
   AccountBusinessItem, 
   TheaterBusinessItem, 
@@ -6,7 +7,6 @@ import {
   DramaContentProfile, 
   ProductionResourceItem, 
   ViralAssetItem,
-  ResourceCapacityMetrics,
   ProductionBatchCandidateMaterial
 } from './assetsTypes';
 
@@ -446,12 +446,12 @@ export const MOCK_DRAMA_CONTENT_PROFILES: DramaContentProfile[] = [
 // ================= 3. 生产资源 (Production Resources) Mock 数据 =================
 
 export const MOCK_PRODUCTION_RESOURCES: ProductionResourceItem[] = [
-  // 真人视频 (消耗品：每剧需 3 个)
+  // 风景视频 (模板制作素材)
   {
     id: 'res-v-01',
     name: '实拍_商务会议室争执近景_4k.mp4',
-    category: 'real_video',
-    categoryName: '真人视频',
+    category: 'scenery_video',
+    categoryName: '风景视频',
     filePath: 'D:\\ProductionAssets\\RealVideo\\实拍_商务会议室争执近景_4k.mp4',
     fileSizeMb: 18.5,
     durationSeconds: 12,
@@ -463,8 +463,8 @@ export const MOCK_PRODUCTION_RESOURCES: ProductionResourceItem[] = [
   {
     id: 'res-v-02',
     name: '实拍_总裁走廊快步逼近气场全开.mp4',
-    category: 'real_video',
-    categoryName: '真人视频',
+    category: 'scenery_video',
+    categoryName: '风景视频',
     filePath: 'D:\\ProductionAssets\\RealVideo\\实拍_总裁走廊快步逼近气场全开.mp4',
     fileSizeMb: 14.2,
     durationSeconds: 8,
@@ -476,8 +476,8 @@ export const MOCK_PRODUCTION_RESOURCES: ProductionResourceItem[] = [
   {
     id: 'res-v-03',
     name: '实拍_女主雨中含泪转身特写.mp4',
-    category: 'real_video',
-    categoryName: '真人视频',
+    category: 'scenery_video',
+    categoryName: '风景视频',
     filePath: 'D:\\ProductionAssets\\RealVideo\\实拍_女主雨中含泪转身特写.mp4',
     fileSizeMb: 16.8,
     durationSeconds: 10,
@@ -489,8 +489,8 @@ export const MOCK_PRODUCTION_RESOURCES: ProductionResourceItem[] = [
   {
     id: 'res-v-04',
     name: '实拍_豪车车门打开皮鞋落地特写.mp4',
-    category: 'real_video',
-    categoryName: '真人视频',
+    category: 'scenery_video',
+    categoryName: '风景视频',
     filePath: 'D:\\ProductionAssets\\RealVideo\\实拍_豪车车门打开皮鞋落地特写.mp4',
     fileSizeMb: 11.4,
     durationSeconds: 6,
@@ -502,8 +502,8 @@ export const MOCK_PRODUCTION_RESOURCES: ProductionResourceItem[] = [
   {
     id: 'res-v-05',
     name: '实拍_咖啡厅对峙摔杯高潮瞬间.mp4',
-    category: 'real_video',
-    categoryName: '真人视频',
+    category: 'scenery_video',
+    categoryName: '风景视频',
     filePath: 'D:\\ProductionAssets\\RealVideo\\实拍_咖啡厅对峙摔杯高潮瞬间.mp4',
     fileSizeMb: 19.3,
     durationSeconds: 9,
@@ -515,8 +515,8 @@ export const MOCK_PRODUCTION_RESOURCES: ProductionResourceItem[] = [
   {
     id: 'res-v-06',
     name: '实拍_医院走廊焦急踱步背影.mp4',
-    category: 'real_video',
-    categoryName: '真人视频',
+    category: 'scenery_video',
+    categoryName: '风景视频',
     filePath: 'D:\\ProductionAssets\\RealVideo\\实拍_医院走廊焦急踱步背影.mp4',
     fileSizeMb: 15.0,
     durationSeconds: 8,
@@ -529,8 +529,8 @@ export const MOCK_PRODUCTION_RESOURCES: ProductionResourceItem[] = [
   {
     id: 'res-v-07',
     name: '实拍_深夜路灯下落寞抽烟镜头.mp4',
-    category: 'real_video',
-    categoryName: '真人视频',
+    category: 'scenery_video',
+    categoryName: '风景视频',
     filePath: 'D:\\ProductionAssets\\RealVideo\\实拍_深夜路灯下落寞抽烟镜头.mp4',
     fileSizeMb: 21.0,
     durationSeconds: 11,
@@ -640,98 +640,11 @@ export const MOCK_PRODUCTION_RESOURCES: ProductionResourceItem[] = [
     addedAt: '2024-08-20',
   },
 
-  // BGM 音频 (公共复用资源)
-  {
-    id: 'res-b-01',
-    name: 'BGM_爆爽逆袭高燃重低音鼓点.mp3',
-    category: 'bgm',
-    categoryName: 'BGM',
-    filePath: 'D:\\ProductionAssets\\BGM\\BGM_爆爽逆袭高燃重低音鼓点.mp3',
-    fileSizeMb: 3.8,
-    durationSeconds: 95,
-    status: 'available',
-    addedAt: '2024-08-15',
-  },
-  {
-    id: 'res-b-02',
-    name: 'BGM_悬疑反转心跳加速低频声效.mp3',
-    category: 'bgm',
-    categoryName: 'BGM',
-    filePath: 'D:\\ProductionAssets\\BGM\\BGM_悬疑反转心跳加速低频声效.mp3',
-    fileSizeMb: 4.2,
-    durationSeconds: 110,
-    status: 'available',
-    addedAt: '2024-08-16',
-  },
-  {
-    id: 'res-b-03',
-    name: 'BGM_豪门虐恋深情钢琴独奏.mp3',
-    category: 'bgm',
-    categoryName: 'BGM',
-    filePath: 'D:\\ProductionAssets\\BGM\\BGM_豪门虐恋深情钢琴独奏.mp3',
-    fileSizeMb: 5.1,
-    durationSeconds: 130,
-    status: 'available',
-    addedAt: '2024-08-14',
-  },
-  {
-    id: 'res-b-04',
-    name: 'BGM_八零年代复古卡带流行风.mp3',
-    category: 'bgm',
-    categoryName: 'BGM',
-    filePath: 'D:\\ProductionAssets\\BGM\\BGM_八零年代复古卡带流行风.mp3',
-    fileSizeMb: 4.6,
-    durationSeconds: 115,
-    status: 'available',
-    addedAt: '2024-08-18',
-  },
+
 ];
 
 // 计算当前生产资源容量指标 (按可用储备计算)
-export function calculateResourceMetrics(resources: ProductionResourceItem[]): ResourceCapacityMetrics {
-  const isUsed = (resource: ProductionResourceItem) =>
-    resource.status === 'used' || resource.name.trimStart().startsWith('已使用');
-  const availableVideos = resources.filter(r => r.category === 'real_video' && !isUsed(r));
-  const availableImages = resources.filter(r => r.category === 'real_image' && !isUsed(r));
-  const totalVideoCount = resources.filter(r => r.category === 'real_video').length;
-  const totalImageCount = resources.filter(r => r.category === 'real_image').length;
-  const bgmCount = resources.filter(r => r.category === 'bgm').length;
-
-  const videoCount = availableVideos.length;
-  const imageCount = availableImages.length;
-
-  const videoSupportableDramas = Math.floor(videoCount / 3);
-  const imageSupportableDramas = Math.floor(imageCount / 6);
-  const supportableDramas = Math.min(videoSupportableDramas, imageSupportableDramas);
-
-  let bottleneckType: 'video' | 'image' | 'balanced' = 'balanced';
-  let shortageTip = '';
-
-  if (videoSupportableDramas < imageSupportableDramas) {
-    bottleneckType = 'video';
-    const needed = (imageSupportableDramas - videoSupportableDramas) * 3;
-    shortageTip = `真人视频偏少：补充约 ${needed} 个真人视频即可匹配图片产能，多支持 ${imageSupportableDramas - videoSupportableDramas} 部剧集生产。`;
-  } else if (imageSupportableDramas < videoSupportableDramas) {
-    bottleneckType = 'image';
-    const needed = (videoSupportableDramas - imageSupportableDramas) * 6;
-    shortageTip = `真人图片偏少：补充约 ${needed} 张真人图片即可匹配视频产能，多支持 ${videoSupportableDramas - imageSupportableDramas} 部剧集生产。`;
-  } else {
-    shortageTip = '当前可用视频与图片储备比例平衡，生产资源运转充足。';
-  }
-
-  return {
-    videoCount,
-    imageCount,
-    bgmCount,
-    totalVideoCount,
-    totalImageCount,
-    supportableDramas,
-    videoSupportableDramas,
-    imageSupportableDramas,
-    bottleneckType,
-    shortageTip,
-  };
-}
+export const calculateResourceMetrics = calculateInventoryMetrics;
 
 // ================= 4. 爆款资产 Mock 数据 (以原始源素材视频为核心，一素材多记录) =================
 

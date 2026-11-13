@@ -1,5 +1,7 @@
+import { InsertionTimingFields, insertionTime, insertionTimingError } from './InsertionTimingFields';
+import { TemplateParameters } from '../templates/TemplateParameters';
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Film, RefreshCw, Sliders, SlidersHorizontal, Type, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Film, RefreshCw, Sliders, SlidersHorizontal, X } from 'lucide-react';
 import {
   getV2EngineParameters,
   updateV2EngineParameters,
@@ -9,7 +11,6 @@ import {
 import { getV2ProductionResources } from '../../api/v2Catalog';
 import type { ProductionResourceItem } from '../../assetsTypes';
 import { naturalCompare } from '../../utils/naturalCompare';
-import { CopyPoolEditor } from './CopyPoolEditor';
 import { useDataArea } from '../../hooks/useDataArea';
 import { refreshArea } from '../../services/dataHub';
 
@@ -25,7 +26,7 @@ interface SlotDraft extends V2InsertionSlot {}
 const SLOT_LABEL: Record<InsertionSlotKey, string> = { midroll: '中插', endroll: '尾插' };
 const SLOT_PREFIX: Record<InsertionSlotKey, string> = { midroll: '中插', endroll: '尾插' };
 const SLOT_HINT: Record<InsertionSlotKey, string> = {
-  midroll: '插在爆款视频第 120 秒处（素材太短会自动跳过）。',
+  midroll: '按视频时长门槛和位置范围插入（素材太短会自动跳过）。',
   endroll: '接在爆款视频最后。',
 };
 
@@ -41,15 +42,11 @@ function formatDuration(seconds?: number): string {
 export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showToast }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [savingCopy, setSavingCopy] = useState(false);
   const [savingInsertion, setSavingInsertion] = useState(false);
 
-  const [blessing, setBlessing] = useState<string[]>([]);
-  const [dramaPrompt, setDramaPrompt] = useState<string[]>([]);
-  const [copyConfigured, setCopyConfigured] = useState(false);
 
   const [strategy, setStrategy] = useState<Record<InsertionSlotKey, SlotDraft>>({
-    midroll: { enabled: true, mode: 'latest', file: '' },
+    midroll: { enabled: true, mode: 'latest', file: '', min_source_duration_seconds: 120, position_start_seconds: 120, position_end_seconds: 120 },
     endroll: { enabled: true, mode: 'latest', file: '' },
   });
   const [insertionConfigured, setInsertionConfigured] = useState(false);
@@ -65,11 +62,8 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
   };
 
   const applyParameters = (parameters: V2EngineParameters) => {
-    setBlessing(parameters.template_copy.blessing);
-    setDramaPrompt(parameters.template_copy.drama_prompt);
-    setCopyConfigured(parameters.template_copy.configured);
     setStrategy({
-      midroll: { ...parameters.midroll_endroll.strategy.midroll },
+      midroll: { min_source_duration_seconds: 120, position_start_seconds: 120, position_end_seconds: 120, ...parameters.midroll_endroll.strategy.midroll },
       endroll: { ...parameters.midroll_endroll.strategy.endroll },
     });
     setInsertionConfigured(parameters.midroll_endroll.configured);
@@ -139,13 +133,15 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
       const latest = latestName(key);
       return latest ? `${latest}（最新序号）` : `${SLOT_LABEL[key]}（目录里还没有素材）`;
     };
-    if (mid && end) return ['爆款 0–120 秒', describe('midroll'), '爆款剩余部分', describe('endroll')];
-    if (mid) return ['爆款 0–120 秒', describe('midroll'), '爆款剩余部分'];
+    if (mid && end) return ['原片前段', describe('midroll'), '爆款剩余部分', describe('endroll')];
+    if (mid) return ['原片前段', describe('midroll'), '爆款剩余部分'];
     if (end) return ['爆款整条（不拆段）', describe('endroll')];
     return ['爆款整条（不拆段）', '模板视频循环铺满整条成片'];
   }, [strategy, slotVideos]);
 
   const blockedReason = useMemo(() => {
+    const timingError = insertionTimingError(strategy.midroll);
+    if (timingError) return timingError;
     for (const key of ['midroll', 'endroll'] as InsertionSlotKey[]) {
       const slot = strategy[key];
       if (!slot.enabled || slot.mode !== 'locked') continue;
@@ -157,18 +153,6 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
     return null;
   }, [strategy, slotVideos]);
 
-  const handleSaveCopy = async () => {
-    setSavingCopy(true);
-    try {
-      applyParameters(await updateV2EngineParameters({ template_copy: { blessing, drama_prompt: dramaPrompt } }));
-      notify('文案参数已保存并生效');
-    } catch (error) {
-      notify(error instanceof Error && error.message ? error.message : '文案参数保存失败。');
-    } finally {
-      setSavingCopy(false);
-    }
-  };
-
   const handleSaveInsertion = async () => {
     if (blockedReason) {
       notify(blockedReason);
@@ -177,7 +161,7 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
     setSavingInsertion(true);
     try {
       applyParameters(await updateV2EngineParameters({ midroll_endroll: strategy }));
-      notify('成片插片参数已保存并生效');
+      notify('插片规则已保存，后续新提交的 FFmpeg 成片使用本设置');
     } catch (error) {
       notify(error instanceof Error && error.message ? error.message : '成片插片参数保存失败。');
     } finally {
@@ -224,6 +208,7 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+        <TemplateParameters showToast={showToast} />
         {loadError && (
           <div className="rounded-2xl bg-rose-50 border border-rose-200/70 px-4 py-3 text-xs text-rose-800 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -235,89 +220,7 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
         )}
 
         {/* =====================================================================
-            参数组 1：文案
-            ===================================================================== */}
-        <section className="bg-white rounded-3xl p-6 border border-black/[0.06] shadow-xs space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-black/[0.04]">
-            <div className="flex items-center gap-2">
-              <Type className="w-4 h-4 text-[#1A1D2E]" />
-              <div>
-                <h3 className="font-extrabold text-base text-[#1A1D2E]">文案</h3>
-                <p className="text-[11px] text-[#64748B] mt-0.5">
-                  模板里的两条文字轨道。把某个池清空 = 模板里不要那条轨道。
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {copyConfigured ? (
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200/60">
-                  已自定义
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
-                  正在使用内置默认文案
-                </span>
-              )}
-              <button
-                type="button"
-                disabled={savingCopy || loading}
-                onClick={() => void handleSaveCopy()}
-                className="px-3.5 py-1.5 rounded-xl bg-[#1A1D2E] text-[#DDFD00] hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed text-xs font-extrabold transition-colors cursor-pointer"
-              >
-                {savingCopy ? '保存中…' : '保存并生效'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-xs text-[#1A1D2E]">祝福语</span>
-                <span className="text-[10px] text-[#64748B] font-mono">T10_TEXT_BLESSING</span>
-                <button
-                  type="button"
-                  onClick={() => setBlessing([])}
-                  className="ml-auto text-[11px] text-[#64748B] hover:text-rose-600 font-bold cursor-pointer"
-                >
-                  清空（不要这条轨道）
-                </button>
-              </div>
-              <CopyPoolEditor
-                items={blessing}
-                onChange={setBlessing}
-                addLabel="新增祝福语"
-                addPlaceholder="例如：愿您平安喜乐"
-                emptyHint="现在是空池：模板生成时不会写入祝福语文案轨道。"
-                onNotify={notify}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-xs text-[#1A1D2E]">引导语</span>
-                <span className="text-[10px] text-[#64748B] font-mono">T11_TEXT_DRAMA_PROMPT</span>
-                <button
-                  type="button"
-                  onClick={() => setDramaPrompt([])}
-                  className="ml-auto text-[11px] text-[#64748B] hover:text-rose-600 font-bold cursor-pointer"
-                >
-                  清空（不要这条轨道）
-                </button>
-              </div>
-              <CopyPoolEditor
-                items={dramaPrompt}
-                onChange={setDramaPrompt}
-                addLabel="新增引导语"
-                addPlaceholder="例如：左下角免费看全集"
-                emptyHint="现在是空池：模板生成时不会写入引导语文案轨道。"
-                onNotify={notify}
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* =====================================================================
-            参数组 2：成片插片（中插 / 尾插）
+            参数组：成片插片（中插 / 尾插）
             ===================================================================== */}
         <section className="bg-white rounded-3xl p-6 border border-black/[0.06] shadow-xs space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-black/[0.04]">
@@ -326,7 +229,7 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
               <div>
                 <h3 className="font-extrabold text-base text-[#1A1D2E]">成片插片（中插 / 尾插）</h3>
                 <p className="text-[11px] text-[#64748B] mt-0.5">
-                  素材取自「生成资源 / 引流视频」。这里设的是**全局默认**，生产任务上可以单独覆盖。
+                  素材取自「生成资源 / 引流视频」。这里设的是全局默认，生产任务和单个素材可以单独覆盖。
                 </p>
               </div>
             </div>
@@ -337,7 +240,7 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
-                  正在使用默认：两条都要
+                  尚未保存 FFmpeg 插片规则
                 </span>
               )}
               <button
@@ -351,6 +254,7 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
             </div>
           </div>
 
+          {!insertionConfigured && <p className="text-[11px] text-amber-700">尚未保存时，FFmpeg 沿用无插片行为。保存本卡后，以下全局默认用于新提交成片；剧集和单素材可以单独覆盖。</p>}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {(['midroll', 'endroll'] as InsertionSlotKey[]).map((key) => {
               const slot = strategy[key];
@@ -374,6 +278,9 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
 
                   {slot.enabled && (
                     <>
+                      {key === 'midroll' && <div className="rounded-xl border border-black/[0.06] bg-white px-3 py-2.5">
+                        <InsertionTimingFields value={slot} onChange={(patch) => updateSlot('midroll', patch)} />
+                      </div>}
                       <div className="flex flex-wrap items-center gap-3 text-xs">
                         <label className="flex items-center gap-1.5 cursor-pointer">
                           <input
@@ -464,12 +371,12 @@ export const ParameterCenterView: React.FC<ParameterCenterViewProps> = ({ showTo
             </div>
             {!strategy.midroll.enabled && !strategy.endroll.enabled && (
               <p className="text-[11px] text-amber-300">
-                ⚠️ 中插和尾插都不要时，成片主轨只剩爆款视频一条；模板视频会循环铺满整条成片，最终画面效果尚未实机确认。
+                中插和尾插均关闭：原片完整保留，继续按现有模板合成。
               </p>
             )}
             {strategy.midroll.enabled && slotVideos.midroll.length > 0 && (
               <p className="text-[11px] text-slate-400">
-                中插插在爆款第 120 秒处；爆款素材短于 120 秒时系统会自动跳过中插。
+                中插位置为 {insertionTime(strategy.midroll.position_start_seconds)}–{insertionTime(strategy.midroll.position_end_seconds)}；素材短于 {insertionTime(strategy.midroll.min_source_duration_seconds)} 时自动跳过。
               </p>
             )}
           </div>

@@ -63,7 +63,7 @@ def main() -> None:
     package_root = output / "ShortDramaPlatform"
     metadata = {
         "product": "ShortDramaPlatform V2",
-        "version": "V2",
+        "version": os.environ.get("V2_RELEASE_VERSION", datetime.now().astimezone().strftime("%Y.%m.%d")),
         "git_commit": _git_commit(),
         "built_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "build_mode": "PyInstaller onedir",

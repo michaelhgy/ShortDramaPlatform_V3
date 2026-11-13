@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { currentCounts } from './taskcenter/ffmpegTaskModel';
+import { loadSharedTaskCenter } from '../services/taskCenterService';
+import React, { useEffect, useState } from 'react';
 import { NavTab, TaskCenterTask } from '../types';
 import { 
   Tv2, 
@@ -12,26 +14,21 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { TaskCenterPreviewPopover } from './taskcenter/TaskCenterPreviewPopover';
-import { ExecutorId, ExecutorInfo, TaskItem } from './taskcenter/taskCenterTypes';
-import { regenerateV2Template, reExportV2Task, retryV2Template, setV2ExecutorPaused, setV2TaskCenterPaused } from '../api/v2TaskCenter';
-import { getCachedTaskCenterSnapshot, loadSharedTaskCenter, storeSharedTaskCenterSnapshot } from '../services/taskCenterService';
-import { getTaskCenterActions } from './taskcenter/taskCenterActionPolicy';
-import { changeAffects, eventDetail } from '../services/dataChangeEvents';
+import { eventDetail } from '../services/dataChangeEvents';
 import { useDataArea } from '../hooks/useDataArea';
-import { dataSource } from '../services/dataSource';
-import { getV2Accounts, getV2ProductionResources } from '../api/v2Catalog';
-import { listV2ProductionTaskSummaries } from '../api/v2Production';
 import { loadV2DailyAccountRevenueSummary } from '../api/v2Revenue';
 import { calculateResourceMetrics } from '../utils/resourceMetrics';
+import { loadProductionResources } from '../services/assetsCenterService';
+import type { ProductionResourceItem } from '../assetsTypes';
+import { planningDayOffset } from '../utils/plannedDate';
 
 interface HeaderProps {
   activeTab: NavTab;
   onTabChange: (tab: NavTab) => void;
+  onOpenScenery: () => void;
   taskQueue: TaskCenterTask[];
   onOpenSettings: () => void;
   onQuickSchedule: () => void;
-  workbenchMode?: 'standard' | 'explore';
-  onWorkbenchModeChange?: (mode: 'standard' | 'explore') => void;
   onOpenTaskCenterModal?: () => void;
   showToast?: (msg: string) => void;
 }
@@ -39,34 +36,21 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onTabChange,
+  onOpenScenery,
   taskQueue: _taskQueue,
   onOpenSettings,
   onQuickSchedule,
-  workbenchMode = 'explore',
-  onWorkbenchModeChange,
   onOpenTaskCenterModal,
   showToast = (_msg: string) => {},
 }) => {
   const [showTaskCenter, setShowTaskCenter] = useState(false);
-  const [tasks, setTasks] = useState<TaskItem[]>(() => getCachedTaskCenterSnapshot()?.tasks || []);
-  const [executors, setExecutors] = useState<ExecutorInfo[]>(() => getCachedTaskCenterSnapshot()?.executors || []);
-  const [isQueuePaused, setIsQueuePaused] = useState(() => getCachedTaskCenterSnapshot()?.isQueuePaused === true);
-  const [isQueuePauseUpdating, setIsQueuePauseUpdating] = useState(false);
-  const [executorUpdatingId, setExecutorUpdatingId] = useState<ExecutorId | null>(null);
   const [yesterdayRevenue, setYesterdayRevenue] = useState<{ amount: number; incompleteCount: number } | null>(null);
-  const [supportableDramas, setSupportableDramas] = useState<number | null>(null);
-  const [accountArrangement, setAccountArrangement] = useState<{ arranged: number; total: number } | null>(null);
-  const tasksRef = useRef<TaskItem[]>([]);
-  const resourceRefreshAtRef = useRef(0);
+  const resourceArea = useDataArea<ProductionResourceItem[]>('resourceIndex', loadProductionResources);
+  const sceneryVideoCount = resourceArea.data ? calculateResourceMetrics(resourceArea.data).videoCount : null;
 
   useEffect(() => {
     let active = true;
-    const localDate = (offsetDays: number) => {
-      const value = new Date();
-      value.setDate(value.getDate() + offsetDays);
-      const offset = value.getTimezoneOffset() * 60_000;
-      return new Date(value.getTime() - offset).toISOString().slice(0, 10);
-    };
+    const localDate = (offsetDays: number) => planningDayOffset(offsetDays);
     const refreshRevenue = () => void loadV2DailyAccountRevenueSummary(localDate(-1)).then((summary) => {
       if (!active) return;
       const completed = summary.items.filter((item) => item.collection_status === 'success');
@@ -75,33 +59,10 @@ export const Header: React.FC<HeaderProps> = ({
         incompleteCount: summary.items.filter((item) => item.collection_status === 'uncollected' || item.collection_status === 'failed').length,
       });
     }).catch(() => undefined);
-    const refreshResources = () => {
-      // Resource scanning refreshes its metadata index, which in turn emits a
-      // resource event. Debounce that self-originated event so the header does
-      // not create a scan loop while still picking up later real changes.
-      if (Date.now() - resourceRefreshAtRef.current < 10_000) return;
-      resourceRefreshAtRef.current = Date.now();
-      void getV2ProductionResources().then((response) => {
-        if (active) setSupportableDramas(calculateResourceMetrics(response.items).supportableDramas);
-      }).catch(() => undefined);
-    };
-    const refreshAccountArrangement = () => void Promise.all([getV2Accounts(), listV2ProductionTaskSummaries()]).then(([accounts, tasks]) => {
-      if (!active) return;
-      const normalAccounts = accounts.items.filter((account) => account.status === '正常');
-      const normalNames = new Set(normalAccounts.map((account) => account.nickname));
-      const arrangedNames = new Set(tasks.items
-        .filter((task) => task.created_date === localDate(0) && normalNames.has(task.account_name))
-        .map((task) => task.account_name));
-      setAccountArrangement({ arranged: arrangedNames.size, total: normalAccounts.length });
-    }).catch(() => undefined);
     refreshRevenue();
-    refreshResources();
-    refreshAccountArrangement();
     const onDataChanged = (event: Event) => {
       const detail = eventDetail(event);
-      if (detail.changeType === 'revenue_changed') refreshRevenue();
-      if (detail.changeType === 'resource_changed') refreshResources();
-      if (detail.changeType === 'account_changed' || detail.changeType === 'production_task_changed') refreshAccountArrangement();
+      if (detail.changeType === 'revenue_changed' || detail.changeType === 'account_changed') refreshRevenue();
     };
     window.addEventListener('v2-data-changed', onDataChanged);
     return () => { active = false; window.removeEventListener('v2-data-changed', onDataChanged); };
@@ -116,88 +77,15 @@ export const Header: React.FC<HeaderProps> = ({
     () => loadSharedTaskCenter(true),
   );
 
-  useEffect(() => {
-    const snapshot = taskCenterArea.data;
-    if (!snapshot) return;
-    tasksRef.current = snapshot.tasks;
-    setTasks(snapshot.tasks);
-    setExecutors(snapshot.executors);
-    setIsQueuePaused(snapshot.isQueuePaused === true);
-  }, [taskCenterArea.data]);
-
-  // Counts come from the backend snapshot. The header never turns a task into
-  // a running task locally, because the executor is the source of truth.
-  const runningTasksCount = tasks.filter(t => t.status === 'running').length;
-  const timeoutTasksCount = tasks.filter(t => t.isTimeout || t.status === 'timeout').length;
-  const errorTasksCount = tasks.filter(t => t.status === 'error').length;
-  const abnormalTasksCount = timeoutTasksCount + errorTasksCount;
-  // Keep the header aligned with the task-center ticker: these are task
-  // statuses, not a second progress calculation across executor queues.
-  const waitingTasksCount = tasks.filter(t => t.status === 'waiting').length;
-  const doneTasksCount = tasks.filter(t => t.status === 'done').length;
-  const accountUnarrangedCount = accountArrangement ? Math.max(0, accountArrangement.total - accountArrangement.arranged) : 0;
+  const queueCounts = currentCounts(taskCenterArea.data?.finalComposition, taskCenterArea.data?.templateGeneration, taskCenterArea.data?.sceneryProcessing);
+  const runningTasksCount = queueCounts.running;
+  const abnormalTasksCount = queueCounts.error;
+  const waitingTasksCount = queueCounts.waiting;
+  const doneTasksCount = queueCounts.done;
   const formattedYesterdayRevenue = yesterdayRevenue
     ? new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(yesterdayRevenue.amount)
     : '';
 
-  const handleTaskAction = async (task: TaskItem) => {
-    const action = getTaskCenterActions(task)[0] || 'retry';
-    try {
-      if (action === 'regenerate') await regenerateV2Template(task.id);
-      else if (action === 'reExport' || task.executorId === 'video_exporter' || task.taskType === 'video_export' || ['error', 'timeout'].includes(task.videoStage?.status || '')) {
-        // 视频导出器上的“重试”实际是重新导出，必须使用导出尝试编号。
-        await reExportV2Task(task.videoExportTaskId || task.id);
-      }
-      else await retryV2Template(task.id);
-      const snapshot = await loadSharedTaskCenter(true);
-      setTasks(snapshot.tasks);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '任务操作失败，请稍后重试。');
-    }
-  };
-
-  const handleToggleQueuePause = async () => {
-    if (isQueuePauseUpdating) return;
-    const nextPaused = !isQueuePaused;
-    setIsQueuePauseUpdating(true);
-    try {
-      if (dataSource === 'mock') {
-        setIsQueuePaused(nextPaused);
-        return;
-      }
-      const snapshot = await setV2TaskCenterPaused(nextPaused);
-      storeSharedTaskCenterSnapshot(snapshot);
-      tasksRef.current = snapshot.tasks;
-      setTasks(snapshot.tasks);
-      setExecutors(snapshot.executors);
-      setIsQueuePaused(snapshot.isQueuePaused === true);
-      showToast(nextPaused ? '后台执行队列已暂停：正在执行的任务不会被强行中断。' : '后台执行队列已继续：三个执行器会按原规则领取下一项任务。');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '队列状态更新失败，请检查 V2 服务是否正常运行。');
-    } finally {
-      setIsQueuePauseUpdating(false);
-    }
-  };
-
-  const handleToggleExecutor = async (executor: ExecutorInfo) => {
-    if (executorUpdatingId || executor.status === 'pausing') return;
-    const shouldPause = executor.status !== 'manual_paused' && executor.status !== 'error_paused';
-    setExecutorUpdatingId(executor.id);
-    try {
-      if (dataSource === 'mock') return;
-      const snapshot = await setV2ExecutorPaused(executor.id, shouldPause);
-      storeSharedTaskCenterSnapshot(snapshot);
-      tasksRef.current = snapshot.tasks;
-      setTasks(snapshot.tasks);
-      setExecutors(snapshot.executors);
-      setIsQueuePaused(snapshot.isQueuePaused === true);
-      showToast(shouldPause ? `${executor.name} 已请求暂停，当前任务结束后生效。` : `${executor.name} 已继续执行。`);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : `${executor.name} 状态更新失败，请检查 V2 服务是否正常运行。`);
-    } finally {
-      setExecutorUpdatingId(null);
-    }
-  };
 
   return (
     <header className="sticky top-0 z-40 px-6 py-3 bg-[#EEF2F6]/90 backdrop-blur-md border-b border-black/[0.06] flex items-center justify-between">
@@ -223,16 +111,16 @@ export const Header: React.FC<HeaderProps> = ({
         {/* First-Level Navigation */}
         <nav className="flex items-center p-1 bg-black/[0.04] rounded-xl gap-0.5 border border-black/[0.03]">
           <button
-            id="nav-workbench"
-            onClick={() => onTabChange('workbench')}
+            id="nav-dashboard"
+            onClick={() => onTabChange('dashboard')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
-              activeTab === 'workbench'
+              activeTab === 'dashboard'
                 ? 'bg-white text-[#1A1D2E] shadow-xs font-bold'
                 : 'text-[#64748B] hover:text-[#1A1D2E] hover:bg-white/40'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${activeTab === 'workbench' ? 'bg-[#1A1D2E]' : 'bg-transparent'}`} />
-            工作台
+            <BarChart3 className="w-3.5 h-3.5" />
+            运营总览
           </button>
 
           <button
@@ -249,16 +137,16 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           <button
-            id="nav-analytics"
-            onClick={() => onTabChange('analytics')}
+            id="nav-content"
+            onClick={() => onTabChange('content')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
-              activeTab === 'analytics'
+              activeTab === 'content'
                 ? 'bg-white text-[#1A1D2E] shadow-xs font-bold'
                 : 'text-[#64748B] hover:text-[#1A1D2E] hover:bg-white/40'
             }`}
           >
-            <BarChart3 className="w-3.5 h-3.5" />
-            数据分析
+            <Sparkles className="w-3.5 h-3.5" />
+            内容生产
           </button>
 
           <button
@@ -288,33 +176,6 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Workbench Mode Segmented Toggle (Only shown when activeTab is workbench) */}
-        {activeTab === 'workbench' && onWorkbenchModeChange && (
-          <div className="hidden md:flex items-center p-1 bg-black/[0.04] rounded-xl border border-black/[0.03] gap-1">
-            <button
-              onClick={() => onWorkbenchModeChange('explore')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                workbenchMode === 'explore'
-                  ? 'bg-[#1A1D2E] text-[#DDFD00] shadow-sm'
-                  : 'text-[#64748B] hover:text-[#1A1D2E]'
-              }`}
-            >
-              <Sparkles className="w-3 h-3 fill-current" />
-              <span>探索版 (Explore ✨)</span>
-            </button>
-
-            <button
-              onClick={() => onWorkbenchModeChange('standard')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                workbenchMode === 'standard'
-                  ? 'bg-white text-[#1A1D2E] shadow-xs'
-                  : 'text-[#64748B] hover:text-[#1A1D2E]'
-              }`}
-            >
-              <span>标准版</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Right Side: Integrated Status Indicators + Quick Action + Task Center + Settings */}
@@ -323,7 +184,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="hidden lg:flex items-center gap-3 text-xs pr-2 border-r border-black/[0.06]">
           <button
             onClick={() => onOpenTaskCenterModal?.()}
-            title={`正在执行 ${runningTasksCount} 个；排队等待 ${waitingTasksCount} 个；今日已完成 ${doneTasksCount} 个`}
+            title={`正在执行 ${runningTasksCount} 个；排队等待 ${waitingTasksCount} 个；已完成 ${doneTasksCount} 个`}
             className="flex items-center gap-2.5 px-2.5 py-1 rounded-lg hover:bg-black/[0.04] transition-colors text-left cursor-pointer whitespace-nowrap"
           >
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span className="text-[#64748B]">执行</span><strong className="text-emerald-700 font-extrabold">{runningTasksCount}</strong></span>
@@ -333,7 +194,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {yesterdayRevenue && (
             <button
-              onClick={() => onTabChange('analytics')}
+              onClick={() => onTabChange('dashboard')}
               title={yesterdayRevenue.incompleteCount > 0 ? `昨日仍有 ${yesterdayRevenue.incompleteCount} 个账号未采集成功` : '昨日收益已采集成功'}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-black/[0.04] transition-colors cursor-pointer"
             >
@@ -343,21 +204,10 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {supportableDramas !== null && (
-            <button onClick={() => onTabChange('assets')} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-black/[0.04] transition-colors cursor-pointer">
+          {sceneryVideoCount !== null && (
+            <button onClick={onOpenScenery} title="查看可用风景素材" className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-black/[0.04] transition-colors cursor-pointer">
               <span className="text-[#64748B]">资源</span>
-              <span className="font-semibold text-[#1A1D2E]">支持 {supportableDramas} 部</span>
-            </button>
-          )}
-
-          {accountArrangement && (
-            <button
-              onClick={onQuickSchedule}
-              title={accountUnarrangedCount > 0 ? `今天还有 ${accountUnarrangedCount} 个正常账号未安排生产任务` : '今天所有正常账号均已安排生产任务'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${accountUnarrangedCount > 0 ? 'text-amber-900 hover:bg-amber-500/10' : 'hover:bg-black/[0.04]'}`}
-            >
-              <span className="text-[#64748B]">账号</span>
-              <span className={`font-mono font-extrabold ${accountUnarrangedCount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{accountArrangement.arranged}/{accountArrangement.total}</span>
+              <span className="font-semibold text-[#1A1D2E]">风景 {sceneryVideoCount} 条</span>
             </button>
           )}
         </div>
@@ -408,14 +258,12 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Clean Dedicated Task Center Preview Popover */}
           {showTaskCenter && (
             <TaskCenterPreviewPopover
-              tasks={tasks}
-              onTaskAction={handleTaskAction}
-              isQueuePaused={isQueuePaused}
-              isQueuePauseUpdating={isQueuePauseUpdating}
-              onToggleQueuePause={handleToggleQueuePause}
-              executors={executors}
-              executorUpdatingId={executorUpdatingId}
-              onToggleExecutor={handleToggleExecutor}
+              finalComposition={taskCenterArea.data?.finalComposition}
+              templateGeneration={taskCenterArea.data?.templateGeneration}
+              sceneryProcessing={taskCenterArea.data?.sceneryProcessing}
+              showToast={showToast}
+              error={taskCenterArea.error}
+              updatedAt={taskCenterArea.updatedAt}
               onOpenFullTaskCenter={() => {
                 setShowTaskCenter(false);
                 if (onOpenTaskCenterModal) {

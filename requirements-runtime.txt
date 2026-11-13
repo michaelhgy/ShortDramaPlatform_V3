@@ -9,6 +9,8 @@ Pillow==10.4.0
 numpy==2.4.4
 opencv-python==5.0.0.93
 rapidocr-onnxruntime==1.4.4
+mediapipe==1.0.1
+requests>=2.31,<3
 
 # Locked transitive dependencies of the direct runtime dependencies
 bottle==0.13.4
