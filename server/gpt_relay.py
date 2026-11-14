@@ -23,6 +23,7 @@ SUPPORTED_API_FORMATS = {"responses", "openai_chat_completions"}
 # 只重试连接层错误，不重试 HTTP 4xx（请求本身的错，重试也没用）。
 NETWORK_RETRY_ATTEMPTS = 3
 NETWORK_RETRY_BACKOFF_S = 3.0
+RETRYABLE_HTTP_STATUS = {502, 503, 504}
 DEFAULT_CONFIG: dict[str, Any] = {
     "provider_name": "",
     "base_url": "",
@@ -192,7 +193,10 @@ def _request_json(url: str, api_key: str, body: dict[str, Any] | None = None, ti
                 if response.status_code >= 400:
                     detail = parsed.get("error") if isinstance(parsed, dict) else None
                     message = detail.get("message") if isinstance(detail, dict) else detail or response.reason
-                    # HTTP 错误是请求本身的问题，不重试
+                    if response.status_code in RETRYABLE_HTTP_STATUS and attempt < NETWORK_RETRY_ATTEMPTS:
+                        time.sleep(NETWORK_RETRY_BACKOFF_S * attempt)
+                        continue
+                    # 4xx 和重试耗尽的 5xx 才视为本次请求失败
                     raise RuntimeError(f"中转站请求失败（HTTP {response.status_code}）：{str(message)[:200]}")
                 return int(response.status_code), parsed if isinstance(parsed, dict) else {}
             except RuntimeError:
@@ -345,7 +349,9 @@ def generate_json(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         request_body = {
             "model": model,
-            "input": prompt,
+            # 中转站对 Responses API 的纯字符串 input 兼容不稳定；
+            # 使用消息数组可以保留角色边界并正确处理长文本。
+            "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
             "reasoning": {"effort": effort},
             "text": {"format": {"type": "json_schema", "name": str(payload.get("schema_name") or "structured_result"), "strict": True, "schema": schema}},
         }

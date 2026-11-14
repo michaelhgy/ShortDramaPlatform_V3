@@ -104,6 +104,9 @@ class GptRelayTests(unittest.TestCase):
         self.assertEqual(12.5, result["data"]["picks"][0]["anchor_start_s"])
         self.assertEqual(21, result["usage"]["total_tokens"])
         request.assert_called_once()
+        request_body = request.call_args.args[2]
+        self.assertEqual("user", request_body["input"][0]["role"])
+        self.assertEqual("返回高光JSON", request_body["input"][0]["content"][0]["text"])
         raw = json.loads(self.config_path.read_text(encoding="utf-8"))
         self.assertNotIn("prompt", json.dumps(raw, ensure_ascii=False))
 

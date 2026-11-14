@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 from .remix_materials import index_by_id, render_for_model
 
-METHOD_VERSION = "2026-11-14.1"
+METHOD_VERSION = "2026-11-14.2"
 
 ModelCall = Callable[[str, str, dict[str, Any], str], dict[str, Any]]
 """call(task_role, prompt, schema, schema_name) -> {"data": {...}, "usage": {...}, "model": str, "elapsed_s": float}"""
@@ -82,6 +82,9 @@ STORY_MAP_PROMPT = """你是短剧推广视频的剪辑策划。我们要从一�
 
 # 台词材料
 {material}
+
+# 输出要求
+只返回符合接口 JSON Schema 的 JSON 对象，不要输出 Markdown、解释、编号列表或 JSON 以外的文字。
 """
 
 
@@ -109,6 +112,9 @@ SKIPPABLE_PROMPT = """你是短剧推广视频的剪辑策划。我们要把一�
 
 # 台词材料
 {material}
+
+# 输出要求
+只返回符合接口 JSON Schema 的 JSON 对象，不要输出 Markdown、解释、编号列表或 JSON 以外的文字。
 """
 
 
@@ -152,9 +158,11 @@ def highlight_target(episode_count: int) -> int:
     return max(4, min(15, round(episode_count * 0.3)))
 
 
-def build_story_map(lines: list[dict[str, Any]], call: ModelCall) -> dict[str, Any]:
-    """生成剧情地图，分两次模型调用以免单次输出过大撞超时（2026-11-12.3）：
-    第一次选高光起点与结束点；第二次把已选高光喂回去，专门标可跳过段。两次结果合并清洗。
+def build_story_map(lines: list[dict[str, Any]], call: ModelCall, *, include_skippable: bool = True) -> dict[str, Any]:
+    """生成剧情地图；可按生产方式选择是否额外标注可跳过段。
+
+    第一次调用负责高光起点/范围和结束点；只有本次确实需要跳集时，
+    才把已选高光喂回第二次调用，专门标可跳过段。
     """
     episodes = sorted({line["episode"] for line in lines})
     material = render_for_model(lines)
@@ -170,7 +178,7 @@ def build_story_map(lines: list[dict[str, Any]], call: ModelCall) -> dict[str, A
     # 第二次：标可跳段（仅当选出了高光才做跳集供给；把已选高光列给模型作范围参考）
     story_map = clean_story_map(raw, lines)
     model_calls = [{k: response.get(k) for k in ("model", "usage", "elapsed_s")}]
-    if story_map["highlights"]:
+    if include_skippable and story_map["highlights"]:
         highlight_brief = "\n".join(
             f"- {h['start_line']}：{h.get('hook_label', '')}" for h in story_map["highlights"]
         )
@@ -516,6 +524,9 @@ REVIEW_PROMPT = """你是短剧推广视频的审片员。下面是一条推广�
 
 # 视频台词
 {material}
+
+# 输出要求
+只返回符合接口 JSON Schema 的 JSON 对象，不要输出 Markdown、解释或 JSON 以外的文字。
 """
 
 
