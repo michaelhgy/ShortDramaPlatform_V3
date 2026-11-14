@@ -22,6 +22,7 @@ SUPPORTED_API_FORMATS = {"responses", "openai_chat_completions"}
 # 中转站对长请求偶发掐断连接（Remote end closed / Read timed out），自动重试几次扛过去。
 # 只重试连接层错误，不重试 HTTP 4xx（请求本身的错，重试也没用）。
 NETWORK_RETRY_ATTEMPTS = 3
+STREAM_RETRY_ATTEMPTS = 2
 NETWORK_RETRY_BACKOFF_S = 3.0
 RETRYABLE_HTTP_STATUS = {502, 503, 504}
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -165,8 +166,87 @@ def _chat_url(base_url: str) -> str:
     return normalized if normalized.endswith("/v1/chat/completions") else f"{normalized}/v1/chat/completions" if not normalized.endswith("/v1") else f"{normalized}/chat/completions"
 
 
-def _request_json(url: str, api_key: str, body: dict[str, Any] | None = None, timeout: int = 30, use_proxy: bool = False) -> tuple[int, dict[str, Any]]:
-    headers = {"Accept": "application/json", "Authorization": f"Bearer {api_key}"}
+def _parse_sse_response(lines: Any) -> dict[str, Any]:
+    """把 Responses/Chat Completions 的 SSE 增量拼成统一 JSON 响应。"""
+    text_chunks: list[str] = []
+    chat_chunks: list[str] = []
+    final_payload: dict[str, Any] = {}
+    usage: dict[str, Any] = {}
+    completed = False
+    for raw_line in lines:
+        if isinstance(raw_line, bytes):
+            line = raw_line.decode("utf-8", errors="replace")
+        else:
+            line = str(raw_line)
+        if not line or not line.startswith("data:"):
+            continue
+        raw = line[5:].strip()
+        if not raw:
+            continue
+        if raw == "[DONE]":
+            completed = True
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "error":
+            error = event.get("error") if isinstance(event.get("error"), dict) else event
+            message = error.get("message") if isinstance(error, dict) else str(error)
+            raise RuntimeError(f"中转站流式响应失败：{str(message)[:200]}")
+        event_type = str(event.get("type") or "")
+        if event_type == "response.failed":
+            response = event.get("response") if isinstance(event.get("response"), dict) else {}
+            error = response.get("error") if isinstance(response.get("error"), dict) else event.get("error")
+            raise RuntimeError(f"中转站流式响应失败：{str((error or {}).get('message') if isinstance(error, dict) else error or '上游模型失败')[:200]}")
+        if event_type == "response.incomplete":
+            raise ConnectionError("中转站流式响应未完成")
+        delta = event.get("delta")
+        if event_type == "response.output_text.delta" and isinstance(delta, str):
+            text_chunks.append(delta)
+        elif isinstance(event.get("choices"), list):
+            for choice in event["choices"]:
+                if not isinstance(choice, dict):
+                    continue
+                piece = choice.get("delta")
+                if isinstance(piece, dict) and isinstance(piece.get("content"), str):
+                    chat_chunks.append(piece["content"])
+        if isinstance(event.get("usage"), dict):
+            usage = event["usage"]
+        response = event.get("response")
+        if isinstance(response, dict):
+            final_payload = response
+            if event_type == "response.completed" or str(response.get("status") or "") == "completed":
+                completed = True
+            if isinstance(response.get("usage"), dict):
+                usage = response["usage"]
+    output_text = "".join(text_chunks or chat_chunks)
+    if not output_text and final_payload:
+        output_text = _response_text(final_payload)
+    result = dict(final_payload)
+    if output_text:
+        result["output_text"] = output_text
+    if usage:
+        result["usage"] = usage
+    result["_stream_completed"] = completed
+    return result
+
+
+def _request_json(
+    url: str,
+    api_key: str,
+    body: dict[str, Any] | None = None,
+    timeout: int = 30,
+    use_proxy: bool = False,
+    stream: bool = False,
+) -> tuple[int, dict[str, Any]]:
+    headers = {
+        "Accept": "text/event-stream" if stream else "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": "ShortDramaPlatform-V3/3.0",
+    }
     data = None
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -177,23 +257,35 @@ def _request_json(url: str, api_key: str, body: dict[str, Any] | None = None, ti
         requests = None
     if requests is not None:
         last_error: Exception | None = None
-        for attempt in range(1, NETWORK_RETRY_ATTEMPTS + 1):
+        max_attempts = STREAM_RETRY_ATTEMPTS if stream else NETWORK_RETRY_ATTEMPTS
+        for attempt in range(1, max_attempts + 1):
+            session = requests.Session()
             try:
-                with requests.Session() as session:
-                    # 默认直连：既不读环境变量里的代理，也显式清空 proxies，
-                    # 避免 Windows 系统代理把中转站请求导去梯子导致 Unable to connect to proxy。
-                    if not use_proxy:
-                        session.trust_env = False
-                        session.proxies = {}
-                    response = session.request("POST" if body is not None else "GET", url, headers=headers, data=data, timeout=timeout)
+                # 流式请求必须在读取完 SSE 之前保持 Session 和底层连接存活。
+                # 之前在 response.iter_lines() 前退出 with Session，会把长响应提前截断。
+                if not use_proxy:
+                    session.trust_env = False
+                    session.proxies = {}
+                response = session.request(
+                    "POST" if body is not None else "GET", url, headers=headers, data=data,
+                    timeout=timeout, stream=stream,
+                )
                 try:
-                    parsed = response.json() if response.content else {}
+                    if stream:
+                        if response.status_code < 400:
+                            parsed = _parse_sse_response(response.iter_lines(decode_unicode=True))
+                            if not parsed.get("_stream_completed"):
+                                raise ConnectionError("中转站流式响应提前结束")
+                        else:
+                            parsed = response.json() if response.content else {}
+                    else:
+                        parsed = response.json() if response.content else {}
                 except ValueError:
                     parsed = {}
                 if response.status_code >= 400:
                     detail = parsed.get("error") if isinstance(parsed, dict) else None
                     message = detail.get("message") if isinstance(detail, dict) else detail or response.reason
-                    if response.status_code in RETRYABLE_HTTP_STATUS and attempt < NETWORK_RETRY_ATTEMPTS:
+                    if response.status_code in RETRYABLE_HTTP_STATUS and attempt < max_attempts:
                         time.sleep(NETWORK_RETRY_BACKOFF_S * attempt)
                         continue
                     # 4xx 和重试耗尽的 5xx 才视为本次请求失败
@@ -203,10 +295,14 @@ def _request_json(url: str, api_key: str, body: dict[str, Any] | None = None, ti
                 raise
             except Exception as exc:  # 连接被掐/断开/超时等网络错误，可重试
                 last_error = exc
-                if attempt < NETWORK_RETRY_ATTEMPTS:
+                if attempt < max_attempts:
                     time.sleep(NETWORK_RETRY_BACKOFF_S * attempt)
                     continue
-        raise RuntimeError(f"中转站连接失败（已重试 {NETWORK_RETRY_ATTEMPTS} 次）：{str(last_error)[:200]}") from last_error
+            finally:
+                close = getattr(session, "close", None)
+                if callable(close):
+                    close()
+        raise RuntimeError(f"中转站连接失败（已重试 {max_attempts} 次）：{str(last_error)[:200]}") from last_error
     request = urllib.request.Request(url, data=data, headers=headers, method="POST" if body is not None else "GET")
     if use_proxy:
         opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl.create_default_context()))
@@ -218,8 +314,11 @@ def _request_json(url: str, api_key: str, body: dict[str, Any] | None = None, ti
         )
     try:
         with opener.open(request, timeout=timeout) as response:
-            raw = response.read()
-            parsed = json.loads(raw.decode("utf-8")) if raw else {}
+            if stream:
+                parsed = _parse_sse_response(response)
+            else:
+                raw = response.read()
+                parsed = json.loads(raw.decode("utf-8")) if raw else {}
             return int(response.status), parsed if isinstance(parsed, dict) else {}
     except urllib.error.HTTPError as exc:
         try:
@@ -338,6 +437,9 @@ def generate_json(payload: dict[str, Any]) -> dict[str, Any]:
     timeout_s = max(30, min(900, int(payload.get("timeout_s") or 120)))
     use_proxy = bool(config.get("use_system_proxy", False))
     started = time.monotonic()
+    # 中转站虽然声明支持 SSE，但实测长 JSON 流偶发只返回 response.created
+    # 就断开；默认使用完整 JSON，调用方显式传 stream=True 时才启用 SSE。
+    use_stream = bool(payload.get("stream", False))
     if config.get("api_format") == "openai_chat_completions":
         request_body = {
             "model": model,
@@ -345,7 +447,15 @@ def generate_json(payload: dict[str, Any]) -> dict[str, Any]:
             "response_format": {"type": "json_schema", "json_schema": {"name": str(payload.get("schema_name") or "structured_result"), "strict": True, "schema": schema}},
             "max_tokens": int(payload.get("max_output_tokens") or 4000),
         }
-        status, response = _request_json(_chat_url(base_url), api_key, request_body, timeout=timeout_s, use_proxy=use_proxy)
+        if use_stream:
+            request_body["stream"] = True
+        try:
+            status, response = _request_json(_chat_url(base_url), api_key, request_body, timeout=timeout_s, use_proxy=use_proxy, stream=use_stream)
+        except RuntimeError:
+            if not use_stream:
+                raise
+            request_body.pop("stream", None)
+            status, response = _request_json(_chat_url(base_url), api_key, request_body, timeout=timeout_s, use_proxy=use_proxy)
     else:
         request_body = {
             "model": model,
@@ -357,7 +467,15 @@ def generate_json(payload: dict[str, Any]) -> dict[str, Any]:
         }
         if payload.get("max_output_tokens"):
             request_body["max_output_tokens"] = int(payload["max_output_tokens"])
-        status, response = _request_json(_responses_url(base_url), api_key, request_body, timeout=timeout_s, use_proxy=use_proxy)
+        if use_stream:
+            request_body["stream"] = True
+        try:
+            status, response = _request_json(_responses_url(base_url), api_key, request_body, timeout=timeout_s, use_proxy=use_proxy, stream=use_stream)
+        except RuntimeError:
+            if not use_stream:
+                raise
+            request_body.pop("stream", None)
+            status, response = _request_json(_responses_url(base_url), api_key, request_body, timeout=timeout_s, use_proxy=use_proxy)
     elapsed = round(time.monotonic() - started, 3)
     output_text = _response_text(response)
     if not output_text:
