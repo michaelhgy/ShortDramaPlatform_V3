@@ -32,6 +32,7 @@ export interface StartContentRemixPayload {
   production_purpose?: '首轮覆盖' | '失败重做' | '爆款扩量' | '策略测试' | string;
   highlight_ids?: string[];
   highlight_library_version?: string;
+  based_on_highlight?: string;
 }
 
 export function getContentRemixRuns(): Promise<{ items: V3ContentAiRun[] }> {

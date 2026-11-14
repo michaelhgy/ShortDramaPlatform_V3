@@ -390,6 +390,8 @@ def _result_row(run: dict[str, Any], run_id: str, index: int, plan: dict[str, An
         "episodeRange": f"第{segments[0]['episode']:03d}集 ~ 第{segments[-1]['episode']:03d}集",
         "highlightCutPoint": f"第{segments[0]['episode']:03d}集 {segments[0]['start']:.1f}s {highlight.get('hook_label', '')}",
         "highlightId": highlight.get("highlight_id") or "",
+        "sourceHighlightId": highlight.get("highlight_id") or "",
+        "sourceHighlightLabel": f"第{segments[0]['episode']:03d}集 {segments[0]['start']:.1f}s {highlight.get('hook_label', '')}",
         "jumpCutPositions": jumps if plan["mode"] == "jump" else [],
         "playStrategy": "连续播放" if plan["mode"] == "continuous" else "跳集播放",
         "endType": plan["end_type"],
@@ -579,6 +581,8 @@ def start_run(payload: dict[str, Any]) -> dict[str, Any]:
         "productionPurpose": str(payload.get("production_purpose") or "首轮覆盖"),
         "highlightIds": [str(item).strip() for item in (payload.get("highlight_ids") or []) if str(item).strip()],
         "highlightLibraryVersion": str(payload.get("highlight_library_version") or ""),
+        "selectedHighlightIds": [str(item).strip() for item in (payload.get("highlight_ids") or []) if str(item).strip()],
+        "basedOnHighlight": str(payload.get("based_on_highlight") or ""),
         "modelCalls": [],
         "status": "queued", "createdAt": _now(), "results": [],
         "pipelineSteps": [

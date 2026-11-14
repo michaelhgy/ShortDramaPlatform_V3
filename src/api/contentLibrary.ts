@@ -39,6 +39,10 @@ export interface V3ContentAsset {
   filePath: string;                  // 真实本地文件路径，不直接覆写原片
   episodeRange: string;
   highlightCutPoint?: string;
+  sourceHighlightId?: string;
+  sourceHighlightLabel?: string;
+  productionPurpose?: string;
+  isViralHighlight?: boolean;
   jumpCutPositions?: string[];
   techStatus: TechInspectionStatus;
   techDetail: string;

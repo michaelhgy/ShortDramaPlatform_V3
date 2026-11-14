@@ -5,24 +5,30 @@ import {
   V3ContentAiRun,
   PlayContinuityMode,
   StrategyCounts,
-  ManualReviewStatus
+  ManualReviewStatus,
+  V3DramaHighlightClip,
+  ProductionPurpose
 } from '../../api/contentProduction';
 import { renderContentTemplatePreview, ContentTemplatePreviewResponse } from '../../api/contentTemplates';
-import { RemixResultReview } from './RemixResultReview';
 import {
-  FolderCheck,
-  AlertTriangle,
   Sparkles,
-  CheckCircle2,
-  XCircle,
+  Flame,
+  Check,
+  Minus,
+  Plus,
+  Film,
   Clock,
-  Loader2,
-  Cpu
+  Layers,
+  RotateCcw,
+  Sliders
 } from 'lucide-react';
 
 interface RemixCreatePanelProps {
   rawDramas: RawDramaDirectoryInfo[];
   templates: V3ContentTemplate[];
+  highlights?: V3DramaHighlightClip[];
+  initialSelectedHighlightIds?: string[];
+  initialPurpose?: ProductionPurpose;
   modelRoutes: Record<'highlight' | 'continuous' | 'jump' | 'review', string>;
   aiRuns: V3ContentAiRun[];
   selectedRunId: string;
@@ -37,57 +43,92 @@ interface RemixCreatePanelProps {
     durationRangeMin: [number, number];
     targetCount: number;
     modelId: string;
+    productionPurpose?: ProductionPurpose;
+    selectedHighlightIds?: string[];
+    perHighlightCount?: number;
+    basedOnHighlight?: string;
   }) => void;
   onBatchUpdateManualStatus: (runId: string, resultIds: string[], status: ManualReviewStatus) => void;
+  onToggleViralHighlight?: (runId: string, resultId: string) => void;
+  followUpHighlight?: string | null;
+  onClearFollowUpHighlight?: () => void;
+  onCancel?: () => void;
   showToast: (msg: string) => void;
   showRunDetails?: boolean;
 }
 
+const PURPOSE_OPTIONS: {
+  id: ProductionPurpose;
+  label: string;
+  desc: string;
+}[] = [
+  { id: '首轮覆盖', label: '首轮覆盖', desc: '勾选多个高光片段批量生成，测试哪条故事线跑得最好' },
+  { id: '爆款扩量', label: '爆款扩量', desc: '围绕已跑出的爆款高光，生成更多不同集数/剪法的视频' },
+  { id: '失败重做', label: '失败重做', desc: '针对合成异常或技术不合格的高光片段重新生成' },
+  { id: '策略测试', label: '策略测试', desc: '更换画面模板、时长区间或跳集/连续策略对比测试' }
+];
+
 export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
   rawDramas,
   templates,
+  highlights = [],
+  initialSelectedHighlightIds = [],
+  initialPurpose = '首轮覆盖',
   modelRoutes,
-  aiRuns,
-  selectedRunId,
-  onSelectRunId,
   onCreateNewRun,
-  onBatchUpdateManualStatus,
-  showToast,
-  showRunDetails = true
+  followUpHighlight,
+  onCancel,
+  showToast
 }) => {
-  // 1. 制作输入表单状态
   const [selectedDramaId, setSelectedDramaId] = useState<string>('');
-  const [customDirectory, setCustomDirectory] = useState<string>('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templates[1]?.id || templates[0]?.id || '');
-  const [strategyCounts, setStrategyCounts] = useState<StrategyCounts>({ '连续播放': 2, '跳集播放': 2 });
+  const [purpose, setPurpose] = useState<ProductionPurpose>(initialPurpose);
+  const [selectedHighlightIds, setSelectedHighlightIds] = useState<string[]>(initialSelectedHighlightIds);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templates[0]?.id || '');
+
+  // 每个高光生成几条（跳集播放条数 + 连续播放条数）
+  const [perHighlightStrategyCounts, setPerHighlightStrategyCounts] = useState<StrategyCounts>({
+    '跳集播放': 1,
+    '连续播放': 1
+  });
   const [minDuration, setMinDuration] = useState<number>(5);
   const [maxDuration, setMaxDuration] = useState<number>(10);
-  const [dramaQuery, setDramaQuery] = useState<string>('');
-  const [dramaPickerOpen, setDramaPickerOpen] = useState<boolean>(false);
   const [templatePreview, setTemplatePreview] = useState<ContentTemplatePreviewResponse | null>(null);
   const [templatePreviewLoading, setTemplatePreviewLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    if (selectedDramaId && rawDramas.some((drama) => drama.dramaId === selectedDramaId)) return;
-    const firstAvailable = rawDramas
-      .filter((drama) => drama.verifiedMp4Count > 0 && drama.directoryPath)
-      .sort((a, b) => b.verifiedMp4Count - a.verifiedMp4Count)[0];
+    setPurpose(initialPurpose);
+  }, [initialPurpose]);
+
+  useEffect(() => {
+    if (initialSelectedHighlightIds.length > 0) {
+      setSelectedHighlightIds(initialSelectedHighlightIds);
+      return;
+    }
+    const defaultSelectable = highlights
+      .filter((h) => h.status !== '已淘汰' && h.status !== '暂停')
+      .slice(0, 2)
+      .map((h) => h.id);
+    setSelectedHighlightIds(defaultSelectable);
+  }, [highlights, initialSelectedHighlightIds]);
+
+  useEffect(() => {
+    const existing = rawDramas.find((drama) => drama.dramaId === selectedDramaId);
+    if (existing) return;
+    const firstAvailable =
+      rawDramas
+        .filter((drama) => drama.verifiedMp4Count > 0 && drama.directoryPath)
+        .sort((a, b) => b.verifiedMp4Count - a.verifiedMp4Count)[0] || rawDramas[0];
     if (firstAvailable) {
       setSelectedDramaId(firstAvailable.dramaId);
-      setCustomDirectory(firstAvailable.directoryPath);
     }
   }, [rawDramas, selectedDramaId]);
 
   const availableDramas = rawDramas
     .filter((drama) => drama.verifiedMp4Count > 0 && drama.directoryPath)
     .sort((a, b) => b.verifiedMp4Count - a.verifiedMp4Count || a.dramaTitle.localeCompare(b.dramaTitle, 'zh-CN'));
-  const filteredDramas = availableDramas.filter((drama) => {
-    const query = dramaQuery.trim().toLowerCase();
-    return !query || drama.dramaTitle.toLowerCase().includes(query) || drama.dramaId.toLowerCase().includes(query);
-  });
+
   const currentDrama = availableDramas.find((d) => d.dramaId === selectedDramaId) || availableDramas[0];
   const currentTemplate = templates.find((t) => t.id === selectedTemplateId) || templates[0];
-  const activeRun = aiRuns.find((r) => r.id === selectedRunId) || aiRuns[0];
 
   useEffect(() => {
     const rendererTemplateId = currentTemplate?.rendererTemplateId;
@@ -112,507 +153,447 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
       active = false;
     };
   }, [currentDrama?.dramaTitle, currentTemplate?.rendererTemplateId]);
-  const selectedStrategies = (['连续播放', '跳集播放'] as PlayContinuityMode[]).filter((mode) => strategyCounts[mode] > 0);
-  const targetCount = selectedStrategies.reduce((total, mode) => total + strategyCounts[mode], 0);
 
-  const handleDramaChange = (dramaId: string) => {
-    setSelectedDramaId(dramaId);
-    setDramaQuery('');
-    setDramaPickerOpen(false);
-    const found = rawDramas.find((d) => d.dramaId === dramaId);
-    if (found) {
-      setCustomDirectory(found.directoryPath);
+  const selectedHighlights = highlights.filter((h) => selectedHighlightIds.includes(h.id));
+  const highlightMultiplier = Math.max(1, selectedHighlights.length);
+  const perHighlightTotal =
+    perHighlightStrategyCounts['跳集播放'] + perHighlightStrategyCounts['连续播放'];
+  const totalStrategyCounts: StrategyCounts = {
+    '跳集播放': perHighlightStrategyCounts['跳集播放'] * highlightMultiplier,
+    '连续播放': perHighlightStrategyCounts['连续播放'] * highlightMultiplier
+  };
+  const selectedStrategies = (['跳集播放', '连续播放'] as PlayContinuityMode[]).filter(
+    (mode) => totalStrategyCounts[mode] > 0
+  );
+  const targetCount = totalStrategyCounts['跳集播放'] + totalStrategyCounts['连续播放'];
+
+  const toggleHighlightSelection = (id: string) => {
+    setSelectedHighlightIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const selectAllActiveHighlights = () => {
+    const activeIds = highlights
+      .filter((h) => h.status !== '已淘汰' && h.status !== '暂停')
+      .map((h) => h.id);
+    if (selectedHighlightIds.length === activeIds.length) {
+      setSelectedHighlightIds([]);
+    } else {
+      setSelectedHighlightIds(activeIds);
     }
   };
 
-  const effectiveDirectory = customDirectory || currentDrama?.directoryPath || '';
-  const missingModelRoutes = selectedStrategies
-    .map((mode) => mode === '跳集播放' ? modelRoutes.jump : modelRoutes.continuous)
-    .filter((modelId) => !modelId);
+  const updatePerHighlightCount = (mode: PlayContinuityMode, deltaOrVal: number, isDelta = true) => {
+    setPerHighlightStrategyCounts((prev) => {
+      const next = isDelta
+        ? Math.max(0, Math.min(20, prev[mode] + deltaOrVal))
+        : Math.max(0, Math.min(20, deltaOrVal));
+      return { ...prev, [mode]: next };
+    });
+  };
 
-  const handleStartBatchRemix = (e: React.FormEvent) => {
+  const handleStartProductionPlan = (e: React.FormEvent) => {
     e.preventDefault();
+    if (highlights.length > 0 && selectedHighlights.length === 0) {
+      showToast('⚠️ 请至少勾选 1 个高光片段');
+      return;
+    }
     if (minDuration <= 0 || maxDuration < minDuration) {
       showToast('⚠️ 请设置合理的时长范围（例如 5—10 分钟）');
       return;
     }
     if (!selectedDramaId || !currentDrama) {
-      showToast('⚠️ 当前V3没有可用原剧资料，请先在剧集资料中建立原片目录。');
+      showToast('⚠️ 当前没有可用原剧资料，请先确认原片目录已就绪。');
       return;
     }
-    if (!selectedStrategies.length) {
-      showToast('⚠️ 请至少保留一种生成方式，并设置对应条数。');
+    if (!selectedStrategies.length || targetCount <= 0) {
+      showToast('⚠️ 请至少设置 1 条生成数量（跳集播放或连续播放）。');
       return;
     }
-    if (missingModelRoutes.length) {
-      showToast('⚠️ 当前选中的生成方式尚未在系统设置中分配模型，请先完成任务模型分配。');
-      return;
-    }
+
+    const highlightSummaryText =
+      selectedHighlights.length === 1
+        ? `[${selectedHighlights[0].code}] ${selectedHighlights[0].episodeLabel} ${selectedHighlights[0].timeRange} ${selectedHighlights[0].description.slice(0, 14)}`
+        : selectedHighlights.length > 1
+        ? `选中 ${selectedHighlights.length} 个高光 (${selectedHighlights.map((h) => h.code).join('、')})`
+        : followUpHighlight || undefined;
+
     onCreateNewRun({
       dramaId: selectedDramaId,
       templateId: selectedTemplateId,
       rendererTemplateId: currentTemplate?.rendererTemplateId,
       playStrategy: selectedStrategies[0],
       playStrategies: selectedStrategies,
-      strategyCounts,
+      strategyCounts: totalStrategyCounts,
       durationRangeMin: [minDuration, maxDuration],
       targetCount,
-      modelId: selectedStrategies.includes('跳集播放') ? modelRoutes.jump : modelRoutes.continuous
+      modelId:
+        (selectedStrategies.includes('跳集播放') ? modelRoutes.jump : modelRoutes.continuous) ||
+        'gemini-2.5-pro-drama-planner',
+      productionPurpose: purpose,
+      selectedHighlightIds: selectedHighlights.map((h) => h.id),
+      perHighlightCount: perHighlightTotal,
+      basedOnHighlight: highlightSummaryText
     });
   };
 
+  const durationPresets: [number, number][] = [
+    [3, 6],
+    [5, 10],
+    [8, 15]
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Top Grid: 1. 制作输入 + 2. 自动流程进度 */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* 块 1：制作输入 (Left 5 Columns) */}
-        <form
-          onSubmit={handleStartBatchRemix}
-          className={`${showRunDetails ? 'lg:col-span-5' : 'lg:col-span-12'} bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden`}
-        >
-          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-xl bg-[#1A1D2E] text-[#DDFD00] flex items-center justify-center font-bold text-xs">
-                1
-              </div>
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900">新建制作记录</h3>
-                <p className="text-[11px] text-slate-500">
-                  读取本地原剧母片目录，结合通版模板与模型高光判断批量生成
+    <form onSubmit={handleStartProductionPlan} className="space-y-4 text-xs">
+      {/* 1. 生产目的选择 */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-extrabold text-[#1A1D2E] flex items-center gap-1.5">
+            <Sliders className="w-3.5 h-3.5 text-slate-500" />
+            <span>1. 生产目的</span>
+          </label>
+          {currentDrama && (
+            <span className="text-[11px] text-slate-500 font-mono">
+              《{currentDrama.dramaTitle}》 · 原片 {currentDrama.verifiedMp4Count} 集
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {PURPOSE_OPTIONS.map((opt) => {
+            const active = purpose === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setPurpose(opt.id)}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  active
+                    ? 'bg-[#1A1D2E] text-white border-[#1A1D2E] shadow-xs'
+                    : 'bg-[#F8FAFC] text-slate-700 border-slate-200/80 hover:bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-xs">
+                    {opt.id === '爆款扩量' && (
+                      <Flame className="w-3 h-3 text-amber-400 fill-amber-400 inline mr-1 -mt-0.5" />
+                    )}
+                    {opt.id === '失败重做' && (
+                      <RotateCcw className="w-3 h-3 text-rose-400 inline mr-1 -mt-0.5" />
+                    )}
+                    {opt.label}
+                  </span>
+                  {active && (
+                    <span className="w-2 h-2 rounded-full bg-[#DDFD00]" />
+                  )}
+                </div>
+                <p className={`text-[10px] mt-1 line-clamp-2 ${active ? 'text-slate-300' : 'text-slate-500'}`}>
+                  {opt.desc}
                 </p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 2. 选择一个或多个高光片段 */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-extrabold text-[#1A1D2E] flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-slate-500" />
+            <span>2. 选择高光片段（已选 {selectedHighlights.length} 个）</span>
+          </label>
+          <button
+            type="button"
+            onClick={selectAllActiveHighlights}
+            className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
+          >
+            {selectedHighlightIds.length ===
+            highlights.filter((h) => h.status !== '已淘汰' && h.status !== '暂停').length
+              ? '清空选择'
+              : '全选可用高光'}
+          </button>
+        </div>
+
+        <div className="max-h-44 overflow-y-auto space-y-1.5 p-2 rounded-2xl bg-[#F8FAFC] border border-slate-200/80">
+          {highlights.map((hl) => {
+            const isSelected = selectedHighlightIds.includes(hl.id);
+            const isEliminated = hl.status === '已淘汰' || hl.status === '暂停';
+            return (
+              <div
+                key={hl.id}
+                onClick={() => toggleHighlightSelection(hl.id)}
+                className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-2.5 ${
+                  isSelected
+                    ? 'bg-white border-[#1A1D2E] shadow-2xs ring-1 ring-[#1A1D2E]/10'
+                    : isEliminated
+                    ? 'bg-slate-100/70 border-slate-200 opacity-60'
+                    : 'bg-white border-slate-200/70 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => undefined}
+                    className="mt-0.5 w-3.5 h-3.5 rounded accent-[#1A1D2E] cursor-pointer"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-[#1A1D2E] font-mono text-[10px] font-extrabold">
+                        {hl.code}
+                      </span>
+                      <span className="font-extrabold text-xs text-[#1A1D2E]">
+                        {hl.episodeLabel} · {hl.timeRange} ({hl.durationText || '30秒'})
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          isEliminated
+                            ? 'bg-slate-200 text-slate-500'
+                            : hl.isViral
+                            ? 'bg-amber-100 text-amber-900'
+                            : 'bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
+                        {isEliminated ? '已淘汰' : hl.isViral ? '🔥 爆款高光' : '可用'}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        已生成 {hl.usedCount} 条
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-700 font-semibold truncate mt-0.5">
+                      {hl.description}
+                    </p>
+                    <p className="text-[10px] text-slate-400 truncate">
+                      台词：{hl.dialogueText}
+                    </p>
+                  </div>
+                </div>
               </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. 每个高光生成几条 & 播放方式（跳集 / 连续） */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-extrabold text-[#1A1D2E]">
+            3. 每个高光生成数量与方式
+          </label>
+          <span className="px-2.5 py-0.5 rounded-full bg-[#1A1D2E] text-[#DDFD00] font-extrabold text-[11px]">
+            选中 {selectedHighlights.length} 个高光 × 每个 {perHighlightTotal} 条 = 计划生成 {targetCount} 条
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {(
+            [
+              {
+                mode: '跳集播放' as PlayContinuityMode,
+                desc: '高光切入 + 跨集剔除过场水词留钩子'
+              },
+              {
+                mode: '连续播放' as PlayContinuityMode,
+                desc: '去片头片尾重复帧 + 多集无缝连播'
+              }
+            ]
+          ).map(({ mode, desc }) => {
+            const count = perHighlightStrategyCounts[mode];
+            const isActive = count > 0;
+            return (
+              <div
+                key={mode}
+                className={`p-3 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                  isActive
+                    ? 'bg-white border-[#1A1D2E] shadow-xs ring-1 ring-[#1A1D2E]/10'
+                    : 'bg-[#F8FAFC] border-slate-200/80 opacity-75'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-xs text-[#1A1D2E]">{mode}</span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200/70 text-slate-500'
+                      }`}
+                    >
+                      {isActive ? `每个高光 ${count} 条` : '不启用'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{desc}</p>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                  <span className="text-[11px] font-bold text-slate-500">每个高光生几条</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => updatePerHighlightCount(mode, -1, true)}
+                      className="w-6 h-6 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-700 cursor-pointer"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      max={20}
+                      value={count}
+                      onChange={(e) => updatePerHighlightCount(mode, Number(e.target.value), false)}
+                      className="w-10 h-6 rounded-lg border border-slate-200 bg-white text-center font-mono font-extrabold text-xs text-[#1A1D2E]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => updatePerHighlightCount(mode, 1, true)}
+                      className="w-6 h-6 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-700 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 4. 视频时长 & 5. 模板选择 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* 时长范围 */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-extrabold text-[#1A1D2E] flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-slate-500" />
+              <span>4. 视频时长 (分钟)</span>
+            </label>
+            <div className="flex items-center gap-1">
+              {durationPresets.map(([minP, maxP]) => {
+                const isPresetActive = minDuration === minP && maxDuration === maxP;
+                return (
+                  <button
+                    key={`${minP}-${maxP}`}
+                    type="button"
+                    onClick={() => {
+                      setMinDuration(minP);
+                      setMaxDuration(maxP);
+                    }}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                      isPresetActive
+                        ? 'bg-[#1A1D2E] text-[#DDFD00]'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {minP}-{maxP}m
+                  </button>
+                );
+              })}
             </div>
-            <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-bold border border-indigo-200/60">
-              不覆写原片
+          </div>
+
+          <div className="p-2.5 rounded-2xl bg-[#F8FAFC] border border-slate-200/80 flex items-center justify-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={30}
+              value={minDuration}
+              onChange={(e) => setMinDuration(Number(e.target.value))}
+              className="w-16 px-2 py-1 rounded-xl border border-slate-200 bg-white font-mono font-extrabold text-center text-[#1A1D2E]"
+            />
+            <span className="text-slate-400 font-bold">至</span>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={maxDuration}
+              onChange={(e) => setMaxDuration(Number(e.target.value))}
+              className="w-16 px-2 py-1 rounded-xl border border-slate-200 bg-white font-mono font-extrabold text-center text-[#1A1D2E]"
+            />
+            <span className="text-slate-500 font-semibold">分钟</span>
+          </div>
+        </div>
+
+        {/* 模板选择 */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-extrabold text-[#1A1D2E] flex items-center gap-1">
+              <Film className="w-3.5 h-3.5 text-slate-500" />
+              <span>5. 画面模板</span>
+            </label>
+            <span className="font-mono text-[10px] text-slate-400">
+              {templatePreviewLoading ? '预览渲染中…' : currentTemplate?.version}
             </span>
           </div>
 
-          <div className="p-5 space-y-4 text-xs">
-            {/* 选择原剧 */}
-            <div className="space-y-1.5">
-              <label className="font-bold text-slate-700 flex items-center justify-between">
-                <span>选择原剧</span>
-                <span className="text-[11px] font-normal text-slate-400">
-                  仅显示已登记原片的 {availableDramas.length} 部剧集
-                </span>
-              </label>
-              <div className="relative">
-                <input
-                  value={dramaPickerOpen ? dramaQuery : (currentDrama?.dramaTitle ? `《${currentDrama.dramaTitle}》` : '')}
-                  placeholder="输入剧名关键词搜索"
-                  onFocus={() => setDramaPickerOpen(true)}
-                  onChange={(event) => {
-                    setDramaQuery(event.target.value.replace(/[《》]/g, ''));
-                    setDramaPickerOpen(true);
-                  }}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/60 font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-                />
-                {dramaPickerOpen && (
-                  <div className="absolute z-30 mt-1 w-full max-h-72 overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl">
-                    <div className="sticky top-0 px-3 py-2 text-[11px] text-slate-500 bg-slate-50 border-b border-slate-100">
-                      按原片集数排序 · 只列出当前可用原片
-                    </div>
-                    {filteredDramas.length === 0 ? (
-                      <div className="px-3 py-6 text-center text-xs text-slate-400">没有匹配的可用原剧</div>
-                    ) : filteredDramas.map((drama) => (
-                      <button
-                        key={drama.dramaId}
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => handleDramaChange(drama.dramaId)}
-                        className={`w-full px-3 py-2.5 text-left hover:bg-indigo-50 ${drama.dramaId === selectedDramaId ? 'bg-indigo-50 text-indigo-800' : 'text-slate-800'}`}
-                      >
-                        <div className="flex items-center justify-between gap-2 font-bold">
-                          <span>《{drama.dramaTitle}》</span>
-                          <span className="text-[11px] font-mono text-slate-500">{drama.verifiedMp4Count}/{drama.totalEpisodes}集 · {drama.totalSizeGb}GB</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 选择原片目录 & 显示集数和文件状态 */}
-            <div className="space-y-1.5">
-              <label className="font-bold text-slate-700 flex items-center justify-between">
-                <span>原片本地目录</span>
+          <div className="grid grid-cols-2 gap-1.5">
+            {templates.map((tpl) => {
+              const isSelected = tpl.id === selectedTemplateId;
+              return (
                 <button
+                  key={tpl.id}
                   type="button"
-                  onClick={() =>
-                    showToast(`🔍 已重新校验目录：${effectiveDirectory}`)
-                  }
-                  className="text-indigo-600 hover:underline font-semibold cursor-pointer"
-                >
-                  重新扫描目录
-                </button>
-              </label>
-              <input
-                type="text"
-                value={effectiveDirectory}
-                onChange={(e) => setCustomDirectory(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono text-[11px] text-slate-700 focus:outline-none focus:border-indigo-500"
-              />
-
-              {/* 集数和文件状态展示框 */}
-              {currentDrama && (
-                <div
-                  className={`p-3 rounded-xl border flex items-start gap-2.5 ${
-                    currentDrama.scanStatus === 'ready'
-                      ? 'bg-emerald-50/60 border-emerald-200/80 text-emerald-950'
-                      : 'bg-amber-50/70 border-amber-200/90 text-amber-950'
+                  onClick={() => setSelectedTemplateId(tpl.id)}
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
+                    isSelected
+                      ? 'bg-white border-[#1A1D2E] shadow-2xs ring-1 ring-[#1A1D2E]/10'
+                      : 'bg-[#F8FAFC] border-slate-200/80 hover:bg-white'
                   }`}
                 >
-                  {currentDrama.scanStatus === 'ready' ? (
-                    <FolderCheck className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                  )}
-                  <div className="space-y-0.5 flex-1">
-                    <div className="font-bold flex items-center justify-between">
-                      <span>
-                        集数校验：{currentDrama.verifiedMp4Count} / {currentDrama.totalEpisodes} 集可用
-                      </span>
-                      <span className="font-mono text-[11px]">
-                        {currentDrama.totalSizeGb} GB
-                      </span>
-                    </div>
-                    <p className="text-[11px] opacity-85">{currentDrama.statusSummary}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 选择通版模板 */}
-            <div className="space-y-1.5">
-              <label className="font-bold text-slate-700 flex items-center justify-between">
-                <span>选择通版模板 (v3_content_templates)</span>
-                <span className="font-mono text-[11px] text-indigo-600 font-semibold">
-                  {currentTemplate?.version}
-                </span>
-              </label>
-              <select
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/60 font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-              >
-                {templates.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name} [{tpl.version}]
-                  </option>
-                ))}
-              </select>
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-bold text-indigo-900">
-                  <span>当前剧名模板预览</span>
-                  <span className="font-normal text-indigo-600">
-                    {templatePreviewLoading ? '渲染中…' : templatePreview ? `${templatePreview.layout.font_size}px` : '等待本地服务'}
-                  </span>
-                </div>
-                {templatePreview ? (
-                  <div className="rounded-lg bg-slate-100 border border-slate-200 p-2 flex justify-center">
-                    <div className="relative w-full max-w-[480px] aspect-[4/1] overflow-hidden rounded-md shadow-sm bg-white">
-                    <img
-                      src={templatePreview.overlay_image_data_url || templatePreview.image_data_url}
-                      alt={`${currentDrama?.dramaTitle || '当前剧名'}模板预览`}
-                      className="absolute inset-x-0 top-0 h-auto w-full"
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tpl.previewColor }}
                     />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-slate-500">选择有原片的剧集并启动 V3 服务后，这里显示顶部剧名素材。</p>
-                )}
-              </div>
-            </div>
-
-            {/* 生成方式：允许同一批同时生成连续和少量跳集作品 */}
-            <div className="space-y-1.5">
-              <label className="font-bold text-slate-700 flex items-center justify-between">
-                <span>生成方式</span>
-                <span className="text-[11px] font-normal text-slate-400">可同时启用，两种方式分别计数</span>
-              </label>
-              <div className="grid grid-cols-2 gap-2.5">
-                {(['跳集播放', '连续播放'] as PlayContinuityMode[]).map((mode) => {
-                  const active = strategyCounts[mode] > 0;
-                  return (
-                    <div
-                      key={mode}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        active
-                          ? 'bg-[#1A1D2E] text-white border-[#1A1D2E] shadow-xs'
-                          : 'bg-slate-50/70 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div className="font-extrabold flex items-center justify-between gap-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={active}
-                            onChange={(event) => setStrategyCounts((current) => ({ ...current, [mode]: event.target.checked ? Math.max(1, current[mode]) : 0 }))}
-                            className="accent-indigo-600"
-                          />
-                          <span>{mode}</span>
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          max={50}
-                          value={strategyCounts[mode]}
-                          onChange={(event) => setStrategyCounts((current) => ({ ...current, [mode]: Math.max(0, Number(event.target.value)) }))}
-                          className="w-14 px-1.5 py-1 rounded-lg border border-slate-300 bg-white text-center font-mono text-xs text-slate-900"
-                          aria-label={`${mode}生成数量`}
-                        />
-                      </div>
-                      <p className={`text-[10px] mt-0.5 ${active ? 'text-slate-300' : 'text-slate-500'}`}>
-                        {mode === '跳集播放'
-                          ? '高光切入 + 跨集剔除过场水词留钩子'
-                          : '去片头片尾重复帧 + 多集无缝连播'}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-slate-500">本次生成计划 {targetCount} 条。跳集播放只代表少量跨集组合，具体跳点由流程自动判断。</p>
-            </div>
-
-            {/* 设置时长范围 & 目标数量 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 block">
-                  单条时长范围 (分钟)
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={minDuration}
-                    onChange={(e) => setMinDuration(Number(e.target.value))}
-                    className="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono font-bold text-center"
-                  />
-                  <span className="text-slate-400 font-bold">—</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={maxDuration}
-                    onChange={(e) => setMaxDuration(Number(e.target.value))}
-                    className="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono font-bold text-center"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 block">本次目标数量 (条)</label>
-                <input
-                  type="number"
-                  value={targetCount}
-                  readOnly
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 font-mono font-bold text-slate-900"
-                />
-              </div>
-            </div>
-
-            {/* 任务模型由系统设置按角色自动分配 */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <label className="font-bold text-slate-700 flex items-center gap-1">
-                  <Cpu className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>任务模型分配</span>
-                </label>
-                <span className="text-[11px] text-slate-400">在系统设置中统一配置</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ['highlight', '高光判断'],
-                  ['continuous', '连续播放规划'],
-                  ['jump', '跳集播放规划'],
-                  ['review', '结果复核']
-                ].map(([route, label]) => (
-                  <div key={route} className="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-[11px]">
-                    <div className="text-slate-500">{label}</div>
-                    <div className={`mt-0.5 font-mono font-bold ${modelRoutes[route as keyof typeof modelRoutes] ? 'text-slate-800' : 'text-amber-600'}`}>
-                      {modelRoutes[route as keyof typeof modelRoutes] || '未分配'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 px-4 rounded-xl bg-[#1A1D2E] hover:bg-black text-[#DDFD00] font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 fill-current" />
-              <span>启动原剧二创自动流水线 (生成 {targetCount} 条)</span>
-            </button>
-          </div>
-        </form>
-
-        {showRunDetails && <>
-        {/* 块 2：流程进度展示 (Right 7 Columns) */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-xl bg-[#1A1D2E] text-[#DDFD00] flex items-center justify-center font-bold text-xs">
-                2
-              </div>
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900">
-                  制作记录执行过程
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  显示真实后台任务状态、耗时与失败原因
-                </p>
-              </div>
-            </div>
-
-            {/* 任务切换器 */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-semibold">当前制作记录:</span>
-              <select
-                value={activeRun?.id || ''}
-                onChange={(e) => onSelectRunId(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-900"
-              >
-                {aiRuns.map((run) => (
-                  <option key={run.id} value={run.id}>
-                    {run.jobCode} · 《{run.dramaTitle}》 ({run.playStrategies?.join(' + ') || run.playStrategy})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {activeRun && (
-            <div className="p-5 space-y-4">
-              {/* Run Context Banner */}
-              <div className="p-3.5 rounded-xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 text-xs">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-[#DDFD00]">
-                      {activeRun.jobCode}
-                    </span>
-                    <span className="font-extrabold">《{activeRun.dramaTitle}》</span>
-                    <span className="px-2 py-0.5 rounded bg-white/10 text-[11px]">
-                      {activeRun.playStrategies?.join(' + ') || activeRun.playStrategy} · {activeRun.durationRangeMin[0]}—{activeRun.durationRangeMin[1]}分钟
+                    <span className="font-extrabold text-[11px] text-[#1A1D2E] truncate">
+                      {tpl.name.replace('木木短剧·', '')}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-300 font-mono">
-                    模型: {activeRun.modelId} · 模板: {activeRun.templateVersion} · 目标: {activeRun.targetCount}条
-                  </div>
-                </div>
-
-                {activeRun.status === 'running' && (
-                  <span className="px-3 py-1.5 rounded-xl bg-indigo-100 text-indigo-800 font-extrabold text-xs">
-                    后台自动执行中
-                  </span>
-                )}
-              </div>
-
-              {/* 7-Step Pipeline Visual Chain */}
-              <div className="space-y-2.5">
-                {activeRun.pipelineSteps.map((step, index) => {
-                  const isCompleted = step.status === 'completed';
-                  const isRunning = step.status === 'running';
-                  const isFailed = step.status === 'failed';
-                  const isPending = step.status === 'pending';
-
-                  return (
-                    <div
-                      key={step.key}
-                      className={`p-3.5 rounded-xl border transition-all ${
-                        isFailed
-                          ? 'bg-rose-50/70 border-rose-200'
-                          : isRunning
-                          ? 'bg-indigo-50/60 border-indigo-300 shadow-xs'
-                          : isCompleted
-                          ? 'bg-emerald-50/30 border-emerald-200/70'
-                          : 'bg-slate-50/60 border-slate-200/60 opacity-75'
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <span className="w-5 h-5 rounded-full bg-slate-900/10 text-slate-700 font-mono text-[11px] font-bold flex items-center justify-center">
-                            {index + 1}
-                          </span>
-                          <span className="font-extrabold text-xs text-slate-900">
-                            {step.label}
-                          </span>
-
-                          {/* Status Pill */}
-                          {isCompleted && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">
-                              <CheckCircle2 className="w-3 h-3" /> 已完成
-                            </span>
-                          )}
-                          {isRunning && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[11px] font-bold">
-                              <Loader2 className="w-3 h-3 animate-spin" /> 执行中
-                            </span>
-                          )}
-                          {isFailed && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[11px] font-bold">
-                              <XCircle className="w-3 h-3" /> 存在异常拦截
-                            </span>
-                          )}
-                          {isPending && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-200 text-slate-600 text-[11px] font-semibold">
-                              <Clock className="w-3 h-3" /> 待执行
-                            </span>
-                          )}
-                        </div>
-
-                        <span className="font-mono text-[11px] font-bold text-slate-600">
-                          耗时：{step.durationText}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-slate-600 mt-1.5 pl-7">
-                        {step.detailText}
-                      </p>
-
-                      {step.errorReason && (
-                        <div className="mt-2 ml-7 p-2.5 rounded-lg bg-rose-100/80 border border-rose-200 text-rose-900 text-[11px] font-semibold flex items-start gap-2">
-                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5" />
-                          <span>失败原因：{step.errorReason}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                  {isSelected && <Check className="w-3 h-3 text-[#1A1D2E] shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        </>}
       </div>
 
-      {/* 块 3：批量结果 (Bottom Full Width) */}
-      {showRunDetails && activeRun && (
-        <RemixResultReview
-          jobCode={activeRun.jobCode}
-          dramaTitle={activeRun.dramaTitle}
-          results={activeRun.results}
-          onBatchUpdateManualStatus={(resultIds, status) =>
-            onBatchUpdateManualStatus(activeRun.id, resultIds, status)
-          }
-          onTriggerBatchGenerateMore={() => {
-            onCreateNewRun({
-              dramaId: activeRun.dramaId,
-              templateId: activeRun.templateId,
-              rendererTemplateId: currentTemplate?.rendererTemplateId,
-              playStrategy: activeRun.playStrategy,
-              playStrategies: activeRun.playStrategies || [activeRun.playStrategy],
-              strategyCounts: activeRun.strategyCounts || { '连续播放': 0, '跳集播放': activeRun.targetCount },
-              durationRangeMin: activeRun.durationRangeMin,
-              targetCount: activeRun.targetCount,
-              modelId: activeRun.modelId
-            });
-          }}
-          showToast={showToast}
-        />
+      {templatePreview && (
+        <div className="rounded-xl bg-[#F8FAFC] border border-slate-200/80 p-1.5 flex items-center justify-center">
+          <div className="relative w-full max-w-[300px] aspect-[4/1] overflow-hidden rounded bg-white">
+            <img
+              src={templatePreview.overlay_image_data_url || templatePreview.image_data_url}
+              alt="模板预览"
+              className="absolute inset-x-0 top-0 h-auto w-full"
+            />
+          </div>
+        </div>
       )}
-    </div>
+
+      {/* 底部操作栏 */}
+      <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs cursor-pointer"
+          >
+            取消
+          </button>
+        )}
+        <button
+          type="submit"
+          disabled={targetCount <= 0 || (highlights.length > 0 && selectedHighlights.length === 0)}
+          className={`flex-1 py-2.5 px-5 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-xs transition-all ${
+            targetCount > 0 && (highlights.length === 0 || selectedHighlights.length > 0)
+              ? 'bg-[#1A1D2E] hover:bg-black text-[#DDFD00] cursor-pointer'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 fill-current" />
+          <span>
+            提交生产方案并开始生成（{purpose} · 选中 {selectedHighlights.length} 个高光 · 计划生成 {targetCount} 条）
+          </span>
+        </button>
+      </div>
+    </form>
   );
 };
