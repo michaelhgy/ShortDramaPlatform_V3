@@ -8,12 +8,13 @@
 """
 from __future__ import annotations
 
+import json
 import random
 from typing import Any, Callable
 
 from .remix_materials import index_by_id, render_for_model
 
-METHOD_VERSION = "2026-11-14.2"
+METHOD_VERSION = "2026-11-14.3"
 
 ModelCall = Callable[[str, str, dict[str, Any], str], dict[str, Any]]
 """call(task_role, prompt, schema, schema_name) -> {"data": {...}, "usage": {...}, "model": str, "elapsed_s": float}"""
@@ -139,6 +140,147 @@ def _story_map_schema() -> dict[str, Any]:
             "line": s, "type": {"type": "string", "enum": list(END_TYPES)}, "reason": s,
         })},
     })
+
+
+def _candidate_schema() -> dict[str, Any]:
+    """分段候选和全局汇总共用的小输出结构。"""
+    def obj(props: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "object", "additionalProperties": False, "required": list(props), "properties": props}
+
+    s = {"type": "string"}
+    b = {"type": "boolean"}
+    highlight = obj({
+        "start_line": s, "end_line": s, "conflict_id": s, "hook_label": s,
+        "cold_start_ok": b, "strong_action": b, "visual_conflict": b, "excluded_type": s,
+        "viewer_question": s, "reason": s,
+    })
+    return obj({
+        "highlights": {"type": "array", "items": highlight},
+        "end_points": {"type": "array", "items": obj({"line": s, "type": {"type": "string", "enum": list(END_TYPES)}, "reason": s})},
+    })
+
+
+def _episode_chunks(lines: list[dict[str, Any]], max_episodes: int = 10, overlap_episodes: int = 1) -> list[list[dict[str, Any]]]:
+    """按集切材料，段间保留一集重叠，避免冲突刚好落在边界上。"""
+    episodes = sorted({int(line["episode"]) for line in lines})
+    if not episodes:
+        return []
+    chunks: list[list[dict[str, Any]]] = []
+    start = 0
+    while start < len(episodes):
+        end = min(len(episodes), start + max_episodes)
+        allowed = set(episodes[start:end])
+        chunks.append([line for line in lines if int(line["episode"]) in allowed])
+        if end >= len(episodes):
+            break
+        start = max(start + 1, end - overlap_episodes)
+    return chunks
+
+
+HIGHLIGHT_CHUNK_PROMPT = """你是短剧高光候选提取器。下面只是一部剧的一段连续集数台词，不要试图总结整部剧。
+
+任务：从本段材料中找出最多 4 个适合作为短视频开头的高光候选，并找出本段 1—3 个可作为长视频结尾的结束点。
+
+高光必须满足：没看过前情的观众几秒内能看懂冲突；有强动作、强表态或明确利害；不能是感悟、寒暄、道歉、泛泛提问或只靠前情才能理解的身份揭晓。
+高光返回 start_line 和 end_line，必须使用材料中真实存在的编号，且在同一集内，通常只覆盖 1—3 句完整台词。
+结束点必须使用真实编号，类型只能是“告一段落”或“悬念”。
+
+只返回符合 JSON Schema 的 JSON 对象，不要输出 Markdown 或其他解释。
+
+# 本段台词
+{material}
+"""
+
+
+HIGHLIGHT_GLOBAL_PROMPT = """你是短剧高光资料的全局整理器。下面是分段模型提取出的候选，不是完整台词。
+
+请完成：
+1. 合并同一场戏、同一冲突或明显重复回顾产生的候选；
+2. 只保留真正适合冷启动的高光；
+3. 按推荐强度排序；
+4. 在不同集数和不同冲突之间尽量分布；
+5. 选择最多 {highlight_target} 个高光和最多 {end_point_target} 个结束点。
+
+只能使用候选中已有的 start_line、end_line 和结束点编号，不得编造新编号。
+只返回符合 JSON Schema 的 JSON 对象，不要输出 Markdown 或其他解释。
+
+# 候选材料
+{candidates}
+"""
+
+
+SKIPPABLE_CHUNK_PROMPT = """你是短剧跳集规划器。下面是一段连续集数台词和本剧已经确认的高光起点。
+
+请标出本段中最多 8 个删掉后仍不影响后文理解的连续台词段，供后续跳集方案组合。
+绝不能删掉人物登场、问题提出、关键铺垫、问题答案或连续动作的中间部分。
+每段必须使用真实存在的 from_line 和 to_line，且只能在本段材料范围内。
+只返回符合 JSON Schema 的 JSON 对象，不要输出 Markdown 或其他解释。
+
+# 已确认高光
+{highlights}
+
+# 本段台词
+{material}
+"""
+
+
+def build_story_map_chunked(lines: list[dict[str, Any]], call: ModelCall, *, include_skippable: bool = False) -> dict[str, Any]:
+    """分段提取候选，再用小输入全局汇总；避免把整剧和所有输出一次塞给模型。"""
+    chunks = _episode_chunks(lines)
+    if not chunks:
+        return clean_story_map({}, lines)
+
+    chunk_results: list[dict[str, Any]] = []
+    for chunk in chunks:
+        material = render_for_model(chunk)
+        response = call("highlight", HIGHLIGHT_CHUNK_PROMPT.format(material=material), _candidate_schema(), "short_drama_highlight_chunk")
+        chunk_results.append(response.get("data") or {})
+
+    candidates: list[dict[str, Any]] = []
+    end_points: list[dict[str, Any]] = []
+    for result in chunk_results:
+        candidates.extend(result.get("highlights") or [])
+        end_points.extend(result.get("end_points") or [])
+    candidate_text = json.dumps({"highlights": candidates, "end_points": end_points}, ensure_ascii=False)
+    episode_count = len({int(line["episode"]) for line in lines})
+    global_response = call(
+        "highlight",
+        HIGHLIGHT_GLOBAL_PROMPT.format(
+            highlight_target=max(4, min(15, round(episode_count * 0.3))),
+            end_point_target=max(8, min(30, episode_count * 2)),
+            candidates=candidate_text,
+        ),
+        _candidate_schema(),
+        "short_drama_highlight_global",
+    )
+    raw = dict(global_response.get("data") or {})
+    raw.setdefault("characters", [])
+    raw.setdefault("episodes", [])
+    raw.setdefault("conflicts", [])
+    raw.setdefault("skippable", [])
+    story_map = clean_story_map(raw, lines)
+    model_calls = [{k: global_response.get(k) for k in ("model", "usage", "elapsed_s")}]
+
+    if include_skippable and story_map["highlights"]:
+        highlight_brief = "\n".join(f"- {h['start_line']}—{h.get('end_line', h['start_line'])}：{h.get('hook_label', '')}" for h in story_map["highlights"])
+        skip_results: list[dict[str, Any]] = []
+        for chunk in chunks:
+            local_highlights = [h for h in story_map["highlights"] if any(int(line["episode"]) == int(h["start_line"][1:3]) for line in chunk)]
+            response = call(
+                "skippable",
+                SKIPPABLE_CHUNK_PROMPT.format(highlights=highlight_brief, material=render_for_model(chunk)),
+                _skippable_schema(),
+                "short_drama_skippable_chunk",
+            )
+            skip_results.append(response.get("data") or {})
+            model_calls.append({k: response.get(k) for k in ("model", "usage", "elapsed_s")})
+        raw["skippable"] = [item for result in skip_results for item in result.get("skippable") or []]
+        story_map = clean_story_map(raw, lines)
+
+    story_map["method_version"] = METHOD_VERSION
+    story_map["model_calls"] = model_calls
+    story_map["model_call"] = model_calls[0] if model_calls else {}
+    return story_map
 
 
 def _skippable_schema() -> dict[str, Any]:

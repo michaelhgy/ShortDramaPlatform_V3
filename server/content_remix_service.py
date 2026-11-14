@@ -278,7 +278,8 @@ def _model_caller(run_id: str):
             raise RuntimeError("系统设置里还没有为「高光判断」分配模型，请先到系统设置 → GPT中转 选择模型")
         result = generate_json({
             "task_role": task_role, "model": model, "prompt": prompt, "schema": schema,
-            "schema_name": schema_name, "reasoning_effort": "medium",
+            "schema_name": schema_name,
+            "reasoning_effort": "low" if task_role in ("highlight", "skippable") else "medium",
             "timeout_s": 600 if task_role in ("highlight", "skippable") else 180,
             "max_output_tokens": 6000 if task_role in ("highlight", "skippable") else 1200,
         })
@@ -295,7 +296,7 @@ def _model_caller(run_id: str):
     return call
 
 
-def _story_map_for(drama_title: str, lines: list[dict[str, Any]], call, *, include_skippable: bool = True) -> tuple[dict[str, Any], bool]:
+def _story_map_for(drama_title: str, lines: list[dict[str, Any]], call, *, include_skippable: bool = True, chunked: bool = False) -> tuple[dict[str, Any], bool]:
     """同一部剧、同样的台词、同一版方法，只生成一次剧情地图。返回 (地图, 是否复用)。"""
     fingerprint = hashlib.sha256(json.dumps(
         [(line["id"], line["text"]) for line in lines], ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
@@ -305,7 +306,11 @@ def _story_map_for(drama_title: str, lines: list[dict[str, Any]], call, *, inclu
             return json.loads(path.read_text(encoding="utf-8")), True
         except (OSError, json.JSONDecodeError):
             pass
-    story_map = planner.build_story_map(lines, call, include_skippable=include_skippable)
+    story_map = (
+        planner.build_story_map_chunked(lines, call, include_skippable=include_skippable)
+        if chunked
+        else planner.build_story_map(lines, call, include_skippable=include_skippable)
+    )
     story_map["fingerprint"] = fingerprint
     story_map["createdAt"] = _now()
     _write_json(path, story_map)
@@ -444,7 +449,13 @@ def _run_pipeline(run_id: str) -> None:
     call = _model_caller(run_id)
     counts = run.get("strategyCounts") or {}
     _set_stage(run_id, "highlight_judge", "模型正在通读全剧，生成剧情地图（高光起点、结束点、可跳过段）")
-    story_map, reused = _story_map_for(title, lines, call, include_skippable=int(counts.get("跳集播放", 0) or 0) > 0)
+    story_map, reused = _story_map_for(
+        title,
+        lines,
+        call,
+        include_skippable=int(counts.get("跳集播放", 0) or 0) > 0,
+        chunked=True,
+    )
     _write_json(work / "story_map.json", story_map)
     if not story_map["highlights"]:
         raise RuntimeError("模型没有找到合格的高光起点：" + "；".join(story_map.get("rejected", [])[:5]))

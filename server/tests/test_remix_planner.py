@@ -98,6 +98,24 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(len(story["skippable"]), 2)  # used_later 的段被丢弃
         self.assertEqual(story["method_version"], P.METHOD_VERSION)
 
+    def test_chunked_story_map_merges_candidates_without_skip_analysis(self):
+        calls = []
+        highlight = {
+            "start_line": "E01-005", "end_line": "E01-006", "conflict_id": "c", "hook_label": "冲突",
+            "cold_start_ok": True, "strong_action": True, "visual_conflict": True,
+            "excluded_type": "无", "viewer_question": "?", "reason": "r",
+        }
+        def call(task_role, prompt, schema, schema_name):
+            calls.append((task_role, schema_name))
+            if schema_name == "short_drama_highlight_global":
+                return {"data": {"highlights": [highlight], "end_points": [{"line": "E01-025", "type": "悬念", "reason": "集末"}]}, "model": "m", "usage": {}, "elapsed_s": 0.1}
+            return {"data": {"highlights": [highlight], "end_points": [{"line": "E01-025", "type": "悬念", "reason": "集末"}]}, "model": "m", "usage": {}, "elapsed_s": 0.1}
+        story = P.build_story_map_chunked(self.lines, call, include_skippable=False)
+        self.assertEqual(len(story["highlights"]), 1)
+        self.assertEqual(story["highlights"][0]["end_line"], "E01-006")
+        self.assertEqual([name for _, name in calls].count("short_drama_skippable_chunk"), 0)
+        self.assertGreaterEqual([name for _, name in calls].count("short_drama_highlight_chunk"), 2)
+
     def test_continuous_plans_respect_duration_and_order(self):
         story = self._map()
         candidates = P.build_candidates(story, self.timeline, "continuous", 300, 600)
