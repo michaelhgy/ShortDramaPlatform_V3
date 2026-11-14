@@ -8,8 +8,8 @@ from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_DIR = ROOT / "docs" / "界面设计输入"
-OUTPUT_DIR = SOURCE_DIR / "木木短剧第一版纯素材"
+SOURCE_DIR = ROOT / "server" / "content_template_assets" / "references"
+OUTPUT_DIR = ROOT / "local-test-output" / "mumu-template-extract" / "纯素材"
 
 SOURCES = (
     ("01_原版", SOURCE_DIR / "木木短剧模板预览-v1.png", (0, 0, 941, 220), (235, 64, 820, 177)),

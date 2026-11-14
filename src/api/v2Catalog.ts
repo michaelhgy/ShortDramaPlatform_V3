@@ -101,6 +101,7 @@ export interface V2Settings {
   data_drive: string;
   data_root_dir: string;
   drama_download_root: string;
+  content_remix_output_root: string;
   raw_material_retention_days: number;
   short_term_cleanup_hours: number;
   publish_presets: string[];

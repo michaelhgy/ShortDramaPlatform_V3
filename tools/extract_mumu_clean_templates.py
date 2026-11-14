@@ -8,8 +8,8 @@ from PIL import Image, ImageDraw, ImageChops
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_DIR = ROOT / "docs" / "界面设计输入"
-OUTPUT_DIR = SOURCE_DIR / "木木短剧第一版纯净模板"
+SOURCE_DIR = ROOT / "server" / "content_template_assets" / "references"
+OUTPUT_DIR = ROOT / "local-test-output" / "mumu-template-extract" / "纯净模板"
 
 
 SPECS = {

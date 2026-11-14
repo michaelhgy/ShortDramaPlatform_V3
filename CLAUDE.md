@@ -6,9 +6,8 @@
 
 ## 项目目录说明
 
-- 当前文件夹（ShortDramaPlatform_V3）是主线版本，功能文档在 docs/功能档案/。
-- D:\ShortDramaPlatform_V2 是旧版本，仅作参考。
-- D:\短影 存放视频处理工具和实验数据。
+- 当前文件夹（ShortDramaPlatform_V3）是主线版本，当前文档在 docs/当前/。
+- `D:\短影` 存放视频处理工具和实验数据。
 - local-test-output/ 是历史发布和验收产物，体积很大，不要递归读取或搜索。
 
 ## 使用约定

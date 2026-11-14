@@ -9,7 +9,7 @@ from pathlib import Path
 
 DB = Path(r"D:\短剧推广运营系统\系统数据\database\v2_system.db")
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "docs" / "界面设计输入"
+OUT = ROOT / "local-test-output" / "design-input" / "dashboard-ai-studio"
 SOURCE = "simulation_ui"
 LATEST = "2026-10-29"
 RANGE_START = "2026-10-23"

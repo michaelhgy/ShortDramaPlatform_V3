@@ -54,6 +54,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [availableDrives, setAvailableDrives] = useState<string[]>([]);
   const [isChangingDataDrive, setIsChangingDataDrive] = useState(false);
   const [dramaDownloadRoot, setDramaDownloadRoot] = useState('Z:\\04短剧原片');
+  const [contentRemixOutputRoot, setContentRemixOutputRoot] = useState('Z:\\05短剧二创');
   const [jianyingExePath, setJianyingExePath] = useState('');
   const [capcutDraftPath, setCapcutDraftPath] = useState('');
   const [jianyingUserDataPath, setJianyingUserDataPath] = useState('');
@@ -119,7 +120,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // 7. 系统诊断状态 (Diagnostics)
   // ==========================================
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null);
-  const [selectingPath, setSelectingPath] = useState<'file' | 'draft' | 'userData' | 'dramaDownloadRoot' | null>(null);
+  const [selectingPath, setSelectingPath] = useState<'file' | 'draft' | 'userData' | 'dramaDownloadRoot' | 'contentRemixOutputRoot' | null>(null);
 
   // ── 统一数据层接入（刷新大修 · 第 4 步）────────────────────────────
   // 设置属于"装完机基本不动"的配置类：**打开读一次 + 改完立刻刷**（间隔 0）。
@@ -133,6 +134,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (!settings) return;
     setDataDrive(settings.data_drive || '');
     setDramaDownloadRoot(settings.drama_download_root || 'Z:\\04短剧原片');
+    setContentRemixOutputRoot(settings.content_remix_output_root || 'Z:\\05短剧二创');
     setRawMaterialRetentionDays(settings.raw_material_retention_days);
     setShortTermCleanupHours(settings.short_term_cleanup_hours);
     setPublishPresets(settings.publish_presets);
@@ -200,6 +202,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     updateV2Settings({
       data_drive: dataDrive,
       drama_download_root: dramaDownloadRoot.trim(),
+      content_remix_output_root: contentRemixOutputRoot.trim(),
       raw_material_retention_days: rawMaterialRetentionDays,
       short_term_cleanup_hours: shortTermCleanupHours,
       publish_presets: publishPresets,
@@ -288,7 +291,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSelectPath = (kind: 'file' | 'directory', directoryTarget: 'draft' | 'userData' | 'dramaDownloadRoot' = 'draft') => {
+  const handleSelectPath = (kind: 'file' | 'directory', directoryTarget: 'draft' | 'userData' | 'dramaDownloadRoot' | 'contentRemixOutputRoot' = 'draft') => {
     setSelectingPath(kind === 'file' ? 'file' : directoryTarget);
     selectV2Path(kind).then((result) => {
       if (!result.path) {
@@ -298,8 +301,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (kind === 'file') setJianyingExePath(result.path);
       else if (directoryTarget === 'userData') setJianyingUserDataPath(result.path);
       else if (directoryTarget === 'dramaDownloadRoot') setDramaDownloadRoot(result.path);
+      else if (directoryTarget === 'contentRemixOutputRoot') setContentRemixOutputRoot(result.path);
       else setCapcutDraftPath(result.path);
-      showToast(kind === 'file' ? '已选择剪映程序' : directoryTarget === 'userData' ? '已选择剪映用户数据目录' : directoryTarget === 'dramaDownloadRoot' ? '已选择短剧原片下载目录' : '已选择剪映草稿目录');
+      showToast(kind === 'file' ? '已选择剪映程序' : directoryTarget === 'userData' ? '已选择剪映用户数据目录' : directoryTarget === 'dramaDownloadRoot' ? '已选择短剧原片下载目录' : directoryTarget === 'contentRemixOutputRoot' ? '已选择短剧二创成片目录' : '已选择剪映草稿目录');
     }).catch((error: unknown) => showToast(error instanceof Error && error.message ? error.message : '路径选择失败，请检查 V3 本地服务。'))
       .finally(() => setSelectingPath(null));
   };
@@ -608,6 +612,39 @@ Auto Revenue Sync: ${autoSyncRevenue ? 'Enabled (' + syncTimeSlots.join(', ') + 
               <button
                 type="button"
                 onClick={() => openV2Folder(dramaDownloadRoot).then(() => showToast('已打开短剧原片下载目录')).catch((error: unknown) => showToast(error instanceof Error ? error.message : '目录打开失败。'))}
+                className="px-3.5 py-2 rounded-xl bg-[#1A1D2E] text-white hover:bg-black font-bold cursor-pointer transition-colors shrink-0"
+              >
+                打开目录
+              </button>
+            </div>
+          </div>
+
+          {/* 1.3 短剧二创成片目录 */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-[#1A1D2E] flex items-center gap-1.5">
+              <span>短剧二创成片目录</span>
+            </label>
+            <p className="text-[11px] text-[#64748B]">
+              原剧二创生成的 MP4 按“剧名”保存到这里，默认使用 Z:\\05短剧二创；不会写回原片目录。
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={contentRemixOutputRoot}
+                onChange={(e) => setContentRemixOutputRoot(e.target.value)}
+                className="flex-1 px-3 py-2 bg-[#F8FAFC] border border-black/[0.06] rounded-xl text-[#1A1D2E] font-mono text-xs focus:outline-none focus:bg-white focus:border-[#1A1D2E]"
+              />
+              <button
+                type="button"
+                onClick={() => handleSelectPath('directory', 'contentRemixOutputRoot')}
+                disabled={selectingPath !== null}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#1A1D2E] font-bold cursor-pointer transition-colors shrink-0"
+              >
+                {selectingPath === 'contentRemixOutputRoot' ? '选择中...' : '选择目录'}
+              </button>
+              <button
+                type="button"
+                onClick={() => openV2Folder(contentRemixOutputRoot).then(() => showToast('已打开短剧二创成片目录')).catch((error: unknown) => showToast(error instanceof Error ? error.message : '目录打开失败。'))}
                 className="px-3.5 py-2 rounded-xl bg-[#1A1D2E] text-white hover:bg-black font-bold cursor-pointer transition-colors shrink-0"
               >
                 打开目录

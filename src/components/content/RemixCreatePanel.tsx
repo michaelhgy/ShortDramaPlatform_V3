@@ -40,6 +40,7 @@ interface RemixCreatePanelProps {
   }) => void;
   onBatchUpdateManualStatus: (runId: string, resultIds: string[], status: ManualReviewStatus) => void;
   showToast: (msg: string) => void;
+  showRunDetails?: boolean;
 }
 
 export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
@@ -51,7 +52,8 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
   onSelectRunId,
   onCreateNewRun,
   onBatchUpdateManualStatus,
-  showToast
+  showToast,
+  showRunDetails = true
 }) => {
   // 1. 制作输入表单状态
   const [selectedDramaId, setSelectedDramaId] = useState<string>('');
@@ -166,7 +168,7 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
         {/* 块 1：制作输入 (Left 5 Columns) */}
         <form
           onSubmit={handleStartBatchRemix}
-          className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden"
+          className={`${showRunDetails ? 'lg:col-span-5' : 'lg:col-span-12'} bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden`}
         >
           <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -174,7 +176,7 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
                 1
               </div>
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900">原剧二创制作输入</h3>
+                <h3 className="text-sm font-extrabold text-slate-900">新建制作记录</h3>
                 <p className="text-[11px] text-slate-500">
                   读取本地原剧母片目录，结合通版模板与模型高光判断批量生成
                 </p>
@@ -300,13 +302,6 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
                   </option>
                 ))}
               </select>
-              {currentTemplate && (
-                <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70 text-[11px] text-slate-600 space-y-0.5">
-                  <div>• 规格：{currentTemplate.resolution} · {currentTemplate.subtitlePreset}</div>
-                  <div>• 去重层：{currentTemplate.antiDuplicateLayer}</div>
-                  {currentTemplate.titlePolicy && <div>• 剧名：{currentTemplate.titlePolicy}</div>}
-                </div>
-              )}
               <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-2">
                 <div className="flex items-center justify-between text-[11px] font-bold text-indigo-900">
                   <span>当前剧名模板预览</span>
@@ -316,14 +311,16 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
                 </div>
                 {templatePreview ? (
                   <div className="rounded-lg bg-slate-100 border border-slate-200 p-2 flex justify-center">
+                    <div className="relative w-full max-w-[480px] aspect-[4/1] overflow-hidden rounded-md shadow-sm bg-white">
                     <img
-                      src={templatePreview.image_data_url}
+                      src={templatePreview.overlay_image_data_url || templatePreview.image_data_url}
                       alt={`${currentDrama?.dramaTitle || '当前剧名'}模板预览`}
-                      className="max-h-96 w-auto rounded-md shadow-sm"
+                      className="absolute inset-x-0 top-0 h-auto w-full"
                     />
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-slate-500">选择有原片的剧集并启动V3服务后，这里会保留完整模板，只替换剧名区域。</p>
+                  <p className="text-[11px] text-slate-500">选择有原片的剧集并启动 V3 服务后，这里显示顶部剧名素材。</p>
                 )}
               </div>
             </div>
@@ -375,7 +372,7 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
                   );
                 })}
               </div>
-              <p className="text-[11px] text-slate-500">当前批次共生成 {targetCount} 条。跳集播放只代表少量跨集组合，具体跳点由流程自动判断。</p>
+              <p className="text-[11px] text-slate-500">本次生成计划 {targetCount} 条。跳集播放只代表少量跨集组合，具体跳点由流程自动判断。</p>
             </div>
 
             {/* 设置时长范围 & 目标数量 */}
@@ -406,7 +403,7 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-700 block">本批目标数量 (条)</label>
+                <label className="font-bold text-slate-700 block">本次目标数量 (条)</label>
                 <input
                   type="number"
                   value={targetCount}
@@ -452,6 +449,7 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
           </div>
         </form>
 
+        {showRunDetails && <>
         {/* 块 2：流程进度展示 (Right 7 Columns) */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
@@ -461,7 +459,7 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-extrabold text-slate-900">
-                  自动流程进度 (7步界面展示)
+                  制作记录执行过程
                 </h3>
                 <p className="text-[11px] text-slate-500">
                   显示真实后台任务状态、耗时与失败原因
@@ -471,7 +469,7 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
 
             {/* 任务切换器 */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-semibold">当前监控批次:</span>
+              <span className="text-xs text-slate-500 font-semibold">当前制作记录:</span>
               <select
                 value={activeRun?.id || ''}
                 onChange={(e) => onSelectRunId(e.target.value)}
@@ -587,10 +585,11 @@ export const RemixCreatePanel: React.FC<RemixCreatePanelProps> = ({
             </div>
           )}
         </div>
+        </>}
       </div>
 
       {/* 块 3：批量结果 (Bottom Full Width) */}
-      {activeRun && (
+      {showRunDetails && activeRun && (
         <RemixResultReview
           jobCode={activeRun.jobCode}
           dramaTitle={activeRun.dramaTitle}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   V3ContentAsset,
   ContentAssetFilterState,
@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 
 interface ContentLibraryPanelProps {
+  contentAssetRoot: string;
   assets: V3ContentAsset[];
   groups: V3ContentGroup[];
   groupItems: V3ContentGroupItem[];
@@ -38,6 +39,7 @@ interface ContentLibraryPanelProps {
 }
 
 export const ContentLibraryPanel: React.FC<ContentLibraryPanelProps> = ({
+  contentAssetRoot,
   assets,
   groups,
   groupItems,
@@ -67,8 +69,15 @@ export const ContentLibraryPanel: React.FC<ContentLibraryPanelProps> = ({
   const [importEpisodeRange, setImportEpisodeRange] = useState('第09集 ~ 第15集');
   const [importDuration, setImportDuration] = useState('07分25秒');
   const [importFilePath, setImportFilePath] = useState(
-    'D:\\ShortDramaPlatform_V3\\external_imports\\狂飙天王_外部精剪团队_高燃卡点05.mp4'
+    `${contentAssetRoot}\\外部导入\\狂飙天王_外部精剪团队_高燃卡点05.mp4`
   );
+
+  useEffect(() => {
+    setImportFilePath((current) => {
+      const fileName = current.split(/[\\/]/).pop() || '外部导入视频.mp4';
+      return `${contentAssetRoot.replace(/[\\/]+$/, '')}\\外部导入\\${fileName}`;
+    });
+  }, [contentAssetRoot]);
 
   // 弹窗：快速管理某条成片所属编组（多对多）
   const [groupAssignAsset, setGroupAssignAsset] = useState<V3ContentAsset | null>(null);

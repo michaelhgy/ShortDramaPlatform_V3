@@ -37,7 +37,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 
-export type ContentSubTab = 'remix_create' | 'remix_jobs' | 'content_library' | 'group_publish';
+export type ContentSubTab = 'project_overview' | 'remix_create' | 'remix_jobs' | 'content_library' | 'group_publish';
 
 interface ContentProductionViewProps {
   showToast: (msg: string) => void;
@@ -46,14 +46,15 @@ interface ContentProductionViewProps {
 export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
   showToast
 }) => {
-  // 二级标签状态：二创制作 | 生成任务 | 成片库 | 编组发布
-  const [activeSubTab, setActiveSubTab] = useState<ContentSubTab>('remix_create');
+  // 二级标签状态：项目总览 | 制作记录 | 成片预览 | 编组发布
+  const [activeSubTab, setActiveSubTab] = useState<ContentSubTab>('project_overview');
 
   // 核心数据状态
   const [rawDramas, setRawDramas] = useState<RawDramaDirectoryInfo[]>([]);
   const [templates] = useState(INITIAL_V3_TEMPLATES);
   const [aiRuns, setAiRuns] = useState<V3ContentAiRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string>('');
+  const [selectedDramaId, setSelectedDramaId] = useState<string>('');
 
   // 成片库与授权上限状态 (默认 9，可配置)
   const [assets, setAssets] = useState<V3ContentAsset[]>(INITIAL_V3_CONTENT_ASSETS);
@@ -75,7 +76,7 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
     jump: '',
     review: ''
   });
-  const [contentAssetRoot, setContentAssetRoot] = useState('内容资产\\成片库');
+  const [contentAssetRoot, setContentAssetRoot] = useState('Z:\\05短剧二创');
   const [catalogLoading, setCatalogLoading] = useState(true);
 
   useEffect(() => {
@@ -135,8 +136,8 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
               });
             }
             if (settingsResult.status === 'fulfilled') {
-              const configuredRoot = String(settingsResult.value.data_root_dir || '').replace(/[\\]+$/, '');
-              if (configuredRoot) setContentAssetRoot(`${configuredRoot}\\内容资产\\成片库`);
+              const configuredRoot = String(settingsResult.value.content_remix_output_root || '').replace(/[\\]+$/, '');
+              if (configuredRoot) setContentAssetRoot(configuredRoot);
             }
             if (runsResult.status === 'fulfilled') {
               setAiRuns(runsResult.value.items || []);
@@ -152,6 +153,31 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
       });
     return () => { active = false; };
   }, []);
+
+  const availableProjectDramas = rawDramas
+    .filter((drama) => drama.verifiedMp4Count > 0 && drama.directoryPath)
+    .sort((a, b) => b.verifiedMp4Count - a.verifiedMp4Count || a.dramaTitle.localeCompare(b.dramaTitle, 'zh-CN'));
+
+  useEffect(() => {
+    if (selectedDramaId && availableProjectDramas.some((drama) => drama.dramaId === selectedDramaId)) return;
+    if (availableProjectDramas[0]) setSelectedDramaId(availableProjectDramas[0].dramaId);
+  }, [rawDramas, selectedDramaId]);
+
+  const selectedProject = availableProjectDramas.find((drama) => drama.dramaId === selectedDramaId) || availableProjectDramas[0];
+  const projectRuns = selectedProject
+    ? aiRuns.filter((run) => run.dramaId === selectedProject.dramaId || run.dramaTitle === selectedProject.dramaTitle)
+    : [];
+  const projectAssets = selectedProject
+    ? assets.filter((asset) => asset.dramaId === selectedProject.dramaId || asset.dramaTitle === selectedProject.dramaTitle)
+    : [];
+  const latestProjectRun = projectRuns[0];
+  const transcriptStep = latestProjectRun?.pipelineSteps.find((step) => step.key === 'local_recognize');
+  const storyMapStep = latestProjectRun?.pipelineSteps.find((step) => step.key === 'highlight_judge');
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    setSelectedRunId((current) => projectRuns.some((run) => run.id === current) ? current : (projectRuns[0]?.id || ''));
+  }, [selectedProject?.dramaId, projectRuns.length]);
 
   // 真实后台任务：扫描原片、本地识别、模型规划、FFmpeg 合成并入库。
   const handleCreateNewRun = async (params: {
@@ -557,154 +583,27 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
     }
   };
 
-  return (
-    <main className="max-w-[1720px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-in fade-in duration-200">
-      {/* 顶部工作区标题与二级导航栏 */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-2xl bg-[#1A1D2E] text-[#DDFD00] flex items-center justify-center shadow-sm">
-            <Sparkles className="w-5 h-5 fill-current" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
-                内容生产工作区 (原剧二创 · 独立成片库 · 编组发布)
-              </h2>
-              <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
-                与旧生产中心并行运行
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              原片只读扫描 → 模型高光判断与连续/跳集规划 → 通版模板合成 → 技术质检入库 → 多对多编组与小V猫原创/授权分发
-            </p>
-          </div>
-        </div>
+  const renderWorkspace = () => (
+    <main className="min-h-[calc(100vh-72px)] bg-[#EEF2F6] px-4 py-5 sm:px-6">
+      <div className="mx-auto grid max-w-[1780px] grid-cols-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="overflow-hidden rounded-xl bg-[#111827] text-white shadow-sm">
+          <div className="border-b border-white/10 px-4 py-4"><div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Content Studio</div><h1 className="mt-1 text-xl font-extrabold">剧集项目</h1><p className="mt-2 text-[11px] leading-relaxed text-slate-300">从分析资料到成片发布，当前工作只围绕一部剧。</p></div>
+          <div className="p-2">{availableProjectDramas.map((drama) => { const active=drama.dramaId===selectedProject?.dramaId; const count=assets.filter((asset)=>asset.dramaId===drama.dramaId||asset.dramaTitle===drama.dramaTitle).length; return <button key={drama.dramaId} type="button" onClick={()=>{setSelectedDramaId(drama.dramaId);setActiveSubTab('project_overview');}} className={`w-full border-l-2 px-3 py-3 text-left transition-colors ${active?'border-[#DDFD00] bg-white/10':'border-transparent hover:bg-white/5'}`}><div className="truncate text-sm font-bold">《{drama.dramaTitle}》</div><div className="mt-1 text-[11px] text-slate-400">{drama.verifiedMp4Count}/{drama.totalEpisodes} 集 <span className="mx-1 text-slate-600">·</span> {count} 条成片</div></button>;})}</div>
+        </aside>
 
-        {/* 二级标签：二创制作 | 生成任务 | 成片库 | 编组发布 */}
-        <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/70 gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('remix_create')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-              activeSubTab === 'remix_create'
-                ? 'bg-[#1A1D2E] text-[#DDFD00] shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>二创制作</span>
-          </button>
+        {selectedProject ? <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <header className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6"><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="text-[11px] font-bold text-slate-500">当前剧集</div><h2 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-950">《{selectedProject.dramaTitle}》</h2><div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500"><span>{selectedProject.verifiedMp4Count}/{selectedProject.totalEpisodes} 集原片</span><span>转写 {transcriptStep?.status==='completed'?'已完成':'未完成'}</span><span>剧情地图 {storyMapStep?.status==='completed'?'已完成':'未完成'}</span></div></div><button type="button" onClick={()=>setActiveSubTab('remix_create')} className="rounded-lg bg-[#111827] px-4 py-2 text-xs font-extrabold text-[#DDFD00] hover:bg-black">新建制作</button></div><nav className="mt-4 flex flex-wrap gap-1 border-t border-slate-100 pt-3" aria-label="剧集工作区">{([['project_overview','总览'],['remix_create','新建制作'],['remix_jobs','制作记录'],['content_library','成片审核'],['group_publish','发布编组']] as [ContentSubTab,string][]).map(([key,label])=><button key={key} type="button" onClick={()=>setActiveSubTab(key)} className={`rounded-md px-3 py-2 text-xs font-bold ${activeSubTab===key?'bg-[#111827] text-white':'text-slate-600 hover:bg-slate-100'}`}>{label}{key==='remix_jobs'?` · ${projectRuns.length}`:key==='content_library'?` · ${projectAssets.length}`:''}</button>)}</nav></header>
 
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('remix_jobs')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-              activeSubTab === 'remix_jobs'
-                ? 'bg-[#1A1D2E] text-[#DDFD00] shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5" />
-            <span>生成任务 ({aiRuns.length})</span>
-          </button>
+          {activeSubTab==='project_overview' && <div className="space-y-5 p-5 sm:p-6"><section className="grid grid-cols-1 gap-3 md:grid-cols-[1.15fr_0.85fr]"><div className="border-l-4 border-[#DDFD00] bg-[#111827] px-5 py-4 text-white"><div className="text-[11px] text-slate-300">下一步</div><div className="mt-1 text-lg font-extrabold">{projectAssets.some((asset)=>asset.manualStatus==='待审核')?'先审核当前成片，再决定是否追加制作':'先完成本剧的首次制作'}</div><div className="mt-2 text-xs text-slate-300">{projectAssets.some((asset)=>asset.manualStatus==='待审核')?`当前有 ${projectAssets.filter((asset)=>asset.manualStatus==='待审核').length} 条成片等待人工审核。`: '资料准备完成后，可以直接新建一次制作记录。'}</div><button type="button" onClick={()=>setActiveSubTab(projectAssets.some((asset)=>asset.manualStatus==='待审核')?'content_library':'remix_create')} className="mt-4 rounded-md bg-[#DDFD00] px-3 py-2 text-xs font-extrabold text-[#111827]">{projectAssets.some((asset)=>asset.manualStatus==='待审核')?'进入成片审核':'开始新建制作'}</button></div><div className="grid grid-cols-3 divide-x divide-slate-200 border border-slate-200 bg-slate-50"><div className="px-3 py-4"><div className="text-[11px] text-slate-500">制作记录</div><div className="mt-2 text-2xl font-extrabold tabular-nums text-slate-950">{projectRuns.length}</div></div><div className="px-3 py-4"><div className="text-[11px] text-slate-500">待审核</div><div className="mt-2 text-2xl font-extrabold tabular-nums text-amber-700">{projectAssets.filter((asset)=>asset.manualStatus==='待审核').length}</div></div><div className="px-3 py-4"><div className="text-[11px] text-slate-500">已通过</div><div className="mt-2 text-2xl font-extrabold tabular-nums text-emerald-700">{projectAssets.filter((asset)=>asset.manualStatus==='已通过').length}</div></div></div></section><div className="grid grid-cols-1 gap-5 xl:grid-cols-[0.9fr_1.1fr]"><section className="border border-slate-200"><div className="border-b border-slate-200 px-4 py-3"><h3 className="text-sm font-extrabold text-slate-950">分析资料</h3><p className="mt-1 text-xs text-slate-500">制作记录会复用这里的资料。</p></div><div className="divide-y divide-slate-200"><div className="flex items-start justify-between gap-4 px-4 py-4"><div><div className="text-xs font-bold text-slate-700">转写资料</div><div className="mt-1 text-[11px] text-slate-500">{transcriptStep?.detailText||'尚未生成'}</div></div><span className="text-xs font-bold text-emerald-700">{transcriptStep?.status==='completed'?'已完成':'未完成'}</span></div><div className="flex items-start justify-between gap-4 px-4 py-4"><div><div className="text-xs font-bold text-slate-700">剧情地图</div><div className="mt-1 text-[11px] text-slate-500">{storyMapStep?.detailText||'尚未生成'}</div></div><span className="text-xs font-bold text-indigo-700">{storyMapStep?.status==='completed'?'已完成':'未完成'}</span></div></div></section><section className="border border-slate-200"><div className="flex items-center justify-between border-b border-slate-200 px-4 py-3"><div><h3 className="text-sm font-extrabold text-slate-950">最近制作记录</h3><p className="mt-1 text-xs text-slate-500">只显示当前剧的历史记录。</p></div><button type="button" onClick={()=>setActiveSubTab('remix_jobs')} className="text-xs font-bold text-indigo-700 hover:underline">查看全部</button></div><div className="divide-y divide-slate-200">{projectRuns.slice(0,5).map((run,index)=><button key={run.id} type="button" onClick={()=>{setSelectedRunId(run.id);setActiveSubTab('remix_jobs');}} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"><div className="min-w-0"><div className="truncate text-xs font-bold text-slate-900">R{projectRuns.length-index} · {run.jobCode}</div><div className="mt-1 text-[11px] text-slate-500">目标 {run.targetCount} 条 · 合格 {run.results.filter((result)=>result.techStatus==='合格').length} 条</div></div><span className={`shrink-0 text-[11px] font-bold ${run.status==='completed'?'text-emerald-700':run.status==='running'?'text-indigo-700':'text-rose-700'}`}>{run.status==='completed'?'已完成':run.status}</span></button>)}</div></section></div></div>}
 
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('content_library')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-              activeSubTab === 'content_library'
-                ? 'bg-[#1A1D2E] text-[#DDFD00] shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Film className="w-3.5 h-3.5" />
-            <span>成片库 ({assets.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('group_publish')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-              activeSubTab === 'group_publish'
-                ? 'bg-[#1A1D2E] text-[#DDFD00] shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>编组发布 ({groups.length})</span>
-          </button>
-        </div>
+          {activeSubTab === 'remix_create' && <RemixCreatePanel rawDramas={[selectedProject]} templates={templates} modelRoutes={modelRoutes} aiRuns={projectRuns} selectedRunId={selectedRunId} onSelectRunId={setSelectedRunId} onCreateNewRun={handleCreateNewRun} onBatchUpdateManualStatus={handleBatchUpdateManualStatus} showToast={showToast} showRunDetails={false} />}
+          {activeSubTab === 'remix_jobs' && <RemixJobList aiRuns={projectRuns} selectedRunId={selectedRunId} onSelectRunId={setSelectedRunId} showToast={showToast} />}
+          {activeSubTab === 'content_library' && <ContentLibraryPanel contentAssetRoot={contentAssetRoot} assets={projectAssets} groups={groups} groupItems={groupItems} globalAuthLimit={globalAuthLimit} onUpdateGlobalAuthLimit={(limit) => { setGlobalAuthLimit(limit); showToast(`已更新单条成片授权次数上限为 ${limit} 次`); }} onUpdateAssetManualStatus={handleUpdateAssetManualStatus} onImportExternalAsset={handleImportExternalAsset} onToggleAssetInGroup={handleToggleAssetInGroup} showToast={showToast} />}
+          {activeSubTab === 'group_publish' && <ContentGroupsPanel assets={assets} groups={groups} groupItems={groupItems} originalRecords={originalRecords} publications={publications} accounts={accounts} globalAuthLimit={globalAuthLimit} onCreateGroup={handleCreateGroup} onRenameGroup={handleRenameGroup} onDeleteGroup={handleDeleteGroup} onAddAssetToGroup={handleAddAssetToGroup} onRemoveAssetFromGroup={handleRemoveAssetFromGroup} onMoveGroupItemOrder={handleMoveGroupItemOrder} onExecuteOriginalPublish={handleExecuteOriginalPublish} onExecuteAuthorizedPublish={handleExecuteAuthorizedPublish} showToast={showToast} />}
+        </section> : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">正在读取可制作的剧集…</div>}
       </div>
-
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-        {catalogLoading
-          ? '正在查找已下载的原片（网络盘较慢时可能要等一会儿）……'
-          : `成片库正式目录：${contentAssetRoot}。剧集、账号、中转模型和二创生产任务读取V3真实数据。`}
-      </div>
-
-      {/* 二级标签内容视图 */}
-      {activeSubTab === 'remix_create' && (
-        <RemixCreatePanel
-          rawDramas={rawDramas}
-          templates={templates}
-          modelRoutes={modelRoutes}
-          aiRuns={aiRuns}
-          selectedRunId={selectedRunId}
-          onSelectRunId={setSelectedRunId}
-          onCreateNewRun={handleCreateNewRun}
-          onBatchUpdateManualStatus={handleBatchUpdateManualStatus}
-          showToast={showToast}
-        />
-      )}
-
-      {activeSubTab === 'remix_jobs' && (
-        <RemixJobList
-          aiRuns={aiRuns}
-          onInspectRunInCreateTab={(runId) => {
-            setSelectedRunId(runId);
-            setActiveSubTab('remix_create');
-          }}
-          showToast={showToast}
-        />
-      )}
-
-      {activeSubTab === 'content_library' && (
-        <ContentLibraryPanel
-          assets={assets}
-          groups={groups}
-          groupItems={groupItems}
-          globalAuthLimit={globalAuthLimit}
-          onUpdateGlobalAuthLimit={(limit) => {
-            setGlobalAuthLimit(limit);
-            showToast(`✅ 已更新单条成片授权次数上限为 ${limit} 次`);
-          }}
-          onUpdateAssetManualStatus={handleUpdateAssetManualStatus}
-          onImportExternalAsset={handleImportExternalAsset}
-          onToggleAssetInGroup={handleToggleAssetInGroup}
-          showToast={showToast}
-        />
-      )}
-
-      {activeSubTab === 'group_publish' && (
-        <ContentGroupsPanel
-          assets={assets}
-          groups={groups}
-          groupItems={groupItems}
-          originalRecords={originalRecords}
-          publications={publications}
-          accounts={accounts}
-          globalAuthLimit={globalAuthLimit}
-          onCreateGroup={handleCreateGroup}
-          onRenameGroup={handleRenameGroup}
-          onDeleteGroup={handleDeleteGroup}
-          onAddAssetToGroup={handleAddAssetToGroup}
-          onRemoveAssetFromGroup={handleRemoveAssetFromGroup}
-          onMoveGroupItemOrder={handleMoveGroupItemOrder}
-          onExecuteOriginalPublish={handleExecuteOriginalPublish}
-          onExecuteAuthorizedPublish={handleExecuteAuthorizedPublish}
-          showToast={showToast}
-        />
-      )}
     </main>
   );
+
+  return renderWorkspace();
 };

@@ -123,7 +123,7 @@ export const RemixResultReview: React.FC<RemixResultReviewProps> = ({
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-xs font-bold transition-colors cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>批量生成追加批次</span>
+              <span>追加生成记录</span>
             </button>
           )}
 
@@ -160,7 +160,7 @@ export const RemixResultReview: React.FC<RemixResultReviewProps> = ({
       {/* Results List */}
       {results.length === 0 ? (
         <div className="py-14 text-center text-slate-400 text-xs">
-          当前批次尚无已产出的视频成片结果，请等待自动流程执行至「视频合成」阶段
+          当前制作记录尚无已产出的视频成片结果，请等待自动流程执行至「视频合成」阶段
         </div>
       ) : (
         <div className="divide-y divide-slate-100">

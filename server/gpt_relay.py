@@ -19,6 +19,10 @@ from urllib.parse import urlparse
 
 CONFIG_FILENAME = "gpt-relay.json"
 SUPPORTED_API_FORMATS = {"responses", "openai_chat_completions"}
+# 中转站对长请求偶发掐断连接（Remote end closed / Read timed out），自动重试几次扛过去。
+# 只重试连接层错误，不重试 HTTP 4xx（请求本身的错，重试也没用）。
+NETWORK_RETRY_ATTEMPTS = 3
+NETWORK_RETRY_BACKOFF_S = 3.0
 DEFAULT_CONFIG: dict[str, Any] = {
     "provider_name": "",
     "base_url": "",
@@ -171,27 +175,34 @@ def _request_json(url: str, api_key: str, body: dict[str, Any] | None = None, ti
     except ImportError:
         requests = None
     if requests is not None:
-        try:
-            with requests.Session() as session:
-                # 默认直连：既不读环境变量里的代理，也显式清空 proxies，
-                # 避免 Windows 系统代理把中转站请求导去梯子导致 Unable to connect to proxy。
-                if not use_proxy:
-                    session.trust_env = False
-                    session.proxies = {}
-                response = session.request("POST" if body is not None else "GET", url, headers=headers, data=data, timeout=timeout)
+        last_error: Exception | None = None
+        for attempt in range(1, NETWORK_RETRY_ATTEMPTS + 1):
             try:
-                parsed = response.json() if response.content else {}
-            except ValueError:
-                parsed = {}
-            if response.status_code >= 400:
-                detail = parsed.get("error") if isinstance(parsed, dict) else None
-                message = detail.get("message") if isinstance(detail, dict) else detail or response.reason
-                raise RuntimeError(f"中转站请求失败（HTTP {response.status_code}）：{str(message)[:200]}")
-            return int(response.status_code), parsed if isinstance(parsed, dict) else {}
-        except RuntimeError:
-            raise
-        except Exception as exc:  # requests exceptions vary by installed version
-            raise RuntimeError(f"中转站连接失败：{str(exc)[:200]}") from exc
+                with requests.Session() as session:
+                    # 默认直连：既不读环境变量里的代理，也显式清空 proxies，
+                    # 避免 Windows 系统代理把中转站请求导去梯子导致 Unable to connect to proxy。
+                    if not use_proxy:
+                        session.trust_env = False
+                        session.proxies = {}
+                    response = session.request("POST" if body is not None else "GET", url, headers=headers, data=data, timeout=timeout)
+                try:
+                    parsed = response.json() if response.content else {}
+                except ValueError:
+                    parsed = {}
+                if response.status_code >= 400:
+                    detail = parsed.get("error") if isinstance(parsed, dict) else None
+                    message = detail.get("message") if isinstance(detail, dict) else detail or response.reason
+                    # HTTP 错误是请求本身的问题，不重试
+                    raise RuntimeError(f"中转站请求失败（HTTP {response.status_code}）：{str(message)[:200]}")
+                return int(response.status_code), parsed if isinstance(parsed, dict) else {}
+            except RuntimeError:
+                raise
+            except Exception as exc:  # 连接被掐/断开/超时等网络错误，可重试
+                last_error = exc
+                if attempt < NETWORK_RETRY_ATTEMPTS:
+                    time.sleep(NETWORK_RETRY_BACKOFF_S * attempt)
+                    continue
+        raise RuntimeError(f"中转站连接失败（已重试 {NETWORK_RETRY_ATTEMPTS} 次）：{str(last_error)[:200]}") from last_error
     request = urllib.request.Request(url, data=data, headers=headers, method="POST" if body is not None else "GET")
     if use_proxy:
         opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl.create_default_context()))

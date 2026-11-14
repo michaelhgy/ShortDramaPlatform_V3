@@ -14,13 +14,15 @@ import {
 
 interface RemixJobListProps {
   aiRuns: V3ContentAiRun[];
-  onInspectRunInCreateTab: (runId: string) => void;
+  selectedRunId?: string;
+  onSelectRunId: (runId: string) => void;
   showToast: (msg: string) => void;
 }
 
 export const RemixJobList: React.FC<RemixJobListProps> = ({
   aiRuns,
-  onInspectRunInCreateTab,
+  selectedRunId,
+  onSelectRunId,
   showToast
 }) => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -38,15 +40,16 @@ export const RemixJobList: React.FC<RemixJobListProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-extrabold text-slate-900">
-            二创生成任务队列 (v3_content_ai_runs)
+            当前剧集的制作记录
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            显示原剧扫描、高光判断、连续/跳集规划、FFmpeg合成与技术质检的真实任务状态
+            显示本剧每次生成记录的扫描、判断、合成与技术质检状态
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 text-xs">
           <select
+            aria-label="制作记录状态筛选"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-800"
@@ -59,6 +62,7 @@ export const RemixJobList: React.FC<RemixJobListProps> = ({
           </select>
 
           <select
+            aria-label="制作记录播放策略筛选"
             value={strategyFilter}
             onChange={(e) => setStrategyFilter(e.target.value as 'ALL' | PlayContinuityMode)}
             className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-800"
@@ -79,7 +83,7 @@ export const RemixJobList: React.FC<RemixJobListProps> = ({
           return (
             <div
               key={run.id}
-              className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden"
+              className={`bg-white rounded-2xl border shadow-xs overflow-hidden ${selectedRunId === run.id ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200/90'}`}
             >
               <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -121,10 +125,10 @@ export const RemixJobList: React.FC<RemixJobListProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => onInspectRunInCreateTab(run.id)}
+                    onClick={() => onSelectRunId(run.id)}
                     className="px-3.5 py-1.5 rounded-xl bg-[#1A1D2E] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                   >
-                    <span>查看流水线与批量结果 ({run.results.length})</span>
+                    <span>选中这条记录 ({run.results.length} 条成片)</span>
                     <ArrowUpRight className="w-3.5 h-3.5 text-[#DDFD00]" />
                   </button>
                 </div>

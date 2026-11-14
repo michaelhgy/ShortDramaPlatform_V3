@@ -107,6 +107,52 @@ class GptRelayTests(unittest.TestCase):
         raw = json.loads(self.config_path.read_text(encoding="utf-8"))
         self.assertNotIn("prompt", json.dumps(raw, ensure_ascii=False))
 
+    def test_request_retries_on_connection_error_then_succeeds(self):
+        """中转站偶发掐断：连接层错误应自动重试，几次内恢复就算成功。"""
+        class _Resp:
+            status_code = 200
+            content = b'{"ok": true}'
+            reason = "OK"
+            def json(self):
+                return {"ok": True}
+        class _Session:
+            calls = 0
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def request(self, *a, **k):
+                _Session.calls += 1
+                if _Session.calls < 3:
+                    raise ConnectionError("Remote end closed connection without response")
+                return _Resp()
+        fake_requests = type("M", (), {"Session": _Session})
+        with patch.object(gpt_relay, "NETWORK_RETRY_BACKOFF_S", 0), \
+             patch.dict("sys.modules", {"requests": fake_requests}):
+            status, payload = gpt_relay._request_json("https://m2ai.top/v1/x", "k", {"a": 1})
+        self.assertEqual(status, 200)
+        self.assertEqual(_Session.calls, 3)  # 前两次失败，第三次成功
+
+    def test_request_does_not_retry_http_error(self):
+        """HTTP 4xx 是请求本身的问题，不应重试。"""
+        class _Resp:
+            status_code = 401
+            content = b'{"error": {"message": "bad key"}}'
+            reason = "Unauthorized"
+            def json(self):
+                return {"error": {"message": "bad key"}}
+        class _Session:
+            calls = 0
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def request(self, *a, **k):
+                _Session.calls += 1
+                return _Resp()
+        fake_requests = type("M", (), {"Session": _Session})
+        with patch.object(gpt_relay, "NETWORK_RETRY_BACKOFF_S", 0), \
+             patch.dict("sys.modules", {"requests": fake_requests}):
+            with self.assertRaises(RuntimeError):
+                gpt_relay._request_json("https://m2ai.top/v1/x", "k", {"a": 1})
+        self.assertEqual(_Session.calls, 1)  # 只调一次，不重试
+
 
 if __name__ == "__main__":
     unittest.main()

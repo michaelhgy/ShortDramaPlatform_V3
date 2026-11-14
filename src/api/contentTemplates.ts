@@ -11,6 +11,7 @@ export interface ContentTemplatePreviewResponse {
   };
   canvas: [number, number];
   image_data_url: string;
+  overlay_image_data_url?: string;
 }
 
 export function renderContentTemplatePreview(templateId: string, title: string): Promise<ContentTemplatePreviewResponse> {

@@ -2468,6 +2468,7 @@ DEFAULT_SETTINGS = {
     "data_drive": "",
     "data_root_dir": "",
     "drama_download_root": r"Z:\04短剧原片",
+    "content_remix_output_root": r"Z:\05短剧二创",
     "raw_material_retention_days": 7,
     "short_term_cleanup_hours": 24,
     "publish_presets": ["12:00", "18:30", "19:45", "21:00"],
@@ -2555,6 +2556,8 @@ def update_v2_settings(payload: dict[str, object]) -> dict[str, object]:
             raise ValueError("剪映路径设置格式不正确")
     if not isinstance(values["drama_download_root"], str) or not values["drama_download_root"].strip():
         raise ValueError("短剧原片下载目录必须是有效路径")
+    if not isinstance(values["content_remix_output_root"], str) or not values["content_remix_output_root"].strip():
+        raise ValueError("短剧二创成片目录必须是有效路径")
     executable = str(values["jianying_executable"]).strip()
     draft_root = str(values["jianying_draft_root"]).strip()
     user_data_root = str(values["jianying_user_data_root"]).strip()

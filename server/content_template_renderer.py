@@ -83,8 +83,8 @@ TEMPLATE_SPECS = {
 }
 
 
-REFERENCE_DIR = Path(__file__).resolve().parents[1] / "docs" / "界面设计输入"
 ASSET_DIR = application_resource_path("server", "content_template_assets")
+REFERENCE_DIR = ASSET_DIR / "references"
 TEMPLATE_ASSETS = {
     "mumu-original": ASSET_DIR / "mumu-original.png",
     "mumu-blue": ASSET_DIR / "mumu-blue.png",
@@ -93,10 +93,10 @@ TEMPLATE_ASSETS = {
 }
 
 REFERENCE_IMAGES = {
-    "mumu-original": REFERENCE_DIR / "木木短剧模板预览-v1.png",
-    "mumu-blue": REFERENCE_DIR / "木木短剧模板预览-蓝-v2.png",
-    "mumu-cyan": REFERENCE_DIR / "木木短剧模板预览-青-v2.png",
-    "mumu-red": REFERENCE_DIR / "木木短剧模板预览-红-v2.png",
+    "mumu-original": REFERENCE_DIR / "mumu-original-reference.png",
+    "mumu-blue": REFERENCE_DIR / "mumu-blue-reference.png",
+    "mumu-cyan": REFERENCE_DIR / "mumu-cyan-reference.png",
+    "mumu-red": REFERENCE_DIR / "mumu-red-reference.png",
 }
 
 

@@ -51,6 +51,14 @@ def _data_root() -> Path:
     return Path(v2_file_service.DATA_ROOT)
 
 
+def _output_root() -> Path:
+    """Resolve the user-configured root for finished remix videos."""
+    from . import v2_file_service
+    settings = v2_file_service.get_v2_settings()
+    configured = str(settings.get("content_remix_output_root") or r"Z:\05短剧二创").strip()
+    return Path(configured).expanduser()
+
+
 def _runs_root() -> Path:
     root = _data_root() / "系统数据" / "content_remix_runs"
     root.mkdir(parents=True, exist_ok=True)
@@ -468,7 +476,7 @@ def _run_pipeline(run_id: str) -> None:
     renderer_id = str(run.get("rendererTemplateId") or TEMPLATE_RENDERER_IDS.get(run["templateId"], "mumu-original"))
     overlay_path = work / "template_overlay.png"
     render_overlay(renderer_id, title, overlay_path, canvas=CANVAS)
-    output_root = _data_root() / "内容资产" / "成片库" / "原剧二创" / _safe_name(title)
+    output_root = _output_root() / _safe_name(title)
     results: list[dict[str, Any]] = []
     failures: list[str] = []
     for index, plan in enumerate(plans, 1):
