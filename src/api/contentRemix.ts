@@ -59,3 +59,32 @@ export function getContentHighlightLibraries(dramaId: string): Promise<ContentHi
 export function getContentHighlightLibraryVersion(dramaId: string, versionId: string): Promise<V3HighlightLibraryVersion> {
   return v2Client.get(`/api/v3/content-remix/highlights/${encodeURIComponent(dramaId)}/versions/${encodeURIComponent(versionId)}`);
 }
+
+export interface HighlightAnalysisRun {
+  id: string;
+  dramaId: string;
+  dramaTitle: string;
+  sourceDirectory: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  stage: string;
+  detail: string;
+  error?: string;
+  totalEpisodes: number;
+  lineCount: number;
+  highlightCount: number;
+  libraryVersionId?: string;
+  createdAt: string;
+  finishedAt?: string;
+}
+
+export function startContentHighlightAnalysis(payload: {
+  drama_id: string;
+  drama_title: string;
+  source_directory: string;
+}): Promise<HighlightAnalysisRun> {
+  return v2Client.post('/api/v3/content-remix/highlights/analysis', payload);
+}
+
+export function getContentHighlightAnalysis(runId: string): Promise<HighlightAnalysisRun> {
+  return v2Client.get(`/api/v3/content-remix/highlights/analysis/${runId}`);
+}

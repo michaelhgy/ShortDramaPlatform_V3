@@ -16,7 +16,11 @@ import {
   getContentRemixRun,
   getContentRemixRuns,
   getContentRemixSourceDramas,
-  startContentRemixRun
+  startContentRemixRun,
+  getContentHighlightLibraries,
+  startContentHighlightAnalysis,
+  getContentHighlightAnalysis,
+  HighlightAnalysisRun
 } from '../../api/contentRemix';
 import {
   INITIAL_V3_CONTENT_ASSETS,
@@ -69,6 +73,33 @@ import {
   Maximize2,
   Volume2
 } from 'lucide-react';
+
+function formatHighlightTime(seconds: number): string {
+  const safe = Math.max(0, Math.round(Number(seconds) || 0));
+  return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+}
+
+function mapLibraryHighlight(item: import('../../api/contentProduction').V3HighlightLibraryItem, index: number): V3DramaHighlightClip {
+  const duration = Math.max(1, Math.round(item.durationSec || item.endTime - item.startTime));
+  return {
+    id: item.id,
+    code: `H${String(index + 1).padStart(2, '0')}`,
+    dramaId: item.dramaId,
+    dramaTitle: item.dramaTitle,
+    episodeLabel: `第${String(item.episode).padStart(2, '0')}集`,
+    timeRange: `${formatHighlightTime(item.startTime)} - ${formatHighlightTime(item.endTime)}`,
+    durationSec: duration,
+    durationText: `${duration}秒`,
+    sceneTag: item.hookLabel || '原片高光片段',
+    dialogueText: item.anchorText || '已生成高光片段，等待人工查看。',
+    description: item.reason || item.viewerQuestion || '模型提取的原片高光片段。',
+    status: item.status === 'paused' || item.status === 'retired' ? '暂停' : '已通过',
+    usedCount: item.usageCount || 0,
+    generatedVideoNames: [],
+    accentColor: '#1E3A8A',
+    previewUrl: item.previewUrl,
+  };
+}
 
 export type LeftNavMode = 'single_drama' | 'publish_groups';
 export type RecordFilterMode = 'all_drama_assets' | string;
@@ -136,6 +167,8 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
   const [rawDramas, setRawDramas] = useState<RawDramaDirectoryInfo[]>(INITIAL_RAW_DRAMA_DIRS);
   const [templates] = useState(INITIAL_V3_TEMPLATES);
   const [highlights, setHighlights] = useState<V3DramaHighlightClip[]>(INITIAL_DRAMA_HIGHLIGHTS);
+  const [highlightAnalysisRun, setHighlightAnalysisRun] = useState<HighlightAnalysisRun | null>(null);
+  const [highlightAnalysisBusy, setHighlightAnalysisBusy] = useState(false);
   const [aiRuns, setAiRuns] = useState<V3ContentAiRun[]>(INITIAL_AI_RUNS);
   const [selectedRunId, setSelectedRunId] = useState<string>(INITIAL_AI_RUNS[0]?.id || '');
   const [recordFilter, setRecordFilter] = useState<RecordFilterMode>('all_drama_assets');
@@ -380,6 +413,67 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
     activeProductionDramas.find((drama) => drama.dramaId === selectedDramaId) ||
     activeProductionDramas[0] ||
     allDownloadedDramas[0];
+
+  useEffect(() => {
+    if (!selectedProject?.dramaId) return;
+    let active = true;
+    getContentHighlightLibraries(selectedProject.dramaId)
+      .then((response) => {
+        if (!active || !response.latest?.items?.length) return;
+        const mapped = response.latest.items.map((item, index) => mapLibraryHighlight(item, index));
+        setHighlights((previous) => [
+          ...previous.filter((item) => item.dramaId !== selectedProject.dramaId),
+          ...mapped,
+        ]);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [selectedProject?.dramaId]);
+
+  const refreshRealHighlightLibrary = async () => {
+    if (!selectedProject?.dramaId || !selectedProject.directoryPath) {
+      showToast('当前剧集没有可用原片目录，无法生成高光库。');
+      return;
+    }
+    setHighlightAnalysisBusy(true);
+    try {
+      const run = await startContentHighlightAnalysis({
+        drama_id: selectedProject.dramaId,
+        drama_title: selectedProject.dramaTitle,
+        source_directory: selectedProject.directoryPath,
+      });
+      setHighlightAnalysisRun(run);
+      showToast('已开始生成高光资料，完成后会自动刷新高光库。');
+      const poll = async () => {
+        const current = await getContentHighlightAnalysis(run.id);
+        if (!current || current.status === 'queued' || current.status === 'running') {
+          setHighlightAnalysisRun(current || run);
+          window.setTimeout(() => void poll(), 2500);
+          return;
+        }
+        setHighlightAnalysisRun(current);
+        setHighlightAnalysisBusy(false);
+        if (current.status === 'completed') {
+          const latest = await getContentHighlightLibraries(selectedProject.dramaId);
+          if (latest.latest?.items?.length) {
+            setHighlights((previous) => [
+              ...previous.filter((item) => item.dramaId !== selectedProject.dramaId),
+              ...latest.latest!.items.map((item, index) => mapLibraryHighlight(item, index)),
+            ]);
+          }
+          showToast(`高光库已生成，共 ${current.highlightCount} 段。`);
+        } else {
+          showToast(`高光库生成失败：${current.error || current.detail}`);
+        }
+      };
+      void poll();
+    } catch (error) {
+      setHighlightAnalysisBusy(false);
+      showToast(error instanceof Error ? error.message : '高光库任务启动失败。');
+    }
+  };
 
   // 当前剧目的高光库列表（若新剧无初始高光则自动提供默认通过的高光片段）
   const dramaHighlights = useMemo(() => {
@@ -1730,6 +1824,15 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
 
                   {/* Right Actions for Highlight Library */}
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void refreshRealHighlightLibrary()}
+                      disabled={highlightAnalysisBusy}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-extrabold text-[#1A1D2E] cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                    >
+                      {highlightAnalysisBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                      <span>{highlightAnalysisBusy ? '正在提取' : '重新提取高光'}</span>
+                    </button>
                     {filteredDramaHighlights.length > 0 && (
                       <button
                         type="button"
@@ -2883,7 +2986,18 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
                   background: `linear-gradient(160deg, ${previewHighlightClip.accentColor || '#1E293B'} 0%, #090D16 100%)`
                 }}
               >
-                <div className="flex items-center justify-between text-xs">
+                {previewHighlightClip.previewUrl && (
+                  <video
+                    src={previewHighlightClip.previewUrl}
+                    controls
+                    autoPlay
+                    muted
+                    playsInline
+                    className="absolute inset-0 h-full w-full object-cover opacity-80"
+                  />
+                )}
+                <div className="absolute inset-0 bg-slate-950/35" />
+                <div className="relative z-10 flex items-center justify-between text-xs">
                   <span className="px-2.5 py-0.5 rounded-md bg-[#DDFD00] text-[#1A1D2E] font-mono font-black">
                     {previewHighlightClip.code} · {previewHighlightClip.episodeLabel}
                   </span>
@@ -2892,7 +3006,7 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
                   </span>
                 </div>
 
-                <div className="my-auto text-center space-y-2">
+                <div className="relative z-10 my-auto text-center space-y-2">
                   <div className="w-12 h-12 rounded-full bg-[#DDFD00] text-[#1A1D2E] flex items-center justify-center mx-auto shadow-lg">
                     <Volume2 className="w-5 h-5" />
                   </div>
@@ -2900,7 +3014,7 @@ export const ContentProductionView: React.FC<ContentProductionViewProps> = ({
                   <p className="text-xs text-slate-300 leading-relaxed">{previewHighlightClip.description}</p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-black/75 border border-white/10 text-center">
+                <div className="relative z-10 p-3 rounded-xl bg-black/75 border border-white/10 text-center">
                   <p className="text-xs font-bold text-amber-200">{previewHighlightClip.dialogueText}</p>
                 </div>
               </div>

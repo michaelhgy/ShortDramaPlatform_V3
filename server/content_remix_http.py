@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import v2_file_service
 from .content_highlight_library import ensure_preview, get_library, list_libraries
+from .content_highlight_analysis import get_run as get_highlight_analysis_run, start as start_highlight_analysis
 from .content_remix_service import get_run, list_runs, start_run
 
 
@@ -102,6 +103,10 @@ def handle(handler, method: str, path: str, payload: dict | None = None) -> bool
         if method == "GET" and path == BASE + "/runs":
             handler._json(HTTPStatus.OK, {"items": list_runs()})
             return True
+        match = re.fullmatch(re.escape(BASE) + r"/highlights/analysis/([a-f0-9]{32})", path)
+        if method == "GET" and match:
+            handler._json(HTTPStatus.OK, get_highlight_analysis_run(match.group(1)))
+            return True
         match = re.fullmatch(re.escape(BASE) + r"/highlights/([A-Za-z0-9_-]+)", path)
         if method == "GET" and match:
             drama_id = match.group(1)
@@ -130,6 +135,9 @@ def handle(handler, method: str, path: str, payload: dict | None = None) -> bool
             return True
         if method == "POST" and path == BASE + "/runs":
             handler._json(HTTPStatus.ACCEPTED, start_run(payload or {}))
+            return True
+        if method == "POST" and path == BASE + "/highlights/analysis":
+            handler._json(HTTPStatus.ACCEPTED, start_highlight_analysis(payload or {}))
             return True
         handler._json(HTTPStatus.NOT_FOUND, {"error": "内容生产接口不存在"})
     except ValueError as exc:

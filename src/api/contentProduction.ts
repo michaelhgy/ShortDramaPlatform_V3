@@ -28,6 +28,7 @@ export interface V3DramaHighlightClip {
   generatedVideoNames: string[];  // 已经生成过哪些成片
   isViral?: boolean;              // 是否已跑出爆款
   accentColor?: string;           // 预览画面主题色
+  previewUrl?: string;             // 后端按需截取的原片预览地址
 }
 
 // 后端高光库版本接口：保留原片时间范围和资料版本，供真实数据接入时映射到 UI 高光卡片。
