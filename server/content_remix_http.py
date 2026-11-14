@@ -5,10 +5,18 @@ import threading
 from http import HTTPStatus
 from pathlib import Path
 
+from . import v2_file_service
+from .content_highlight_library import ensure_preview, get_library, list_libraries
 from .content_remix_service import get_run, list_runs, start_run
 
 
 BASE = "/api/v3/content-remix"
+
+
+def _data_root() -> Path:
+    if v2_file_service.DATA_ROOT is None:
+        raise RuntimeError("需要先配置数据盘")
+    return Path(str(v2_file_service.DATA_ROOT))
 
 
 def find_source_folder(candidates: list[Path]) -> tuple[Path | None, int, int]:
@@ -93,6 +101,28 @@ def handle(handler, method: str, path: str, payload: dict | None = None) -> bool
             return True
         if method == "GET" and path == BASE + "/runs":
             handler._json(HTTPStatus.OK, {"items": list_runs()})
+            return True
+        match = re.fullmatch(re.escape(BASE) + r"/highlights/([A-Za-z0-9_-]+)", path)
+        if method == "GET" and match:
+            drama_id = match.group(1)
+            libraries = list_libraries(_data_root(), drama_id)
+            latest = get_library(_data_root(), drama_id)
+            handler._json(HTTPStatus.OK, {"libraries": libraries, "latest": latest})
+            return True
+        match = re.fullmatch(re.escape(BASE) + r"/highlights/([A-Za-z0-9_-]+)/items/([A-Za-z0-9_-]+)/preview", path)
+        if method == "GET" and match:
+            drama_id, highlight_id = match.group(1), match.group(2)
+            preview = ensure_preview(_data_root(), drama_id, highlight_id)
+            handler._binary(preview, "video/mp4", cache_control="private, max-age=3600")
+            return True
+        match = re.fullmatch(re.escape(BASE) + r"/highlights/([A-Za-z0-9_-]+)/versions/([A-Za-z0-9_-]+)", path)
+        if method == "GET" and match:
+            drama_id, version_id = match.group(1), match.group(2)
+            library = get_library(_data_root(), drama_id, version_id)
+            if library is None:
+                handler._json(HTTPStatus.NOT_FOUND, {"error": "高光资料版本不存在"})
+            else:
+                handler._json(HTTPStatus.OK, library)
             return True
         match = re.fullmatch(re.escape(BASE) + r"/runs/([a-f0-9]{32})", path)
         if method == "GET" and match:

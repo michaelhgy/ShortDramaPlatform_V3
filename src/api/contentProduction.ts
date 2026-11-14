@@ -41,6 +41,7 @@ export interface V3RemixBatchResultItem {
   durationFormatted: string;
   episodeRange: string;           // 原剧范围，例如 "第01集 ~ 第04集"
   highlightCutPoint: string;      // 高光切入点，例如 "第01集 00:18 退婚亮明身份高潮切入"
+  highlightId?: string;           // 剧目高光库中的稳定来源 ID
   jumpCutPositions: string[];     // 跳集位置，例如 ["第02集 02:15 → 跳第05集 00:08", "第05集 01:52 → 跳第07集 00:15"]
   playStrategy: PlayContinuityMode;
   templateId: string;
@@ -101,6 +102,10 @@ export interface V3ContentAiRun {
   targetCount: number;
   modelId: string;                    // 动态可配置模型ID，不写死
   modelAssignments?: Partial<Record<'highlight' | 'continuous' | 'jump' | 'review', string>>;
+  productionPurpose?: '首轮覆盖' | '失败重做' | '爆款扩量' | '策略测试' | string;
+  highlightIds?: string[];
+  highlightLibraryVersion?: string;
+  highlightCount?: number;
   playStrategies?: PlayContinuityMode[];
   strategyCounts?: StrategyCounts;
   status: 'running' | 'completed' | 'partial_failed' | 'failed' | 'queued';
@@ -113,6 +118,45 @@ export interface V3ContentAiRun {
   synthFailures?: string[];
   methodVersion?: string;
   modelCalls?: { taskRole: string; model: string; usage?: Record<string, unknown>; elapsedS?: number; createdAt: string }[];
+}
+
+export type HighlightLibraryItemStatus = 'candidate' | 'confirmed' | 'used' | 'paused' | 'retired';
+
+export interface V3HighlightLibraryItem {
+  id: string;
+  libraryVersionId: string;
+  dramaId: string;
+  dramaTitle: string;
+  analysisVersion: string;
+  sourceFingerprint: string;
+  rank: number;
+  episode: number;
+  startLine: string;
+  endLine: string;
+  startTime: number;
+  endTime: number;
+  durationSec: number;
+  sourcePath: string;
+  anchorText: string;
+  hookLabel: string;
+  conflictId: string;
+  viewerQuestion: string;
+  reason: string;
+  boundaryStatus: 'ready' | 'needs_boundary_review' | string;
+  status: HighlightLibraryItemStatus;
+  usageCount: number;
+  previewUrl?: string;
+  createdAt: string;
+}
+
+export interface V3HighlightLibraryVersion {
+  versionId: string;
+  dramaId: string;
+  dramaTitle: string;
+  analysisVersion: string;
+  sourceFingerprint: string;
+  createdAt: string;
+  items: V3HighlightLibraryItem[];
 }
 
 // 通版模板预设库 (v3_content_templates)

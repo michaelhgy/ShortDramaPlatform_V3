@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 from .remix_materials import index_by_id, render_for_model
 
-METHOD_VERSION = "2026-11-12.3"
+METHOD_VERSION = "2026-11-14.1"
 
 ModelCall = Callable[[str, str, dict[str, Any], str], dict[str, Any]]
 """call(task_role, prompt, schema, schema_name) -> {"data": {...}, "usage": {...}, "model": str, "elapsed_s": float}"""
@@ -56,7 +56,8 @@ STORY_MAP_PROMPT = """你是短剧推广视频的剪辑策划。我们要从一�
 前三项至少满足两项，并且 excluded_type 为"无"，才算合格起点。不合格的不要列出。
 
 要求：
-- 起点编号是视频的第一句台词，必须是冲突爆发的那一句或紧挨着的前一句，不要从冲突前的铺垫开始。
+- 起点编号是高光片段的第一句台词，必须是冲突爆发的那一句或紧挨着的前一句，不要从冲突前的铺垫开始。
+- 同时返回 end_line：高光片段的最后一句台词。高光片段只保留开头的几秒，通常是 1—3 句完整台词，必须在一个集内结束，不能把整段后续剧情放进高光。
 - 选 {highlight_target} 个合格起点（材料不足时宁缺毋滥），分布在不同的主线冲突或不同的冲突回合上，同一场戏只选一个。
 - 每集开头重复上一集结尾的回顾内容不能当起点，只选第一次真实发生的位置。
 - 按推荐强度从强到弱排列。
@@ -124,7 +125,7 @@ def _story_map_schema() -> dict[str, Any]:
             "id": s, "title": s, "start_line": s, "peak_line": s, "result_line": s,
         })},
         "highlights": {"type": "array", "items": obj({
-            "start_line": s, "conflict_id": s, "hook_label": s,
+            "start_line": s, "end_line": s, "conflict_id": s, "hook_label": s,
             "cold_start_ok": b, "strong_action": b, "visual_conflict": b, "excluded_type": s,
             "viewer_question": s, "reason": s,
         })},
@@ -193,17 +194,27 @@ def clean_story_map(raw: dict[str, Any], lines: list[dict[str, Any]]) -> dict[st
     highlights = []
     seen_starts: set[str] = set()
     for item in raw.get("highlights") or []:
+        item = dict(item)
         start = str(item.get("start_line", ""))
+        end = str(item.get("end_line") or start)
         passed = sum(bool(item.get(k)) for k in ("cold_start_ok", "strong_action", "visual_conflict"))
         excluded = str(item.get("excluded_type") or "").strip()
         if start not in ids:
             rejected.append(f"起点编号不存在：{start}")
+        elif end not in ids:
+            rejected.append(f"高光结束编号不存在：{end}")
+        elif order[end] < order[start]:
+            rejected.append(f"高光范围倒置：{start}—{end}")
+        elif ids[end]["episode"] != ids[start]["episode"]:
+            rejected.append(f"高光不能跨集：{start}—{end}")
         elif passed < 2 or excluded not in ("", "无"):
             rejected.append(f"起点不合格：{start}（满足{passed}项，排除类型：{excluded or '无'}）")
         elif start in seen_starts:
             continue
         else:
             seen_starts.add(start)
+            item["start_line"] = start
+            item["end_line"] = end
             highlights.append(item)
 
     end_points = []
